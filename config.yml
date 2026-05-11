@@ -1,0 +1,35 @@
+# ============================================================
+# Aikiu — Configuración
+# ============================================================
+
+# --- Telegram ---
+bot_token: "PEGA_TU_TOKEN_AQUI"
+chat_id: "PEGA_EL_CHAT_ID_AQUI"
+
+# --- Groq ---
+# Cuenta gratuita en console.groq.com → API Keys
+groq_api_key: "PEGA_TU_GROQ_API_KEY_AQUI"
+
+# --- Identidad ---
+nombre_anciano: "Rosa"
+nombre_asistente: "Clara"      # ← el familiar elige el nombre
+personalidad: "amigable, paciente, habla simple y claro, con humor suave"
+
+# --- Voz TTS ---
+# Opciones en español: Celeste-PlayAI, Valentina-PlayAI
+voz_tts: "Celeste-PlayAI"
+
+# --- Modelo LLM ---
+modelo_llm: "llama-3.3-70b-versatile"
+
+# --- Saludo diario ---
+saludo_diario:
+  activo: true
+  hora: "08:30"
+
+# --- Recordatorios ---
+recordatorios:
+  - hora: "09:00"
+    mensaje: "Rosa, ¿tomaste el medicamento de la mañana?"
+  - hora: "21:00"
+    mensaje: "Rosa, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."
