@@ -43,12 +43,15 @@ servidor propio. Corre en cualquier Mac con Python.
 - Recordatorios de medicamentos u otros eventos (hora y mensaje configurables)
 - El bot inicia la conversación sin que Rosa tenga que escribir
 
-### Bot familiar (canal separado)
-- Segundo bot de Telegram exclusivo para el familiar
+### Bot familiar (canal compartido)
+- Segundo bot de Telegram para toda la familia — no requiere configuración por familiar
+- Cualquier familiar manda `/start` y queda suscripto automáticamente
 - `/perfil` — muestra el perfil completo actual
 - `/editar` — edita cualquier sección del perfil con menú interactivo
+- `/suscriptores` — lista de familiares registrados
 - `/ayuda` — lista de comandos
-- Recibe alertas automáticas cuando Rosa muestra señales de angustia
+- Alertas automáticas llegan a **todos** los suscriptores cuando Rosa muestra angustia
+- Lista de suscriptores en `subscribers.json` (excluido del repo)
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -68,8 +71,8 @@ servidor propio. Corre en cualquier Mac con Python.
 
 ### Alta prioridad
 - [ ] **Resumen diario al familiar**: cada noche enviar por Telegram un
-      resumen del día (temas charlados, estado anímico detectado, recordatorios cumplidos)
-- [ ] **Comando /log en bot familiar**: que el familiar pueda pedir el log
+      resumen del día a todos los suscriptores (temas charlados, estado anímico, recordatorios)
+- [ ] **Comando /log en bot familiar**: que cualquier familiar pueda pedir el log
       del día desde Telegram sin acceder al archivo
 
 ### Media prioridad
