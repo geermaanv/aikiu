@@ -3,12 +3,12 @@
 # ============================================================
 
 # --- Telegram ---
-bot_token: "8619850858:AAFZ6_CGJTankpQeWeE0oFMud3GyAih_C6U"
-chat_id: "8703775626"
+bot_token: "PEGA_TU_TELEGRAM_BOT_API_KEY_AQUI"
+chat_id: "PEGA_TU_TELEGRAM_CHAT_ID_AQUI"
 
 # --- Groq ---
 # Cuenta gratuita en console.groq.com → API Keys
-groq_api_key: "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"
+groq_api_key: "PEGA_TU_GROQ_API_KEY_AQUI"
 
 # --- Identidad ---
 nombre_anciano: "Rosa"
