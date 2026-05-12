@@ -1,4 +1,6 @@
 python-telegram-bot==21.6
-groq==0.11.0
+groq>=0.13.0
 pyyaml==6.0.2
 apscheduler==3.10.4
+python-dotenv==1.0.1
+edge-tts>=6.1.9

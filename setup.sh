@@ -27,20 +27,24 @@ fi
 "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
 ok "Dependencias instaladas"
 
-# Verificar config
-if grep -q "PEGA_TU_TOKEN_AQUI" "$DIR/config.yml"; then
+# Verificar .env
+if [ ! -f "$DIR/.env" ]; then
+    cp "$DIR/.env.example" "$DIR/.env"
+fi
+
+if grep -q "PEGA_TU" "$DIR/.env"; then
     echo ""
-    echo "  Completá config.yml antes de iniciar:"
-    echo "  open -e config.yml"
+    echo "  Completá .env antes de iniciar:"
+    echo "  open -e .env"
     echo ""
     echo "  Necesitás:"
-    echo "  - bot_token    → @BotFather en Telegram"
-    echo "  - chat_id      → del celular del anciano"
-    echo "  - groq_api_key → console.groq.com (gratis)"
+    echo "  - BOT_TOKEN    → @BotFather en Telegram"
+    echo "  - CHAT_ID      → del celular del anciano"
+    echo "  - GROQ_API_KEY → console.groq.com (gratis)"
     echo ""
 else
     echo ""
-    ok "config.yml configurado"
+    ok ".env configurado"
     echo -e "${GREEN}  Iniciá con: bash start.sh${RESET}"
     echo ""
 fi

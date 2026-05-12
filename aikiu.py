@@ -11,7 +11,9 @@ import tempfile
 import os
 import yaml
 import httpx
+import edge_tts
 from pathlib import Path
+from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -22,10 +24,22 @@ from groq import AsyncGroq
 # ---------------------------------------------------------------------------
 
 BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
 
 def cargar_config():
     with open(BASE_DIR / "config.yml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    for key, env_var in [("bot_token", "BOT_TOKEN"), ("chat_id", "CHAT_ID"), ("groq_api_key", "GROQ_API_KEY")]:
+        value = os.environ.get(env_var)
+        if not value:
+            raise RuntimeError(f"Falta la variable de entorno {env_var} (definila en .env)")
+        cfg[key] = value
+    perfil_path = BASE_DIR / cfg.get("perfil", "perfil.md")
+    if perfil_path.exists():
+        cfg["_perfil"] = perfil_path.read_text(encoding="utf-8")
+    else:
+        cfg["_perfil"] = ""
+    return cfg
 
 CONFIG = cargar_config()
 
@@ -62,18 +76,22 @@ async def transcribir(ogg_path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 async def generar_respuesta(texto_usuario: str, historial: list) -> str:
-    nombre    = CONFIG["nombre_anciano"]
     asistente = CONFIG["nombre_asistente"]
-    personalidad = CONFIG.get("personalidad", "amigable, paciente, habla simple y claro")
+    perfil    = CONFIG.get("_perfil", "")
 
-    system_prompt = (
-        f"Sos {asistente}, un asistente de voz para {nombre}. "
-        f"Tu personalidad: {personalidad}. "
-        f"Respondé siempre en español rioplatense, con oraciones cortas y simples. "
-        f"Nunca uses markdown, listas ni símbolos especiales. "
-        f"Solo texto natural pensado para ser escuchado, no leído. "
-        f"Máximo 3 oraciones por respuesta."
-    )
+    if perfil:
+        system_prompt = (
+            f"Sos {asistente}, un asistente de voz. "
+            f"Este es el perfil completo de la persona con quien hablás y las instrucciones de comportamiento:\n\n"
+            f"{perfil}"
+        )
+    else:
+        nombre = CONFIG["nombre_anciano"]
+        system_prompt = (
+            f"Sos {asistente}, un asistente de voz para {nombre}. "
+            f"Respondé en español rioplatense, oraciones cortas y simples. "
+            f"Nunca uses markdown. Máximo 3 oraciones."
+        )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(historial[-10:])
@@ -91,18 +109,19 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     return respuesta
 
 # ---------------------------------------------------------------------------
-# TTS: Groq PlayAI
+# TTS: Microsoft Edge TTS (gratis, sin API key)
 # ---------------------------------------------------------------------------
 
 async def sintetizar(texto: str, salida: Path):
-    response = await groq.audio.speech.create(
-        model="playai-tts",
-        voice=CONFIG.get("voz_tts", "Celeste-PlayAI"),
-        input=texto,
-        response_format="wav",
+    mp3 = salida.with_suffix(".mp3")
+    communicate = edge_tts.Communicate(texto, voice=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
+    await communicate.save(str(mp3))
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y", "-i", str(mp3), "-c:a", "libopus", str(salida),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
     )
-    with open(salida, "wb") as f:
-        f.write(response.read())
+    await proc.wait()
     log.info(f"TTS generado: {salida}")
 
 # ---------------------------------------------------------------------------
@@ -120,9 +139,9 @@ def chat_id_autorizado(chat_id: int) -> bool:
 
 async def responder_con_voz(context, chat_id: int, texto: str):
     with tempfile.TemporaryDirectory() as tmp:
-        wav = Path(tmp) / "respuesta.wav"
-        await sintetizar(texto, wav)
-        with open(wav, "rb") as audio:
+        ogg = Path(tmp) / "respuesta.ogg"
+        await sintetizar(texto, ogg)
+        with open(ogg, "rb") as audio:
             await context.bot.send_voice(chat_id=chat_id, voice=audio)
 
 # ---------------------------------------------------------------------------
@@ -179,9 +198,9 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def enviar_mensaje_voz(app: Application, texto: str):
     chat_id = CONFIG["chat_id"]
     with tempfile.TemporaryDirectory() as tmp:
-        wav = Path(tmp) / "proactivo.wav"
-        await sintetizar(texto, wav)
-        with open(wav, "rb") as audio:
+        ogg = Path(tmp) / "proactivo.ogg"
+        await sintetizar(texto, ogg)
+        with open(ogg, "rb") as audio:
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
@@ -216,16 +235,32 @@ async def main():
     log.info(f"Aikiu iniciando para {CONFIG['nombre_anciano']}")
     log.info("=" * 50)
 
-    app = Application.builder().token(CONFIG["bot_token"]).build()
+    scheduler = AsyncIOScheduler()
+
+    async def post_init(application: Application) -> None:
+        programar_recordatorios(scheduler, application)
+        scheduler.start()
+        log.info("Aikiu escuchando. Ctrl+C para detener.")
+
+    app = (
+        Application.builder()
+        .token(CONFIG["bot_token"])
+        .post_init(post_init)
+        .build()
+    )
     app.add_handler(MessageHandler(filters.VOICE, handle_voz))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_texto))
 
-    scheduler = AsyncIOScheduler()
-    programar_recordatorios(scheduler, app)
-    scheduler.start()
-
-    log.info("Aikiu escuchando. Ctrl+C para detener.")
-    await app.run_polling(drop_pending_updates=True)
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            scheduler.shutdown(wait=False)
+            await app.updater.stop()
+            await app.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

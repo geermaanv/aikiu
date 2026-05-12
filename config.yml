@@ -1,23 +1,18 @@
 # ============================================================
-# Aikiu — Configuración
+# Aikiu — Configuración (sin secretos — van en .env)
 # ============================================================
-
-# --- Telegram ---
-bot_token: "PEGA_TU_TELEGRAM_BOT_API_KEY_AQUI"
-chat_id: "PEGA_TU_TELEGRAM_CHAT_ID_AQUI"
-
-# --- Groq ---
-# Cuenta gratuita en console.groq.com → API Keys
-groq_api_key: "PEGA_TU_GROQ_API_KEY_AQUI"
 
 # --- Identidad ---
 nombre_anciano: "Rosa"
 nombre_asistente: "Clara"      # ← el familiar elige el nombre
-personalidad: "amigable, paciente, habla simple y claro, con humor suave"
+
+# --- Perfil del asistente ---
+# Archivo markdown con el perfil completo de la persona y las instrucciones de comportamiento
+perfil: "perfil.md"
 
 # --- Voz TTS ---
-# Opciones en español: Celeste-PlayAI, Valentina-PlayAI
-voz_tts: "Celeste-PlayAI"
+# Opciones en español: es-AR-ElenaNeural, es-AR-TomasNeural, es-ES-ElviraNeural
+voz_tts: "es-AR-ElenaNeural"
 
 # --- Modelo LLM ---
 modelo_llm: "llama-3.3-70b-versatile"
