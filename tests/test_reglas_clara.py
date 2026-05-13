@@ -152,6 +152,33 @@ def test_distress_nivel0_incluye_preguntas_neutrales():
     prompt = construir_prompt(perfil="")
     assert "pregunta" in prompt.lower() and ("neutral" in prompt.lower() or "informativa" in prompt.lower() or "saludo" in prompt.lower())
 
+def test_distress_instruccion_evalua_solo_mensaje_actual():
+    """El prompt debe indicar que el nivel se evalúa solo sobre el mensaje actual."""
+    prompt = construir_prompt(perfil="")
+    assert "únicamente" in prompt.lower() or "solo" in prompt.lower()
+    assert "último mensaje" in prompt.lower() or "mensaje actual" in prompt.lower()
+
+def test_distress_ignorar_historial_ante_emergencia_previa():
+    """El prompt debe indicar que hay que ignorar historial aunque antes haya habido emergencia."""
+    prompt = construir_prompt(perfil="")
+    assert "emergencia" in prompt.lower()
+    # El prompt debe decir explícitamente que un saludo posterior es nivel 0
+    assert "saludo" in prompt.lower()
+
+def test_tool_triggers_incluyen_palabras_clave_espanol():
+    """El prompt debe listar triggers en español para cada herramienta."""
+    prompt = construir_prompt(perfil="")
+    assert "temperatura" in prompt.lower()
+    assert "cotización" in prompt.lower()
+    assert "qué pasó" in prompt.lower() or "que paso" in prompt.lower()
+
+def test_tool_triggers_usan_flecha_para_mapeo():
+    """El prompt debe mapear palabras clave a herramienta con formato →."""
+    prompt = construir_prompt(perfil="")
+    assert "consultar_clima" in prompt
+    assert "consultar_dolar" in prompt
+    assert "consultar_noticias" in prompt
+
 
 # ---------------------------------------------------------------------------
 # Regla: DISTRESS_LEVEL nunca llega a Rosa

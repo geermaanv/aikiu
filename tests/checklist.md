@@ -138,3 +138,6 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 | 2026-05-13 | "¿qué pasó hoy?" disparaba anti-hallucination | Regla de mensajes de familiares era demasiado amplia | Hacer la regla específica a "mandó un mensaje" |
 | 2026-05-13 | Falso positivo distress nivel 1 | Criterios no aclaraban que aplica solo al estado de Rosa | Agregar "solo cuando Rosa describe su propio estado" |
 | 2026-05-13 | "bash start.sh" visible al familiar tras editar perfil | Mensaje técnico hardcodeado en recibir_contenido | Reemplazar por mensaje amigable |
+| 2026-05-13 | Falso positivo distress — "Hola" → nivel 2 tras emergencia | LLM evalúa historial completo, no solo el mensaje actual | Instrucción explícita: evaluar ÚNICAMENTE el último mensaje |
+| 2026-05-13 | Tools no activan para clima/dólar/noticias | Hint genérico en prompt insuficiente | Listar triggers exactos en español con mapeo → herramienta |
+| 2026-05-13 | "Quien es" no reconocido en /editar (sin tilde) | Comparación exacta de strings | Normalizar con unicodedata antes de comparar |

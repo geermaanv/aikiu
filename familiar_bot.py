@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import tempfile
+import unicodedata
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -234,15 +235,22 @@ async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ELIGIENDO
 
+def _norm(s: str) -> str:
+    """Normaliza texto para comparación sin tildes ni mayúsculas."""
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").lower().strip()
+
+_SECCIONES_NORM = {_norm(s): s for s in SECCIONES}
+
 async def elegir_seccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     if texto == "❌ Cancelar":
         await update.message.reply_text("Cancelado.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
-    if texto not in SECCIONES:
+    seccion = _SECCIONES_NORM.get(_norm(texto))
+    if not seccion:
         await update.message.reply_text("Elegí una opción de la lista.")
         return ELIGIENDO
-    context.user_data["seccion"] = texto
+    context.user_data["seccion"] = seccion
     actual = leer_seccion(texto)
     await update.message.reply_text(
         f"*Sección: {texto}*\n\nContenido actual:\n```\n{actual}\n```\n\n"
