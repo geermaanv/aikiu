@@ -6,20 +6,23 @@ Sin Ollama, sin Whisper local, sin servidor propio.
 """
 
 import asyncio
+import json
 import logging
 import tempfile
 import os
 import yaml
 import httpx
-import edge_tts
+from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot, Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import AsyncGroq
 from core.distress import parse_llm_response, should_send_alert, record_alert_sent
 from core.alerts import notify_family
+from core.tts import sintetizar
+from core.tools import TOOLS, ejecutar_tool
 
 # ---------------------------------------------------------------------------
 # Config
@@ -57,6 +60,15 @@ log = logging.getLogger("aikiu")
 
 groq = AsyncGroq(api_key=CONFIG["groq_api_key"])
 
+# Referencia fuerte a tasks en background para evitar que el GC los cancele
+_background_tasks: set = set()
+
+def create_background_task(coro):
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 # ---------------------------------------------------------------------------
 # STT: Groq Whisper
 # ---------------------------------------------------------------------------
@@ -77,69 +89,118 @@ async def transcribir(ogg_path: Path) -> str:
 # LLM: Groq llama-3.3-70b
 # ---------------------------------------------------------------------------
 
-async def generar_respuesta(texto_usuario: str, historial: list) -> str:
-    asistente = CONFIG["nombre_asistente"]
-    perfil    = CONFIG.get("_perfil", "")
+_DIAS_ES  = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
+def _fecha_hora_es() -> str:
+    now = datetime.now()
+    return (f"{_DIAS_ES[now.weekday()]} {now.day} de "
+            f"{_MESES_ES[now.month - 1]} de {now.year}, {now.strftime('%H:%M')}")
+
+
+def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
     if perfil:
-        nombre = CONFIG["nombre_anciano"]
-        system_prompt = (
+        prompt = (
             f"Tu nombre es {asistente}. Sos un asistente de voz.\n"
             f"Hablás con {nombre}. A continuación está su perfil "
             f"y las instrucciones de cómo debés comportarte:\n\n"
             f"{perfil}"
         )
     else:
-        nombre = CONFIG["nombre_anciano"]
-        system_prompt = (
+        prompt = (
             f"Sos {asistente}, un asistente de voz para {nombre}. "
             f"Respondé en español rioplatense, oraciones cortas y simples. "
             f"Nunca uses markdown. Máximo 3 oraciones."
         )
-
-    system_prompt += (
+    prompt += (
+        f"\n\nFecha y hora actual: {_fecha_hora_es()} (hora de Buenos Aires)."
         "\n\n---\n"
-        "INSTRUCCIÓN DE SISTEMA (no leer en voz alta, no mencionar a Rosa):\n"
-        "Al final de CADA respuesta agregá exactamente esta línea:\n"
+        "INSTRUCCIÓN DE SISTEMA (nunca leer en voz alta ni mencionar al usuario):\n"
+        "- Tenés acceso a herramientas en tiempo real. Cuando Rosa pregunte por el clima,\n"
+        "  el tiempo, el dólar o las noticias del día, usá la herramienta correspondiente.\n"
+        "  Incluí siempre los valores exactos en la respuesta (°C, pesos, etc.).\n"
+        "- No tenés información sobre mensajes de familiares. Solo si Rosa pregunta\n"
+        "  explícitamente si alguien le escribió o mandó un mensaje, respondé:\n"
+        "  'No recibí ningún mensaje para vos hoy.' Nunca inventes ni supongas.\n"
+        "Al final de CADA respuesta agregá exactamente esta línea (solo la línea, sin texto extra):\n"
         "DISTRESS_LEVEL: [0-3]\n"
-        "Criterios:\n"
-        "- 0: conversación normal\n"
-        "- 1: menciona soledad, tristeza, no dormir bien, extrañar a alguien\n"
-        "- 2: llora, dice que está muy mal, dolor físico persistente, confusión notoria\n"
-        "- 3: menciona hacerse daño, emergencia médica, no puede respirar, caída\n"
+        "Criterios (solo cuando Rosa describe su propio estado emocional o físico;\n"
+        "preguntas neutras o amigables son siempre nivel 0):\n"
+        "- 0: conversación normal, pregunta informativa, saludo\n"
+        "- 1: Rosa expresa soledad, tristeza, que no duerme bien, que extraña a alguien\n"
+        "- 2: Rosa llora, dice que está muy mal, tiene dolor físico persistente,\n"
+        "     está confundida o desorientada (no sabe dónde está, qué día es, quién es alguien),\n"
+        "     habla incoherente, repite lo mismo sin darse cuenta,\n"
+        "     mencionó una caída reciente (aunque ya pasó), dice 'soy una carga' o similar,\n"
+        "     expresa que no quiere molestar a nadie o sentirse prescindible\n"
+        "- 3: emergencia activa ahora mismo: no puede moverse o levantarse, dolor de pecho,\n"
+        "     no puede respirar, pide ayuda urgente, caída que acaba de ocurrir\n"
         "Nunca omitas esta línea. Si no hay señales, escribí DISTRESS_LEVEL: 0."
     )
+    return prompt
+
+
+async def generar_respuesta(texto_usuario: str, historial: list) -> str:
+    asistente     = CONFIG["nombre_asistente"]
+    nombre        = CONFIG["nombre_adulto_mayor"]
+    perfil        = CONFIG.get("_perfil", "")
+    system_prompt = construir_system_prompt(perfil, asistente, nombre)
+    modelo        = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(historial[-10:])
     messages.append({"role": "user", "content": texto_usuario})
 
     response = await groq.chat.completions.create(
-        model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
+        model=modelo,
         messages=messages,
-        max_tokens=250,
+        tools=TOOLS,
+        tool_choice="auto",
+        max_tokens=300,
         temperature=0.7,
     )
+    msg = response.choices[0].message
 
-    respuesta = response.choices[0].message.content.strip()
+    if msg.tool_calls:
+        # Agregar respuesta del asistente (puede tener content vacío)
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in msg.tool_calls
+            ],
+        })
+        # Ejecutar cada herramienta y agregar resultados
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments)
+            resultado = await ejecutar_tool(tc.function.name, args)
+            log.info(f"Tool {tc.function.name}({args}) → {resultado[:100]}")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": resultado,
+            })
+        # Segunda llamada: generar respuesta final con los datos
+        response = await groq.chat.completions.create(
+            model=modelo,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+        )
+        msg = response.choices[0].message
+
+    respuesta = msg.content.strip()
     log.info(f"LLM raw: '{respuesta}'")
     return respuesta
-
-# ---------------------------------------------------------------------------
-# TTS: Microsoft Edge TTS (gratis, sin API key)
-# ---------------------------------------------------------------------------
-
-async def sintetizar(texto: str, salida: Path):
-    mp3 = salida.with_suffix(".mp3")
-    communicate = edge_tts.Communicate(texto, voice=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
-    await communicate.save(str(mp3))
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-y", "-i", str(mp3), "-c:a", "libopus", str(salida),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    await proc.wait()
-    log.info(f"TTS generado: {salida}")
 
 # ---------------------------------------------------------------------------
 # Estado de conversación
@@ -210,7 +271,7 @@ def chat_id_autorizado(chat_id: int) -> bool:
 async def responder_con_voz(context, chat_id: int, texto: str):
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "respuesta.ogg"
-        await sintetizar(texto, ogg)
+        await sintetizar(texto, ogg, voz=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
         with open(ogg, "rb") as audio:
             await context.bot.send_voice(chat_id=chat_id, voice=audio)
 
@@ -218,16 +279,29 @@ async def responder_con_voz(context, chat_id: int, texto: str):
 # Handlers
 # ---------------------------------------------------------------------------
 
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not chat_id_autorizado(chat_id):
+        return
+    nombre = CONFIG["nombre_adulto_mayor"]
+    asistente = CONFIG["nombre_asistente"]
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if not chat_id_autorizado(chat_id):
         log.warning(f"chat_id no autorizado: {chat_id}")
         return
 
-    await context.bot.send_chat_action(chat_id=chat_id, action="record_voice")
+    is_voice = bool(update.message.voice)
+    action = "record_voice" if is_voice else "typing"
+    await context.bot.send_chat_action(chat_id=chat_id, action=action)
 
     # Obtener texto — voz o texto plano
-    if update.message.voice:
+    if is_voice:
         with tempfile.TemporaryDirectory() as tmp:
             ogg = Path(tmp) / "entrada.ogg"
             file = await update.message.voice.get_file()
@@ -248,24 +322,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
 
-    await responder_con_voz(context, chat_id, respuesta)
+    if is_voice:
+        await responder_con_voz(context, chat_id, respuesta)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=respuesta)
 
     # Tareas en background (no bloquean la respuesta a Rosa)
     registrar_log(texto, respuesta)
-    asyncio.create_task(extraer_aprendizaje(texto, respuesta))
+    create_background_task(extraer_aprendizaje(texto, respuesta))
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
         family_bot     = context.bot_data.get("family_bot")
         family_chat_id = context.bot_data.get("family_chat_id")
-        if family_bot and family_chat_id:
-            asyncio.create_task(notify_family(
+        if family_bot:
+            log.info(f"Enviando alerta nivel {distress_level} a suscriptores")
+            create_background_task(notify_family(
                 distress_level=distress_level,
                 rosa_message=texto,
                 bot_response=respuesta,
                 family_bot=family_bot,
                 family_chat_id=family_chat_id,
             ))
+        else:
+            log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
 
 # ---------------------------------------------------------------------------
 # Mensajes proactivos
@@ -275,13 +355,13 @@ async def enviar_mensaje_voz(app: Application, texto: str):
     chat_id = CONFIG["chat_id"]
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "proactivo.ogg"
-        await sintetizar(texto, ogg)
+        await sintetizar(texto, ogg, voz=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
         with open(ogg, "rb") as audio:
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
 def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
-    nombre    = CONFIG["nombre_anciano"]
+    nombre    = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
 
     saludo_cfg = CONFIG.get("saludo_diario", {})
@@ -308,38 +388,37 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
 
 async def main():
     log.info("=" * 50)
-    log.info(f"Aikiu iniciando para {CONFIG['nombre_anciano']}")
+    log.info(f"Aikiu iniciando para {CONFIG['nombre_adulto_mayor']}")
     log.info("=" * 50)
 
     scheduler = AsyncIOScheduler()
 
-    async def post_init(application: Application) -> None:
-        programar_recordatorios(scheduler, application)
+    app = (
+        Application.builder()
+        .token(CONFIG["bot_token"])
+        .build()
+    )
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
+
+    async with app:
+        # post_init equivalente — en el patrón async-with, PTB no llama post_init automáticamente
+        programar_recordatorios(scheduler, app)
         scheduler.start()
 
         familiar_token   = os.environ.get("FAMILIAR_BOT_TOKEN", "")
         familiar_chat_id = os.environ.get("FAMILIAR_CHAT_ID", "")
+        log.info(f"FAMILIAR_BOT_TOKEN: {'presente (' + str(len(familiar_token)) + ' chars)' if familiar_token else 'no encontrado'}")
         if familiar_token and "PEGA_TU" not in familiar_token:
-            application.bot_data["family_bot"]     = Bot(token=familiar_token)
-            application.bot_data["family_chat_id"] = familiar_chat_id
-            log.info("Alertas al familiar activadas")
+            app.bot_data["family_bot"]     = Bot(token=familiar_token)
+            app.bot_data["family_chat_id"] = familiar_chat_id
+            log.info("Alertas al familiar activadas — family_bot listo en bot_data")
         else:
-            log.info("Bot familiar no configurado — alertas desactivadas")
+            log.warning("Bot familiar no configurado — alertas desactivadas (revisá FAMILIAR_BOT_TOKEN en .env)")
 
-        log.info("Aikiu escuchando. Ctrl+C para detener.")
-
-    app = (
-        Application.builder()
-        .token(CONFIG["bot_token"])
-        .post_init(post_init)
-        .build()
-    )
-    app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
-
-    async with app:
-        await app.initialize()
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
+        log.info("Aikiu escuchando. Ctrl+C para detener.")
         try:
             await asyncio.Event().wait()
         finally:

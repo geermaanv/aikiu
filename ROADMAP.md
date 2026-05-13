@@ -12,8 +12,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - Recibe mensajes de voz y los transcribe (Groq Whisper large-v3)
 - Genera respuestas con LLM (Groq llama-3.3-70b-versatile)
 - Responde con audio de voz (edge-tts + ffmpeg, voz argentina femenina)
-- También acepta texto plano (útil para pruebas sin micrófono)
-- Handler unificado para voz y texto (un solo pipeline)
+- También acepta texto plano — responde en el mismo medio (texto → texto, voz → voz)
 - Mantiene historial de conversación durante la sesión (últimos 10 mensajes)
 
 ### Personalidad y comportamiento
@@ -22,13 +21,23 @@ servidor propio. Corre en cualquier Mac con Python.
 - Temas sensibles (guerras, política): da una oración breve y neutral, redirige
   al bienestar de la persona sin mentir ni profundizar
 - Nombre del asistente configurable (hoy: Clara)
+- No da consejos médicos: ante síntomas o dudas de medicación, siempre deriva
+  al médico con calidez
+- Caídas recientes, dolor físico y "soy una carga": manejo explícito con
+  contención y sugerencia de consultar al médico o avisar a la familia
 
 ### Detección de angustia y alertas
 - El LLM clasifica cada respuesta con DISTRESS_LEVEL 0-3 (oculto para Rosa)
-  - 0: normal · 1: tristeza/soledad · 2: angustia · 3: emergencia
+  - 0: conversación normal, pregunta informativa, saludo
+  - 1: Rosa expresa soledad, tristeza, que no duerme bien, que extraña a alguien
+  - 2: llora, dice que está muy mal, dolor persistente, confusión/desorientación,
+       caída reciente (aunque haya pasado), "soy una carga", no querer molestar
+  - 3: emergencia activa ahora mismo (no puede levantarse, dolor de pecho, pide ayuda)
+- Los criterios de nivel ≥1 solo aplican cuando Rosa describe su propio estado
+  emocional o físico — preguntas neutras o saludos son siempre nivel 0
 - Si el nivel supera 0, el bot familiar recibe una alerta automática con
   timestamp, fragmento de lo que dijo Rosa y lo que respondió Clara
-- Cooldown por nivel para evitar spam: 60 min (nivel 1), 30 min (nivel 2), sin límite (nivel 3)
+- Cooldown por nivel: 60 min (nivel 1), 30 min (nivel 2), sin cooldown (nivel 3)
 - Si el LLM omite la línea DISTRESS_LEVEL, el sistema asume 0 y no falla
 - Módulos separados: `core/distress.py` (parsing + cooldown) y `core/alerts.py` (envío)
 
@@ -46,16 +55,40 @@ servidor propio. Corre en cualquier Mac con Python.
 ### Bot familiar (canal compartido)
 - Segundo bot de Telegram para toda la familia — no requiere configuración por familiar
 - Cualquier familiar manda `/start` y queda suscripto automáticamente
+- `/nombre [nombre]` — registra cómo te conoce Rosa (usado en el puente familiar)
+- `/mensaje` — **puente familiar**: el familiar envía texto o audio y Clara se lo
+  transmite a Rosa preservando el medio (texto → texto, voz → voz sintetizada).
+  Usa el nombre registrado con `/nombre`, no el username de Telegram
 - `/perfil` — muestra el perfil completo actual
 - `/editar` — edita cualquier sección del perfil con menú interactivo
 - `/suscriptores` — lista de familiares registrados
 - `/ayuda` — lista de comandos
 - Alertas automáticas llegan a **todos** los suscriptores cuando Rosa muestra angustia
-- Lista de suscriptores en `subscribers.json` (excluido del repo)
+- `subscribers.json` y `familiares.json` excluidos del repo
+
+### Consultas al mundo real (tool calling)
+- El LLM decide cuándo consultar herramientas externas usando Groq native tool calling
+- **Clima**: wttr.in — temperatura, sensación térmica, descripción, humedad
+- **Dólar**: dolarapi.com — blue y oficial, compra y venta
+- **Noticias**: RSS de La Nación — top 4 titulares, filtrables por tema
+- Si la API falla, el bot responde con un mensaje de error amigable sin romper la conversación
+- Módulo separado: `core/tools.py` (definiciones + fetch + dispatcher)
+
+### Tests y calidad
+- **77 unit tests** con pytest cubriendo:
+  - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
+  - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
+    límite de 4 titulares, manejo de errores HTTP en las tres herramientas
+  - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
+  - Reglas del system prompt: hint de tools, anti-hallucination específico a
+    mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
+  - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
+- Checklist manual E2E en `tests/checklist.md` + `tests/lista_manual.txt`
+- Git pre-commit hook: los 77 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
-- `.gitignore` protege `.env`, `venv/`, logs y caché
+- `.gitignore` protege `.env`, `venv/`, logs, caché y datos personales
 - Ambos bots solo responden a los chat_id autorizados
 - `.env.example` como plantilla pública
 
@@ -78,8 +111,16 @@ servidor propio. Corre en cualquier Mac con Python.
 ### Media prioridad
 - [ ] **Historial persistente**: hoy el historial de conversación se pierde
       al reiniciar el bot. Guardarlo en disco para mantener continuidad entre sesiones
+- [ ] **Métricas de aislamiento**: cronjob que evalúe la frecuencia de mensajes
+      de Rosa. Si el volumen cae por debajo del 50% del promedio semanal, enviar
+      una alerta silenciosa al bot familiar indicando posible apatía o aislamiento.
 
 ### Baja prioridad / Ideas
+- [x] **Tool calling**: implementado con wttr.in, dolarapi.com y RSS de La Nación.
+- [ ] **Sanitización de datos (privacy-by-design)**: capa local de ofuscación
+      de datos médicos/personales antes de enviar el payload a la API de Groq.
+      Mitiga riesgos en ausencia de certificaciones formales (relevante si se
+      posiciona contra alternativas como Ato que venden privacidad certificada).
 - [ ] **Voz más natural**: edge-tts (es-AR-ElenaNeural) suena metálica.
       Evaluar ElevenLabs (pago, alta calidad) o aguardar que Groq reintegre
       TTS en español. Priorizar cuando haya usuario real usando el bot a diario.
@@ -98,4 +139,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
+| Tests | pytest 9.0 (77 tests) |
 | Runtime | Python 3.14, macOS |

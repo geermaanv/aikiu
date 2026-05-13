@@ -8,17 +8,21 @@ import json
 import logging
 import os
 import re
+import tempfile
+import yaml
 from pathlib import Path
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from groq import AsyncGroq
+from telegram import Bot, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, CommandHandler, ConversationHandler,
     MessageHandler, filters, ContextTypes,
 )
+from core.tts import sintetizar
 
-BASE_DIR        = Path(__file__).parent
-PERFIL_PATH     = BASE_DIR / "perfil.md"
-SUBSCRIBERS_PATH = BASE_DIR / "subscribers.json"
+BASE_DIR         = Path(__file__).parent
+PERFIL_PATH      = BASE_DIR / "perfil.md"
+FAMILIARES_PATH  = BASE_DIR / "familiares.json"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -29,8 +33,20 @@ logging.basicConfig(
 log = logging.getLogger("aikiu-familiar")
 
 FAMILIAR_TOKEN = os.environ.get("FAMILIAR_BOT_TOKEN", "")
+ROSA_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+ROSA_CHAT_ID   = os.environ.get("CHAT_ID", "")
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
-ELIGIENDO, RECIBIENDO = range(2)
+def _cargar_voz():
+    cfg_path = BASE_DIR / "config.yml"
+    if cfg_path.exists():
+        with open(cfg_path, encoding="utf-8") as f:
+            return yaml.safe_load(f).get("voz_tts", "es-AR-ElenaNeural")
+    return "es-AR-ElenaNeural"
+
+VOZ_TTS = _cargar_voz()
+
+ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE = range(3)
 
 SECCIONES = [
     "Quién es",
@@ -42,28 +58,47 @@ SECCIONES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Suscriptores
+# Familiares (suscriptores + nombres unificados)
 # ---------------------------------------------------------------------------
 
-def cargar_suscriptores() -> list[int]:
-    if SUBSCRIBERS_PATH.exists():
-        return json.loads(SUBSCRIBERS_PATH.read_text(encoding="utf-8"))
+def cargar_familiares() -> list[dict]:
+    if FAMILIARES_PATH.exists():
+        return json.loads(FAMILIARES_PATH.read_text(encoding="utf-8"))
     return []
 
-def guardar_suscriptores(subs: list[int]):
-    SUBSCRIBERS_PATH.write_text(json.dumps(subs), encoding="utf-8")
+def guardar_familiares(familiares: list[dict]):
+    FAMILIARES_PATH.write_text(
+        json.dumps(familiares, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
-def agregar_suscriptor(chat_id: int) -> bool:
-    """Agrega chat_id si no estaba. Retorna True si era nuevo."""
-    subs = cargar_suscriptores()
-    if chat_id not in subs:
-        subs.append(chat_id)
-        guardar_suscriptores(subs)
+def es_suscriptor(chat_id: int) -> bool:
+    return any(f["chat_id"] == chat_id for f in cargar_familiares())
+
+def agregar_familiar(chat_id: int) -> bool:
+    """Agrega el familiar si no estaba. Retorna True si era nuevo."""
+    familiares = cargar_familiares()
+    if not any(f["chat_id"] == chat_id for f in familiares):
+        familiares.append({"chat_id": chat_id, "nombre": ""})
+        guardar_familiares(familiares)
         return True
     return False
 
-def es_suscriptor(chat_id: int) -> bool:
-    return chat_id in cargar_suscriptores()
+def actualizar_nombre(chat_id: int, nombre: str):
+    familiares = cargar_familiares()
+    for f in familiares:
+        if f["chat_id"] == chat_id:
+            f["nombre"] = nombre.strip()
+            guardar_familiares(familiares)
+            return
+    # Si no existe, lo agrega con nombre
+    familiares.append({"chat_id": chat_id, "nombre": nombre.strip()})
+    guardar_familiares(familiares)
+
+def nombre_para_rosa(chat_id: int, fallback: str = "Tu familiar") -> str:
+    for f in cargar_familiares():
+        if f["chat_id"] == chat_id:
+            return f["nombre"] or fallback
+    return fallback
 
 # ---------------------------------------------------------------------------
 # Perfil
@@ -93,12 +128,20 @@ def actualizar_seccion(nombre: str, nuevo: str):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    nuevo = agregar_suscriptor(chat_id)
-    nombre = update.effective_user.first_name or "familiar"
+    nuevo = agregar_familiar(chat_id)
+    nombre_tg = update.effective_user.first_name or "familiar"
+    nombre_rosa = nombre_para_rosa(chat_id, fallback="")
+    aviso_nombre = (
+        f"\n\nUsá /nombre para decirme cómo te conoce Rosa "
+        f"(ej: /nombre Germán)."
+        if not nombre_rosa else ""
+    )
     if nuevo:
-        log.info(f"Nuevo suscriptor: {chat_id} ({nombre})")
+        log.info(f"Nuevo suscriptor: {chat_id} ({nombre_tg})")
         await update.message.reply_text(
-            f"Hola {nombre}, quedaste registrado para recibir alertas de Aikiu.\n\n"
+            f"Hola {nombre_tg}, quedaste registrado para recibir alertas de Aikiu.{aviso_nombre}\n\n"
+            "/mensaje — enviarle un mensaje a Rosa (texto o voz)\n"
+            "/nombre — registrar cómo te conoce Rosa\n"
             "/perfil — ver el perfil actual\n"
             "/editar — editar una sección del perfil\n"
             "/suscriptores — ver quién recibe alertas\n"
@@ -106,12 +149,38 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text(
-            f"Hola {nombre}, ya estabas registrado.\n\n"
+            f"Hola {nombre_tg}, ya estabas registrado.{aviso_nombre}\n\n"
+            "/mensaje — enviarle un mensaje a Rosa (texto o voz)\n"
+            "/nombre — registrar cómo te conoce Rosa\n"
             "/perfil — ver el perfil actual\n"
             "/editar — editar una sección del perfil\n"
             "/suscriptores — ver quién recibe alertas\n"
             "/ayuda — ver esta ayuda"
         )
+
+async def cmd_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_suscriptor(update.effective_chat.id):
+        await update.message.reply_text("Mandá /start para registrarte.")
+        return
+    nombre = " ".join(context.args).strip() if context.args else ""
+    if not nombre:
+        actual = nombre_para_rosa(update.effective_chat.id, fallback="")
+        if actual:
+            await update.message.reply_text(
+                f"Tu nombre para Rosa es: *{actual}*\n\n"
+                "Para cambiarlo: /nombre NuevoNombre",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                "Todavía no registraste tu nombre.\n"
+                "Usá: /nombre Germán"
+            )
+        return
+    actualizar_nombre(update.effective_chat.id, nombre)
+    log.info(f"Nombre registrado: {update.effective_chat.id} → '{nombre}'")
+    await update.message.reply_text(f"Listo, cuando le mandes mensajes a Rosa vas a aparecer como *{nombre}*.", parse_mode="Markdown")
+
 
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
@@ -119,10 +188,12 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         "*Comandos disponibles:*\n\n"
+        "/mensaje — enviarle un mensaje a Rosa (texto o nota de voz)\n"
+        "/nombre — registrar cómo te conoce Rosa\n"
         "/perfil — muestra el perfil completo\n"
         "/editar — edita una sección del perfil\n"
         "/suscriptores — lista de familiares registrados\n"
-        "/cancelar — cancela la edición en curso",
+        "/cancelar — cancela la operación en curso",
         parse_mode="Markdown"
     )
 
@@ -130,10 +201,17 @@ async def cmd_suscriptores(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
         await update.message.reply_text("Mandá /start para registrarte.")
         return
-    subs = cargar_suscriptores()
+    familiares = cargar_familiares()
+    if not familiares:
+        await update.message.reply_text("No hay familiares registrados.")
+        return
+    lineas = []
+    for f in familiares:
+        nombre = f["nombre"] or "(sin nombre)"
+        lineas.append(f"• {nombre} — ID: {f['chat_id']}")
     await update.message.reply_text(
-        f"Familiares registrados: {len(subs)}\n"
-        f"IDs: {', '.join(str(s) for s in subs)}"
+        f"*Familiares registrados: {len(familiares)}*\n\n" + "\n".join(lineas),
+        parse_mode="Markdown"
     )
 
 async def cmd_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -149,8 +227,9 @@ async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Mandá /start para registrarte.")
         return
     keyboard = [[s] for s in SECCIONES] + [["❌ Cancelar"]]
+    lista = "\n".join(f"• {s}" for s in SECCIONES)
     await update.message.reply_text(
-        "¿Qué sección querés editar?",
+        f"¿Qué sección querés editar? Tocá un botón o escribí el nombre exacto:\n\n{lista}",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
     return ELIGIENDO
@@ -179,13 +258,86 @@ async def recibir_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     actualizar_seccion(seccion, update.message.text.strip())
     log.info(f"Sección '{seccion}' actualizada por {update.effective_chat.id}")
     await update.message.reply_text(
-        f"✓ *{seccion}* actualizada.\n\nReiniciá el bot principal:\n`bash start.sh`",
+        f"✓ *{seccion}* actualizada. Clara lo tendrá en cuenta desde la próxima conversación.",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Cancelado.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+# ---------------------------------------------------------------------------
+# Puente familiar (/mensaje)
+# ---------------------------------------------------------------------------
+
+async def cmd_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_suscriptor(update.effective_chat.id):
+        await update.message.reply_text("Mandá /start para registrarte.")
+        return ConversationHandler.END
+    if not ROSA_BOT_TOKEN or not ROSA_CHAT_ID:
+        await update.message.reply_text("Error: BOT_TOKEN o CHAT_ID de Rosa no configurados.")
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "Enviá tu mensaje para Rosa (texto o nota de voz). /cancelar para salir."
+    )
+    return ESPERANDO_MENSAJE
+
+async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    nombre = nombre_para_rosa(
+        update.effective_chat.id,
+        fallback=update.effective_user.first_name or "Tu familiar"
+    )
+
+    # Obtener el texto: desde voz o texto plano
+    if update.message.voice:
+        if not GROQ_API_KEY:
+            await update.message.reply_text("Error: GROQ_API_KEY no configurada para transcribir audio.")
+            return ConversationHandler.END
+        try:
+            groq = AsyncGroq(api_key=GROQ_API_KEY)
+            with tempfile.TemporaryDirectory() as tmp:
+                ogg = Path(tmp) / "familiar.ogg"
+                archivo = await update.message.voice.get_file()
+                await archivo.download_to_drive(ogg)
+                with open(ogg, "rb") as f:
+                    result = await groq.audio.transcriptions.create(
+                        file=(ogg.name, f, "audio/ogg"),
+                        model="whisper-large-v3",
+                        language="es",
+                        response_format="text",
+                    )
+            texto = result.strip() if isinstance(result, str) else result.text.strip()
+            log.info(f"Transcripción de familiar: '{texto}'")
+        except Exception as e:
+            log.error(f"Error transcribiendo audio: {e}")
+            await update.message.reply_text("No pude transcribir el audio. Probá mandando texto.")
+            return ESPERANDO_MENSAJE
+    else:
+        texto = update.message.text.strip()
+
+    if not texto:
+        await update.message.reply_text("No entendí el mensaje. Intentá de nuevo.")
+        return ESPERANDO_MENSAJE
+
+    mensaje_para_rosa = f"{nombre} te manda a decir: {texto}"
+
+    try:
+        async with Bot(token=ROSA_BOT_TOKEN) as rosa_bot:
+            if update.message.voice:
+                with tempfile.TemporaryDirectory() as tmp:
+                    ogg = Path(tmp) / "puente.ogg"
+                    await sintetizar(mensaje_para_rosa, ogg, voz=VOZ_TTS)
+                    with open(ogg, "rb") as audio:
+                        await rosa_bot.send_voice(chat_id=ROSA_CHAT_ID, voice=audio)
+            else:
+                await rosa_bot.send_message(chat_id=ROSA_CHAT_ID, text=mensaje_para_rosa)
+        log.info(f"Mensaje de {nombre} entregado a Rosa: '{texto[:60]}'")
+        await update.message.reply_text(f"Listo, le mandé a Rosa: \"{mensaje_para_rosa}\"")
+    except Exception as e:
+        log.error(f"Error enviando mensaje a Rosa: {e}")
+        await update.message.reply_text("Hubo un error al enviarle el mensaje a Rosa.")
+
     return ConversationHandler.END
 
 # ---------------------------------------------------------------------------
@@ -198,20 +350,35 @@ async def main():
 
     app = Application.builder().token(FAMILIAR_TOKEN).build()
 
-    conv = ConversationHandler(
+    conv_editar = ConversationHandler(
         entry_points=[CommandHandler("editar", cmd_editar)],
         states={
             ELIGIENDO:  [MessageHandler(filters.TEXT & ~filters.COMMAND, elegir_seccion)],
             RECIBIENDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_contenido)],
         },
         fallbacks=[CommandHandler("cancelar", cancelar)],
+        allow_reentry=True,
+    )
+
+    conv_mensaje = ConversationHandler(
+        entry_points=[CommandHandler("mensaje", cmd_mensaje)],
+        states={
+            ESPERANDO_MENSAJE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje_familiar),
+                MessageHandler(filters.VOICE, recibir_mensaje_familiar),
+            ],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+        allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start",        cmd_start))
     app.add_handler(CommandHandler("ayuda",        cmd_ayuda))
+    app.add_handler(CommandHandler("nombre",       cmd_nombre))
     app.add_handler(CommandHandler("perfil",       cmd_perfil))
     app.add_handler(CommandHandler("suscriptores", cmd_suscriptores))
-    app.add_handler(conv)
+    app.add_handler(conv_editar)
+    app.add_handler(conv_mensaje)
 
     log.info("Bot familiar iniciando...")
     async with app:

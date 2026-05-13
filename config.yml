@@ -3,7 +3,7 @@
 # ============================================================
 
 # --- Identidad ---
-nombre_anciano: "Rosa"
+nombre_adulto_mayor: "Rosa"
 nombre_asistente: "Clara"      # ← el familiar elige el nombre
 
 # --- Perfil del asistente ---

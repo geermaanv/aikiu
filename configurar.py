@@ -74,7 +74,7 @@ def main():
     titulo("1 / 6  ·  Identidad")
 
     nombre = preguntar("¿Cómo se llama la persona?",
-                       config.get("nombre_anciano", "Rosa"))
+                       config.get("nombre_adulto_mayor", "Rosa"))
     edad = preguntar("¿Cuántos años tiene?", "78")
     ciudad = preguntar("¿En qué ciudad vive?", "Buenos Aires")
     descripcion = preguntar(
@@ -168,7 +168,7 @@ def main():
 
     # ── Actualizar nombre en config.yml (preserva comentarios) ──
     contenido = config_path.read_text(encoding="utf-8")
-    contenido = re.sub(r'^nombre_anciano:.*$', f'nombre_anciano: "{nombre}"',
+    contenido = re.sub(r'^nombre_adulto_mayor:.*$', f'nombre_adulto_mayor: "{nombre}"',
                        contenido, flags=re.MULTILINE)
     contenido = re.sub(r'^nombre_asistente:.*$', f'nombre_asistente: "{nombre_asistente}"',
                        contenido, flags=re.MULTILINE)
