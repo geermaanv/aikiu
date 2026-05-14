@@ -87,7 +87,7 @@ servidor propio. Corre en cualquier Mac con Python.
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
   - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
 - Checklist manual E2E en `tests/checklist.md` + `tests/lista_manual.txt`
-- Git pre-commit hook: los 89 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 90 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -112,6 +112,10 @@ servidor propio. Corre en cualquier Mac con Python.
       del día desde Telegram sin acceder al archivo
 
 ### Media prioridad
+- [ ] **Variedad en la conversación**: hoy Clara repite los mismos temas del perfil
+      (plantas, tangos, familia). Mejoras: instrucción al LLM para variar basándose
+      en el historial de la sesión y la sección `## Aprendizajes`; posibilidad de
+      que el familiar sugiera temas nuevos vía `/editar` o un comando `/temas`
 - [ ] **Historial persistente**: hoy el historial de conversación se pierde
       al reiniciar el bot. Guardarlo en disco para mantener continuidad entre sesiones
 - [ ] **Métricas de aislamiento**: cronjob que evalúe la frecuencia de mensajes
@@ -142,5 +146,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (89 tests) |
+| Tests | pytest 9.0 (90 tests) |
 | Runtime | Python 3.14, macOS |
