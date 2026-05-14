@@ -8,6 +8,7 @@ Sin Ollama, sin Whisper local, sin servidor propio.
 import asyncio
 import json
 import logging
+import re
 import tempfile
 import os
 import yaml
@@ -22,7 +23,7 @@ from groq import AsyncGroq
 from core.distress import parse_llm_response, should_send_alert, record_alert_sent
 from core.alerts import notify_family
 from core.tts import sintetizar
-from core.tools import TOOLS, ejecutar_tool
+from core.tools import TOOLS, ejecutar_tool, consultar_clima
 
 # ---------------------------------------------------------------------------
 # Config
@@ -131,9 +132,12 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         "Ignorá los mensajes anteriores de la conversación. Si el mensaje actual es un\n"
         "saludo, pregunta informativa o conversación normal, el nivel ES 0 aunque antes\n"
         "haya habido una emergencia.\n"
+        "Ser conservador: ante la duda entre dos niveles, asignar el más bajo.\n"
         "Criterios (solo cuando Rosa describe su propio estado en el mensaje actual):\n"
-        "- 0: saludo, pregunta informativa, conversación cotidiana\n"
-        "- 1: Rosa expresa soledad, tristeza, que no duerme bien, que extraña a alguien\n"
+        "- 0: saludo, pregunta informativa, conversación cotidiana; cualquier mensaje ambiguo\n"
+        "- 1: Rosa usa palabras explícitas como 'me siento sola', 'estoy triste', 'lloré',\n"
+        "     'no pude dormir', 'extraño a alguien' — requiere expresión emocional clara,\n"
+        "     no inferida de errores tipográficos ni frases ambiguas\n"
         "- 2: Rosa llora, dice que está muy mal, tiene dolor físico persistente,\n"
         "     está confundida o desorientada, habla incoherente, repite lo mismo sin darse cuenta,\n"
         "     dice 'soy una carga', menciona una caída reciente (aunque ya pasó),\n"
@@ -364,17 +368,35 @@ async def enviar_mensaje_voz(app: Application, texto: str):
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
-def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
+async def saludo_matutino(app: Application):
     nombre    = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
+    ciudad    = CONFIG.get("ciudad", "Buenos Aires")
 
+    clima_frase = ""
+    try:
+        resultado = await consultar_clima(ciudad)
+        m = re.search(r"Temperatura (\d+)°C \(sensación (\d+)°C\)", resultado)
+        if m:
+            temp, sensacion = m.group(1), m.group(2)
+            if temp == sensacion:
+                clima_frase = f" Hoy en {ciudad.split(',')[0]} hay {temp} grados."
+            else:
+                clima_frase = f" Hoy en {ciudad.split(',')[0]} hay {temp} grados, con sensación de {sensacion}."
+    except Exception as e:
+        log.warning(f"saludo_matutino: no pude obtener clima: {e}")
+
+    texto = f"Buenos días {nombre}, soy {asistente}.{clima_frase} ¿Cómo amaneciste hoy?"
+    await enviar_mensaje_voz(app, texto)
+
+def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
     saludo_cfg = CONFIG.get("saludo_diario", {})
     if saludo_cfg.get("activo", True):
         hora, minuto = map(int, saludo_cfg.get("hora", "08:30").split(":"))
         scheduler.add_job(
-            enviar_mensaje_voz, "cron",
+            saludo_matutino, "cron",
             hour=hora, minute=minuto,
-            args=[app, f"Buenos días {nombre}, soy {asistente}. ¿Cómo amaneciste hoy?"],
+            args=[app],
         )
 
     for r in CONFIG.get("recordatorios", []):

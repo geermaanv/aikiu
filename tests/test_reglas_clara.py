@@ -158,6 +158,17 @@ def test_distress_instruccion_evalua_solo_mensaje_actual():
     assert "únicamente" in prompt.lower() or "solo" in prompt.lower()
     assert "último mensaje" in prompt.lower() or "mensaje actual" in prompt.lower()
 
+def test_distress_nivel1_requiere_palabras_explicitas():
+    """Nivel 1 debe requerir expresión emocional explícita, no inferida."""
+    prompt = construir_prompt(perfil="")
+    assert "explícit" in prompt.lower() or "clara" in prompt.lower()
+    assert "me siento sola" in prompt.lower() or "estoy triste" in prompt.lower()
+
+def test_distress_criterio_conservador():
+    """El prompt debe instruir a ser conservador ante la duda."""
+    prompt = construir_prompt(perfil="")
+    assert "conservador" in prompt.lower() or "duda" in prompt.lower()
+
 def test_distress_ignorar_historial_ante_emergencia_previa():
     """El prompt debe indicar que hay que ignorar historial aunque antes haya habido emergencia."""
     prompt = construir_prompt(perfil="")

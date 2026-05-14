@@ -5,6 +5,7 @@
 # --- Identidad ---
 nombre_adulto_mayor: "Rosa"
 nombre_asistente: "Clara"      # ← el familiar elige el nombre
+ciudad: "Olivos, Buenos Aires" # ← usada en el saludo matutino con temperatura
 
 # --- Perfil del asistente ---
 # Archivo markdown con el perfil completo de la persona y las instrucciones de comportamiento

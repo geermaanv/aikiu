@@ -107,7 +107,8 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ## 11. Recordatorios proactivos (verificar config.yml)
 
-- [ ] A la hora configurada de saludo, Rosa recibe audio de buenos días
+- [ ] A la hora configurada de saludo, Rosa recibe audio de buenos días **con la temperatura** ("Hoy en Olivos hay X grados")
+- [ ] Si la API de clima no responde, el saludo se envía igual sin temperatura
 - [ ] A las horas de medicamento, Rosa recibe el recordatorio en audio
 
 ---
@@ -141,3 +142,5 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 | 2026-05-13 | Falso positivo distress — "Hola" → nivel 2 tras emergencia | LLM evalúa historial completo, no solo el mensaje actual | Instrucción explícita: evaluar ÚNICAMENTE el último mensaje |
 | 2026-05-13 | Tools no activan para clima/dólar/noticias | Hint genérico en prompt insuficiente | Listar triggers exactos en español con mapeo → herramienta |
 | 2026-05-13 | "Quien es" no reconocido en /editar (sin tilde) | Comparación exacta de strings | Normalizar con unicodedata antes de comparar |
+| 2026-05-14 | "manana" (typo) disparaba distress nivel 1 | Criterio inferencial, no requería palabras explícitas | Exigir palabras emocionales exactas; conservador ante ambigüedad |
+| 2026-05-14 | Saludo matutino sin temperatura | Greeting estático hardcodeado | saludo_matutino() consulta clima y lo incluye en el saludo |

@@ -48,7 +48,10 @@ servidor propio. Corre en cualquier Mac con Python.
   con hora, lo que dijo Rosa y lo que respondió Clara
 
 ### Recordatorios proactivos (scheduler)
-- Saludo diario configurable (default: 08:30)
+- Saludo diario con temperatura: cada mañana Clara dice la temperatura actual de
+  la ciudad de Rosa (Olivos, Buenos Aires) antes de preguntar cómo amaneció.
+  Si la API de clima falla, el saludo se envía igual sin temperatura.
+  La ciudad es configurable en `config.yml` → `ciudad`
 - Recordatorios de medicamentos u otros eventos (hora y mensaje configurables)
 - El bot inicia la conversación sin que Rosa tenga que escribir
 
@@ -75,7 +78,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - Módulo separado: `core/tools.py` (definiciones + fetch + dispatcher)
 
 ### Tests y calidad
-- **81 unit tests** con pytest cubriendo:
+- **89 unit tests** con pytest cubriendo:
   - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
   - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
     límite de 4 titulares, manejo de errores HTTP en las tres herramientas
@@ -84,7 +87,7 @@ servidor propio. Corre en cualquier Mac con Python.
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
   - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
 - Checklist manual E2E en `tests/checklist.md` + `tests/lista_manual.txt`
-- Git pre-commit hook: los 81 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 89 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -139,5 +142,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (81 tests) |
+| Tests | pytest 9.0 (89 tests) |
 | Runtime | Python 3.14, macOS |
