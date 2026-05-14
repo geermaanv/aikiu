@@ -23,7 +23,7 @@ from groq import AsyncGroq
 from core.distress import parse_llm_response, should_send_alert, record_alert_sent
 from core.alerts import notify_family
 from core.tts import sintetizar
-from core.tools import TOOLS, ejecutar_tool, consultar_clima
+from core.tools import consultar_clima, consultar_dolar, consultar_noticias
 
 # ---------------------------------------------------------------------------
 # Config
@@ -118,11 +118,9 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         f"\n\nFecha y hora actual: {_fecha_hora_es()} (hora de Buenos Aires)."
         "\n\n---\n"
         "INSTRUCCIÓN DE SISTEMA (nunca leer en voz alta ni mencionar al usuario):\n"
-        "- Tenés herramientas en tiempo real. Usálas SIEMPRE que el mensaje contenga:\n"
-        "  · clima / tiempo / temperatura / lluvia / frío / calor / pronóstico → consultar_clima\n"
-        "  · dólar / cotización / tipo de cambio / cambio → consultar_dolar\n"
-        "  · noticias / qué pasó hoy / qué pasó / novedades / titulares → consultar_noticias\n"
-        "  Incluí los valores exactos en la respuesta (°C, pesos).\n"
+        "- Cuando el mensaje incluya datos en tiempo real (clima, dólar, noticias),\n"
+        "  están provistos justo antes del mensaje del usuario. Usálos para responder\n"
+        "  con los valores exactos (°C, pesos). No los inventes si no están presentes.\n"
         "- No tenés información sobre mensajes de familiares. Solo si Rosa pregunta\n"
         "  específicamente si alguien le escribió o mandó un mensaje, respondé:\n"
         "  'No recibí ningún mensaje para vos hoy.' Nunca inventes ni supongas.\n"
@@ -149,6 +147,39 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
     return prompt
 
 
+def _norm(s: str) -> str:
+    """Minúsculas sin tildes para comparación de keywords."""
+    return re.sub(r"[áàä]", "a", re.sub(r"[éèë]", "e", re.sub(r"[íìï]", "i",
+           re.sub(r"[óòö]", "o", re.sub(r"[úùü]", "u", s.lower())))))
+
+async def _pre_route(texto: str) -> str:
+    """Detecta si el mensaje requiere datos externos y los obtiene antes del LLM."""
+    t = _norm(texto)
+    if any(w in t for w in ["clima", "tiempo", "temperatura", "grados", "llueve",
+                             "lluvia", "frio", "calor", "pronostico", "nublado",
+                             "viento", "humedad"]):
+        ciudad = CONFIG.get("ciudad", "Buenos Aires")
+        # Detectar ciudad mencionada explícitamente: "en Córdoba", "en Mendoza"
+        m = re.search(r"\ben\s+([A-ZÁÉÍÓÚ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚ][a-záéíóúñ]+)?)", texto)
+        if m:
+            ciudad = m.group(1)
+        resultado = await consultar_clima(ciudad)
+        log.info(f"Pre-route clima({ciudad}) → {resultado[:80]}")
+        return resultado
+
+    if any(w in t for w in ["dolar", "cotizacion", "tipo de cambio", "cambio", "billete"]):
+        resultado = await consultar_dolar()
+        log.info(f"Pre-route dolar → {resultado[:80]}")
+        return resultado
+
+    if any(w in t for w in ["noticias", "que paso", "novedades", "titulares", "hoy que"]):
+        resultado = await consultar_noticias()
+        log.info(f"Pre-route noticias → {resultado[:80]}")
+        return resultado
+
+    return ""
+
+
 async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     asistente     = CONFIG["nombre_asistente"]
     nombre        = CONFIG["nombre_adulto_mayor"]
@@ -158,55 +189,25 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(historial[-10:])
+
+    # Pre-routing: obtener datos externos antes del LLM
+    datos_externos = await _pre_route(texto_usuario)
+    if datos_externos:
+        messages.append({
+            "role": "system",
+            "content": f"Datos en tiempo real para responder este mensaje: {datos_externos}",
+        })
+
     messages.append({"role": "user", "content": texto_usuario})
 
     response = await groq.chat.completions.create(
         model=modelo,
         messages=messages,
-        tools=TOOLS,
-        tool_choice="auto",
         max_tokens=300,
         temperature=0.7,
     )
-    msg = response.choices[0].message
 
-    if msg.tool_calls:
-        # Agregar respuesta del asistente (puede tener content vacío)
-        messages.append({
-            "role": "assistant",
-            "content": msg.content or "",
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in msg.tool_calls
-            ],
-        })
-        # Ejecutar cada herramienta y agregar resultados
-        for tc in msg.tool_calls:
-            args = json.loads(tc.function.arguments)
-            resultado = await ejecutar_tool(tc.function.name, args)
-            log.info(f"Tool {tc.function.name}({args}) → {resultado[:100]}")
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": resultado,
-            })
-        # Segunda llamada: generar respuesta final con los datos
-        response = await groq.chat.completions.create(
-            model=modelo,
-            messages=messages,
-            max_tokens=300,
-            temperature=0.7,
-        )
-        msg = response.choices[0].message
-
-    respuesta = msg.content.strip()
+    respuesta = response.choices[0].message.content.strip()
     log.info(f"LLM raw: '{respuesta}'")
     return respuesta
 

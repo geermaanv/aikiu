@@ -100,27 +100,20 @@ def test_system_prompt_sin_perfil_igual_funciona():
 # Regla: tool calling — el prompt indica al LLM que use las herramientas
 # ---------------------------------------------------------------------------
 
-def test_system_prompt_menciona_herramientas_tiempo_real():
-    """El prompt debe indicar que hay herramientas disponibles para el LLM."""
+def test_system_prompt_menciona_datos_tiempo_real():
+    """El prompt debe indicar que los datos en tiempo real son provistos como contexto."""
     prompt = construir_prompt(perfil="")
-    assert "herramientas" in prompt.lower() or "herramienta" in prompt.lower()
-
-def test_system_prompt_menciona_clima_en_hint_tools():
-    prompt = construir_prompt(perfil="")
-    assert "clima" in prompt.lower()
-
-def test_system_prompt_menciona_dolar_en_hint_tools():
-    prompt = construir_prompt(perfil="")
-    assert "dólar" in prompt.lower()
-
-def test_system_prompt_menciona_noticias_en_hint_tools():
-    prompt = construir_prompt(perfil="")
-    assert "noticias" in prompt.lower()
+    assert "tiempo real" in prompt.lower()
 
 def test_system_prompt_pide_valores_exactos():
     """El prompt debe indicar incluir valores numéricos exactos (°C, pesos)."""
     prompt = construir_prompt(perfil="")
     assert "exacto" in prompt.lower() or "°c" in prompt.lower() or "pesos" in prompt.lower()
+
+def test_system_prompt_no_inventar_datos_ausentes():
+    """El prompt debe indicar que no se inventen datos si no están presentes."""
+    prompt = construir_prompt(perfil="")
+    assert "no los inventes" in prompt.lower() or "no inventes" in prompt.lower() or "si no están" in prompt.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -176,19 +169,48 @@ def test_distress_ignorar_historial_ante_emergencia_previa():
     # El prompt debe decir explícitamente que un saludo posterior es nivel 0
     assert "saludo" in prompt.lower()
 
-def test_tool_triggers_incluyen_palabras_clave_espanol():
-    """El prompt debe listar triggers en español para cada herramienta."""
-    prompt = construir_prompt(perfil="")
-    assert "temperatura" in prompt.lower()
-    assert "cotización" in prompt.lower()
-    assert "qué pasó" in prompt.lower() or "que paso" in prompt.lower()
+def test_pre_route_detecta_clima():
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from aikiu import _pre_route
+    with patch("aikiu.consultar_clima", new=AsyncMock(return_value="Temperatura 20°C")) as mock, \
+         patch("aikiu.CONFIG", {"ciudad": "Buenos Aires"}):
+        resultado = asyncio.run(_pre_route("¿qué temperatura hace hoy?"))
+    mock.assert_called_once()
+    assert resultado == "Temperatura 20°C"
 
-def test_tool_triggers_usan_flecha_para_mapeo():
-    """El prompt debe mapear palabras clave a herramienta con formato →."""
-    prompt = construir_prompt(perfil="")
-    assert "consultar_clima" in prompt
-    assert "consultar_dolar" in prompt
-    assert "consultar_noticias" in prompt
+def test_pre_route_detecta_dolar():
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from aikiu import _pre_route
+    with patch("aikiu.consultar_dolar", new=AsyncMock(return_value="Blue $1000")) as mock:
+        resultado = asyncio.run(_pre_route("¿a cuánto está el dólar hoy?"))
+    mock.assert_called_once()
+    assert resultado == "Blue $1000"
+
+def test_pre_route_detecta_noticias():
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from aikiu import _pre_route
+    with patch("aikiu.consultar_noticias", new=AsyncMock(return_value="Titulares: ...")) as mock:
+        resultado = asyncio.run(_pre_route("¿qué pasó hoy?"))
+    mock.assert_called_once()
+    assert resultado == "Titulares: ..."
+
+def test_pre_route_no_activa_en_conversacion_normal():
+    import asyncio
+    from aikiu import _pre_route
+    resultado = asyncio.run(_pre_route("Hola, ¿cómo estás?"))
+    assert resultado == ""
+
+def test_pre_route_detecta_ciudad_en_mensaje():
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from aikiu import _pre_route
+    with patch("aikiu.consultar_clima", new=AsyncMock(return_value="Temp 18°C")) as mock, \
+         patch("aikiu.CONFIG", {"ciudad": "Buenos Aires"}):
+        asyncio.run(_pre_route("¿qué tiempo hace en Córdoba?"))
+    mock.assert_called_once_with("Córdoba")
 
 
 # ---------------------------------------------------------------------------
