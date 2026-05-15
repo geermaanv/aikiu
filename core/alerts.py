@@ -19,6 +19,31 @@ def cargar_suscriptores() -> list[int]:
     return []
 
 
+async def notify_inactividad(
+    horas: int,
+    ultima_actividad: datetime,
+    family_bot: Bot,
+) -> None:
+    """Avisa a los familiares que Rosa lleva N horas sin escribir."""
+    timestamp = ultima_actividad.strftime("%H:%M del %d/%m")
+    texto_horas = f"{horas} {'hora' if horas == 1 else 'horas'}"
+    text = (
+        f"⚠️ *Sin noticias de Rosa*\n\n"
+        f"Lleva {texto_horas} sin enviar mensajes.\n"
+        f"Último mensaje registrado: {timestamp}.\n\n"
+        f"Puede estar bien y simplemente no usó el bot, pero vale verificar."
+    )
+    suscriptores = cargar_suscriptores()
+    for chat_id in suscriptores:
+        try:
+            await family_bot.send_message(
+                chat_id=chat_id, text=text, parse_mode="Markdown"
+            )
+        except Exception as e:
+            from logging import getLogger
+            getLogger("aikiu").warning(f"No se pudo enviar alerta de inactividad a {chat_id}: {e}")
+
+
 async def notify_family(
     distress_level: int,
     rosa_message: str,

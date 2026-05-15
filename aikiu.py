@@ -21,7 +21,7 @@ from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import AsyncGroq
 from core.distress import parse_llm_response, should_send_alert, record_alert_sent
-from core.alerts import notify_family
+from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
 
@@ -212,10 +212,13 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     return respuesta
 
 # ---------------------------------------------------------------------------
-# Estado de conversación
+# Estado de conversación e inactividad
 # ---------------------------------------------------------------------------
 
 historiales: dict[int, list] = {}
+
+_ultima_actividad: datetime | None = None        # último mensaje de Rosa
+_alerta_inactividad_fecha: object = None         # date del último aviso (evita duplicados)
 
 # ---------------------------------------------------------------------------
 # Log diario y aprendizajes
@@ -336,6 +339,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(chat_id=chat_id, text=respuesta)
 
+    # Registrar actividad para el sistema de inactividad
+    global _ultima_actividad
+    _ultima_actividad = datetime.now()
+
     # Tareas en background (no bloquean la respuesta a Rosa)
     registrar_log(texto, respuesta)
     create_background_task(extraer_aprendizaje(texto, respuesta))
@@ -390,6 +397,43 @@ async def saludo_matutino(app: Application):
     texto = f"Buenos días {nombre}, soy {asistente}.{clima_frase} ¿Cómo amaneciste hoy?"
     await enviar_mensaje_voz(app, texto)
 
+async def verificar_inactividad(app: Application):
+    global _alerta_inactividad_fecha
+
+    cfg = CONFIG.get("alerta_inactividad", {})
+    if not cfg.get("activa", True):
+        return
+    if _ultima_actividad is None:
+        log.info("Inactividad: sin baseline aún (bot recién arrancó)")
+        return
+
+    horas = (datetime.now() - _ultima_actividad).total_seconds() / 3600
+    umbral = cfg.get("horas_umbral", 4)
+
+    if horas < umbral:
+        log.info(f"Inactividad: {horas:.1f}h — dentro del rango normal ({umbral}h)")
+        return
+
+    from datetime import date as date_type
+    hoy = datetime.now().date()
+    if _alerta_inactividad_fecha == hoy:
+        log.info("Inactividad: ya se alertó hoy, no se repite")
+        return
+
+    _alerta_inactividad_fecha = hoy
+    family_bot = app.bot_data.get("family_bot")
+    if not family_bot:
+        log.warning("Inactividad detectada pero family_bot no está configurado")
+        return
+
+    log.info(f"Alerta de inactividad: {horas:.1f}h sin actividad de Rosa")
+    create_background_task(notify_inactividad(
+        horas=int(horas),
+        ultima_actividad=_ultima_actividad,
+        family_bot=family_bot,
+    ))
+
+
 def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
     saludo_cfg = CONFIG.get("saludo_diario", {})
     if saludo_cfg.get("activo", True):
@@ -408,6 +452,17 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
             args=[app, r["mensaje"]],
         )
         log.info(f"Recordatorio programado {r['hora']}: {r['mensaje']}")
+
+    cfg_inact = CONFIG.get("alerta_inactividad", {})
+    if cfg_inact.get("activa", True):
+        for hora_str in cfg_inact.get("checks", ["11:30", "19:00"]):
+            hora, minuto = map(int, hora_str.split(":"))
+            scheduler.add_job(
+                verificar_inactividad, "cron",
+                hour=hora, minute=minuto,
+                args=[app],
+            )
+            log.info(f"Check de inactividad programado a las {hora_str}")
 
 # ---------------------------------------------------------------------------
 # Main

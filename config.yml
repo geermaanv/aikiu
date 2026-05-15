@@ -23,6 +23,14 @@ saludo_diario:
   activo: true
   hora: "08:30"
 
+# --- Alerta de inactividad ---
+alerta_inactividad:
+  activa: true
+  horas_umbral: 4      # horas sin mensaje para alertar
+  checks:
+    - "11:30"          # check de la mañana (después del saludo)
+    - "19:00"          # check de la tarde
+
 # --- Recordatorios ---
 recordatorios:
   - hora: "09:00"
