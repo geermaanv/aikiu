@@ -3,7 +3,7 @@
 # ============================================================
 
 # --- Identidad ---
-nombre_adulto_mayor: "Rosa"
+nombre_adulto_mayor: "Marta"
 nombre_asistente: "Clara"      # ← el familiar elige el nombre
 ciudad: "Olivos, Buenos Aires" # ← usada en el saludo matutino con temperatura
 
@@ -34,6 +34,6 @@ alerta_inactividad:
 # --- Recordatorios ---
 recordatorios:
   - hora: "09:00"
-    mensaje: "Rosa, ¿tomaste el medicamento de la mañana?"
+    mensaje: "Marta, ¿tomaste el medicamento de la mañana?"
   - hora: "21:00"
-    mensaje: "Rosa, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."
+    mensaje: "Marta, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."

@@ -69,25 +69,38 @@ servidor propio. Corre en cualquier Mac con Python.
 - Alertas automáticas llegan a **todos** los suscriptores cuando Rosa muestra angustia
 - `subscribers.json` y `familiares.json` excluidos del repo
 
-### Consultas al mundo real (tool calling)
-- El LLM decide cuándo consultar herramientas externas usando Groq native tool calling
+### Consultas al mundo real (pre-routing determinístico)
+- Detección de keywords en el mensaje de Rosa antes de llamar al LLM (sin depender de tool calling del modelo)
 - **Clima**: wttr.in — temperatura, sensación térmica, descripción, humedad
 - **Dólar**: dolarapi.com — blue y oficial, compra y venta
 - **Noticias**: RSS de La Nación — top 4 titulares, filtrables por tema
 - Si la API falla, el bot responde con un mensaje de error amigable sin romper la conversación
 - Módulo separado: `core/tools.py` (definiciones + fetch + dispatcher)
 
+### Alertas de inactividad
+- Si Rosa no envía mensajes en N horas, el bot familiar recibe una alerta automática
+- Umbral configurable en `config.yml` → `alerta_inactividad.horas_umbral` (default: 4 horas)
+- Checks programados dos veces por día (default: 11:30 y 19:00), configurables
+- Cooldown de un alerta por día: si ya se alertó hoy, no vuelve a alertar hasta mañana
+- Sin baseline (bot recién arrancado): no genera alertas hasta recibir el primer mensaje
+- Mensaje cálido y no alarmista: "Puede estar bien y simplemente no usó el bot, pero vale verificar"
+- Se envía a todos los suscriptores del bot familiar
+- Función: `verificar_inactividad()` en `aikiu.py` + `notify_inactividad()` en `core/alerts.py`
+
 ### Tests y calidad
-- **89 unit tests** con pytest cubriendo:
+- **102 unit tests** con pytest cubriendo:
   - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
   - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
     límite de 4 titulares, manejo de errores HTTP en las tres herramientas
+  - `core/alerts.py` + `aikiu.verificar_inactividad`: umbral, cooldown diario,
+    baseline, config activa/inactiva, mensaje al familiar (horas, timestamp, tono)
+  - Saludo matutino: extracción de temperatura, fallback sin clima, temperatura == sensación
   - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
-  - Reglas del system prompt: hint de tools, anti-hallucination específico a
+  - Reglas del system prompt: pre-routing, anti-hallucination específico a
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
   - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
-- Checklist manual E2E en `tests/checklist.md` + `tests/lista_manual.txt`
-- Git pre-commit hook: los 90 tests corren automáticamente antes de cada commit
+- Checklist manual E2E en `tests/checklist.md`
+- Git pre-commit hook: los 102 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -146,5 +159,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (90 tests) |
+| Tests | pytest 9.0 (102 tests) |
 | Runtime | Python 3.14, macOS |

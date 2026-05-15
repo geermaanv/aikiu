@@ -15,6 +15,7 @@
 
 ## Gustos y temas que la alegran
 - La música de tango y los programas de cocina
+- Cuidar las plantas del balcón
 
 
 ## Salud (para contexto, no para diagnosticar)
@@ -60,42 +61,9 @@
   orientar mejor que nadie."
 
 ## Aprendizajes
-- Rosa se cayó y no puede levantarse, lo que sugiere que puede tener algún problema de salud o movilidad. (13/05/2026)
-- Rosa está pasando por un momento de tristeza y malestar emocional, y tiene un hijo llamado Germán. (13/05/2026)
-- Rosa se siente muy sola en este momento. (13/05/2026)
-- Rosa tiene nietos llamados Lao y Cata. (13/05/2026)
-- Tiene plantas en el balcón. (13/05/2026)
-- Rosa tiene plantas en el balcón. (13/05/2026)
-- Rosa tiene nietos. (13/05/2026)
-- Rosa está interesada en saber el clima en Córdoba, lo que podría sugerir que tiene planes para salir o realizar alguna actividad al aire libre. (13/05/2026)
-- Tiene plantas en el balcón. (13/05/2026)
-- Rosa está experimentando confusión y parece necesitar ayuda para recordar su identidad o situación actual. (13/05/2026)
-- Rosa tiene un nivel de distress bajo (DISTRESS_LEVEL: 1), lo que sugiere que se siente relativamente tranquila y abierta a la conversación. (13/05/2026)
-- Rosa ha estado pasando por un momento difícil y se encuentra en un estado de recuperación, con un nivel de estrés bajo (DISTRESS_LEVEL: 1). (13/05/2026)
-- Rosa tiene un balcón con plantas y parece disfrutar de la cocina, ya que se menciona una receta que le ha gustado. (13/05/2026)
-- Rosa tiene problemas para recordar fechas importantes. (13/05/2026)
-- Rosa parece necesitar consuelo o apoyo espiritual, lo que sugiere que podría estar pasando por un momento difícil o de estrés. (13/05/2026)
-- Rosa parece estar pasando por un momento difícil o estresante, ya que Clara le pregunta si se siente un poco mejor ahora. (13/05/2026)
-- Rosa está experimentando sentimientos de inutilidad y pensamientos de que su ausencia podría ser beneficiosa para los demás, lo que sugiere que puede estar pasando por un momento de depresión o ansiedad. (13/05/2026)
-- Extraña mucho a Alberto, lo que sugiere que Alberto podría haber fallecido o estar ausente, y Rosa se encuentra en un estado de duelo o soledad. (13/05/2026)
-- Rosa está experimentando un momento de confusión o olvido, posiblemente relacionado con el duelo por la pérdida de su marido. (13/05/2026)
-- Rosa se siente bien y está dispuesta a hacer un postre dulce esta tarde. (13/05/2026)
-- Rosa tiene problemas de presión arterial y toma medicación para controlarla. (13/05/2026)
-- Rosa está experimentando tristeza debido a la muerte de una amiga del barrio, lo que sugiere que valora las relaciones interpersonales y puede ser una persona emocionalmente sensible. (13/05/2026)
-- Rosa tuvo un episodio de malestar que inicialmente pensó que era algo serio, pero resultó ser solo gas. (13/05/2026)
-- Rosa está experimentando dolores en el pecho y dificultades para respirar, y tiene un hijo llamado Germán. (13/05/2026)
-- Rosa tiene problemas de memoria a corto plazo, ya que no recuerda qué día de la semana es. (13/05/2026)
-- Rosa tiene nietos y se dedica a cuidar plantas, lo que podría ser una fuente de alegría y satisfacción para ella. (13/05/2026)
-- Rosa se cayó en el baño esta mañana, pero no sufrió lesiones graves. (13/05/2026)
-- Rosa toma pastillas dos veces al día, una por la mañana y otra por la noche, lo que sugiere que puede tener algún problema de salud que requiere medicación regular. (13/05/2026)
-- Rosa tiene un dolor en la rodilla en este momento. (13/05/2026)
-- Rosa se siente sola porque su hija no la llamó ayer y tiene un hijo llamado Germán. (13/05/2026)
-- Rosa se preocupa por el cuidado de las plantas. (13/05/2026)
-- Rosa parece estar pasando por un momento difícil o sensible, ya que le pide a Clara que no le recuerde algo, lo que sugiere que está tratando de evitar un tema doloroso o estresante. (13/05/2026)
-- Rosa se acuerda de Clara, lo que sugiere que tienen una relación previa y Rosa no tiene problemas de memoria con respecto a Clara. (12/05/2026)
-- Rosa tiene plantas y se preocupa por su bienestar, lo que sugiere que le gusta el cuidado de plantas y la jardinería. (12/05/2026)
-- Rosa se siente sola hoy y tiene plantas en su balcón. (12/05/2026)
-- Rosa se siente triste hoy. (12/05/2026)
-- Rosa parece estar pasando por un momento difícil o triste, ya que pide perdón y Clara le ofrece apoyo emocional. (12/05/2026)
-- Está sintiendo soledad. (12/05/2026)
+- Extraña mucho a Alberto (posiblemente su marido fallecido o ausente). (13/05/2026)
+- A veces le cuesta recordar qué día de la semana es. (13/05/2026)
+- Se cayó en el baño una mañana sin lesiones graves. (13/05/2026)
+- Tiene dolor de muela. (14/05/2026)
+- Se levantó triste, aunque dijo sentirse bien en general. (15/05/2026)
 
