@@ -121,22 +121,22 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         "- Cuando el mensaje incluya datos en tiempo real (clima, dólar, noticias),\n"
         "  están provistos justo antes del mensaje del usuario. Usálos para responder\n"
         "  con los valores exactos (°C, pesos). No los inventes si no están presentes.\n"
-        "- No tenés información sobre mensajes de familiares. Solo si Rosa pregunta\n"
+        f"- No tenés información sobre mensajes de familiares. Solo si {nombre} pregunta\n"
         "  específicamente si alguien le escribió o mandó un mensaje, respondé:\n"
         "  'No recibí ningún mensaje para vos hoy.' Nunca inventes ni supongas.\n"
         "Al final de CADA respuesta agregá exactamente esta línea (solo la línea, sin texto extra):\n"
         "DISTRESS_LEVEL: [0-3]\n"
-        "IMPORTANTE: evaluá el nivel basándote ÚNICAMENTE en el último mensaje de Rosa.\n"
+        f"IMPORTANTE: evaluá el nivel basándote ÚNICAMENTE en el último mensaje de {nombre}.\n"
         "Ignorá los mensajes anteriores de la conversación. Si el mensaje actual es un\n"
         "saludo, pregunta informativa o conversación normal, el nivel ES 0 aunque antes\n"
         "haya habido una emergencia.\n"
         "Ser conservador: ante la duda entre dos niveles, asignar el más bajo.\n"
-        "Criterios (solo cuando Rosa describe su propio estado en el mensaje actual):\n"
+        f"Criterios (solo cuando {nombre} describe su propio estado en el mensaje actual):\n"
         "- 0: saludo, pregunta informativa, conversación cotidiana; cualquier mensaje ambiguo\n"
-        "- 1: Rosa usa palabras explícitas como 'me siento sola', 'estoy triste', 'lloré',\n"
+        f"- 1: {nombre} usa palabras explícitas como 'me siento sola', 'estoy triste', 'lloré',\n"
         "     'no pude dormir', 'extraño a alguien' — requiere expresión emocional clara,\n"
         "     no inferida de errores tipográficos ni frases ambiguas\n"
-        "- 2: Rosa llora, dice que está muy mal, tiene dolor físico persistente,\n"
+        f"- 2: {nombre} llora, dice que está muy mal, tiene dolor físico persistente,\n"
         "     está confundida o desorientada, habla incoherente, repite lo mismo sin darse cuenta,\n"
         "     dice 'soy una carga', menciona una caída reciente (aunque ya pasó),\n"
         "     expresa no querer molestar a nadie o sentirse prescindible\n"
@@ -233,7 +233,9 @@ def registrar_log(usuario: str, respuesta: str):
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / f"{now.strftime('%Y-%m-%d')}.md"
     encabezado = f"# Conversaciones del {now.strftime('%d/%m/%Y')}\n\n"
-    entrada = f"**{now.strftime('%H:%M')}**\n- Rosa: {usuario}\n- Clara: {respuesta}\n\n"
+    nombre = CONFIG["nombre_adulto_mayor"]
+    asistente = CONFIG["nombre_asistente"]
+    entrada = f"**{now.strftime('%H:%M')}**\n- {nombre}: {usuario}\n- {asistente}: {respuesta}\n\n"
     if not log_file.exists():
         log_file.write_text(encabezado + entrada, encoding="utf-8")
     else:
@@ -253,9 +255,11 @@ def agregar_aprendizaje(linea: str):
     log.info(f"Aprendizaje anotado: {linea.strip()}")
 
 async def extraer_aprendizaje(usuario: str, respuesta: str):
+    nombre = CONFIG["nombre_adulto_mayor"]
+    asistente = CONFIG["nombre_asistente"]
     prompt = (
-        f"Conversación:\nRosa: {usuario}\nClara: {respuesta}\n\n"
-        "¿Hay algún dato nuevo y específico sobre Rosa que valga la pena recordar "
+        f"Conversación:\n{nombre}: {usuario}\n{asistente}: {respuesta}\n\n"
+        f"¿Hay algún dato nuevo y específico sobre {nombre} que valga la pena recordar "
         "(un evento, estado de ánimo, dato familiar, salud, actividad)? "
         "Si sí, respondé SOLO con una línea que empiece con '- '. "
         "Si no hay nada relevante, respondé exactamente: ninguno"
