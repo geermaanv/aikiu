@@ -113,6 +113,8 @@ servidor propio. Corre en cualquier Mac con Python.
 - `bash start.sh` — arranca ambos bots en paralelo (familiar es opcional)
 - `bash configurar.sh` — wizard guiado para armar el perfil.md desde cero
 - `config.yml` — configuración no sensible: nombre, voz, modelo, recordatorios
+- `nombre_adulto_mayor` en `config.yml` es la única fuente de verdad del nombre:
+  se propaga al system prompt, logs, recordatorios y prompt de aprendizajes automáticamente
 
 ---
 
