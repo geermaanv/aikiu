@@ -42,10 +42,18 @@ servidor propio. Corre en cualquier Mac con Python.
 - Módulos separados: `core/distress.py` (parsing + cooldown) y `core/alerts.py` (envío)
 
 ### Memoria y registro
-- **Aprendizajes automáticos**: después de cada conversación, el LLM extrae
-  datos nuevos relevantes y los anota en `perfil.md` bajo `## Aprendizajes`
 - **Log diario**: cada intercambio queda registrado en `logs/YYYY-MM-DD.md`
-  con hora, lo que dijo Rosa y lo que respondió Clara
+  con hora, lo que dijo Marta y lo que respondió Clara
+- **Análisis nocturno** (hora configurable, default 23:30): un job lee el log del día
+  completo y hace un solo LLM call que:
+  - Extrae aprendizajes nuevos sobre Marta comparando contra los ya existentes en `perfil.md`
+    — evita duplicados por construcción
+  - Detecta patrones problemáticos de la conversación (respuestas cortadas, preguntas
+    innecesarias, temas evitados) y sugiere ajustes
+  - Escribe los aprendizajes en `## Aprendizajes` y los ajustes en `## Ajustes sugeridos`
+    de `perfil.md`, que Clara lee en la próxima conversación
+  - Reemplaza el enfoque anterior (un LLM call extra por cada mensaje) — menos ruido,
+    mejor calidad, sin costo por turno
 
 ### Recordatorios proactivos (scheduler)
 - Saludo diario con temperatura: cada mañana Clara dice la temperatura actual de
@@ -88,19 +96,21 @@ servidor propio. Corre en cualquier Mac con Python.
 - Función: `verificar_inactividad()` en `aikiu.py` + `notify_inactividad()` en `core/alerts.py`
 
 ### Tests y calidad
-- **102 unit tests** con pytest cubriendo:
+- **111 unit tests** con pytest cubriendo:
   - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
   - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
     límite de 4 titulares, manejo de errores HTTP en las tres herramientas
   - `core/alerts.py` + `aikiu.verificar_inactividad`: umbral, cooldown diario,
     baseline, config activa/inactiva, mensaje al familiar (horas, timestamp, tono)
+  - `aikiu.analisis_nocturno`: parsing de secciones, aprendizajes nuevos vs. existentes,
+    ajustes de conversación, fallo de LLM sin romper
   - Saludo matutino: extracción de temperatura, fallback sin clima, temperatura == sensación
   - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
   - Reglas del system prompt: pre-routing, anti-hallucination específico a
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
   - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
 - Checklist manual E2E en `tests/checklist.md`
-- Git pre-commit hook: los 102 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 111 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -161,5 +171,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (102 tests) |
+| Tests | pytest 9.0 (111 tests) |
 | Runtime | Python 3.14, macOS |

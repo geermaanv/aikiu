@@ -23,6 +23,9 @@ saludo_diario:
   activo: true
   hora: "08:30"
 
+# --- Análisis nocturno (aprendizajes + ajustes de conversación) ---
+analisis_nocturno_hora: "23:30"
+
 # --- Alerta de inactividad ---
 alerta_inactividad:
   activa: true

@@ -242,40 +242,91 @@ def registrar_log(usuario: str, respuesta: str):
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(entrada)
 
-def agregar_aprendizaje(linea: str):
+def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
+    """Reemplaza el contenido de una sección ## en perfil.md."""
     from datetime import date
     hoy = date.today().strftime("%d/%m/%Y")
-    entrada = f"{linea} ({hoy})\n"
     content = PERFIL_PATH.read_text(encoding="utf-8")
-    if "## Aprendizajes" in content:
-        content = content.replace("## Aprendizajes\n", f"## Aprendizajes\n{entrada}")
+    bloque = f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
+    import re as _re
+    patron = rf"## {seccion}\n.*?(?=\n## |\Z)"
+    if _re.search(patron, content, _re.DOTALL):
+        # Preservar entradas anteriores: agregar al inicio de la sección existente
+        content = content.replace(
+            f"## {seccion}\n",
+            f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas),
+        )
     else:
-        content += f"\n## Aprendizajes\n{entrada}"
+        content = content.rstrip() + f"\n\n## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
     PERFIL_PATH.write_text(content, encoding="utf-8")
-    log.info(f"Aprendizaje anotado: {linea.strip()}")
 
-async def extraer_aprendizaje(usuario: str, respuesta: str):
+async def analisis_nocturno(app=None):
+    """Job nocturno: extrae aprendizajes del log del día y detecta patrones de mejora."""
+    from datetime import date
     nombre = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
-    prompt = (
-        f"Conversación:\n{nombre}: {usuario}\n{asistente}: {respuesta}\n\n"
-        f"¿Hay algún dato nuevo y específico sobre {nombre} que valga la pena recordar "
-        "(un evento, estado de ánimo, dato familiar, salud, actividad)? "
-        "Si sí, respondé SOLO con una línea que empiece con '- '. "
-        "Si no hay nada relevante, respondé exactamente: ninguno"
-    )
+    hoy = date.today().strftime("%Y-%m-%d")
+    log_path = LOGS_DIR / f"{hoy}.md"
+    if not log_path.exists():
+        log.info("analisis_nocturno: sin log del día, nada que analizar")
+        return
+
+    log_dia = log_path.read_text(encoding="utf-8")
+    perfil_actual = PERFIL_PATH.read_text(encoding="utf-8")
+
+    # Extraer sólo la sección Aprendizajes actual para pasarla al LLM
+    import re as _re
+    m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil_actual, _re.DOTALL)
+    aprendizajes_actuales = m.group(1).strip() if m else "(ninguno)"
+
+    prompt = f"""Sos un asistente que analiza conversaciones de {asistente} con {nombre}, una adulta mayor.
+
+--- LOG DEL DÍA ---
+{log_dia}
+
+--- APRENDIZAJES YA CONOCIDOS SOBRE {nombre.upper()} ---
+{aprendizajes_actuales}
+
+Respondé con exactamente dos secciones:
+
+APRENDIZAJES_NUEVOS:
+(listá solo datos concretos y nuevos sobre {nombre} que NO estén ya en los aprendizajes conocidos: eventos, salud, familia, gustos, estado de ánimo. Máximo 5 líneas, cada una empezando con "- ". Si no hay nada nuevo, escribí "ninguno")
+
+AJUSTES_CONVERSACION:
+(detectá patrones problemáticos en la conversación de hoy: respuestas cortadas, preguntas innecesarias, temas que {nombre} evitó, etc. Sugerí ajustes concretos para mejorar. Máximo 3 líneas, cada una empezando con "- ". Si la conversación estuvo bien, escribí "ninguno")"""
+
     try:
         r = await groq.chat.completions.create(
             model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=60,
+            max_tokens=400,
             temperature=0.2,
         )
-        resultado = r.choices[0].message.content.strip()
-        if resultado.lower() != "ninguno" and resultado.startswith("-"):
-            agregar_aprendizaje(resultado)
+        respuesta = r.choices[0].message.content.strip()
+        log.info(f"analisis_nocturno respuesta LLM:\n{respuesta}")
+
+        aprendizajes = _parsear_seccion(respuesta, "APRENDIZAJES_NUEVOS")
+        ajustes = _parsear_seccion(respuesta, "AJUSTES_CONVERSACION")
+
+        if aprendizajes:
+            _actualizar_seccion_perfil("Aprendizajes", aprendizajes)
+            log.info(f"analisis_nocturno: {len(aprendizajes)} aprendizaje(s) nuevo(s)")
+        if ajustes:
+            _actualizar_seccion_perfil("Ajustes sugeridos", ajustes)
+            log.info(f"analisis_nocturno: {len(ajustes)} ajuste(s) sugerido(s)")
     except Exception as e:
-        log.warning(f"extraer_aprendizaje falló: {e}")
+        log.warning(f"analisis_nocturno falló: {e}")
+
+def _parsear_seccion(texto: str, seccion: str) -> list[str]:
+    """Extrae líneas con '- ' de una sección del output del LLM."""
+    import re as _re
+    m = _re.search(rf"{seccion}:\n(.*?)(?=\n[A-Z_]+:|\Z)", texto, _re.DOTALL)
+    if not m:
+        return []
+    bloque = m.group(1).strip()
+    if bloque.lower() == "ninguno":
+        return []
+    return [l.strip() for l in bloque.splitlines() if l.strip().startswith("-")]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -347,9 +398,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _ultima_actividad
     _ultima_actividad = datetime.now()
 
-    # Tareas en background (no bloquean la respuesta a Rosa)
+    # Tareas en background (no bloquean la respuesta)
     registrar_log(texto, respuesta)
-    create_background_task(extraer_aprendizaje(texto, respuesta))
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
@@ -456,6 +506,10 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
             args=[app, r["mensaje"]],
         )
         log.info(f"Recordatorio programado {r['hora']}: {r['mensaje']}")
+
+    hora_an, minuto_an = map(int, CONFIG.get("analisis_nocturno_hora", "23:30").split(":"))
+    scheduler.add_job(analisis_nocturno, "cron", hour=hora_an, minute=minuto_an)
+    log.info(f"Análisis nocturno programado a las {hora_an:02d}:{minuto_an:02d}")
 
     cfg_inact = CONFIG.get("alerta_inactividad", {})
     if cfg_inact.get("activa", True):
