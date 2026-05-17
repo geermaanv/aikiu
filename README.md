@@ -13,21 +13,22 @@ No requiere hardware especial: corre en cualquier computadora con Python.
 1. [Visión general](#visión-general)
 2. [Funcionalidades](#funcionalidades)
 3. [Arquitectura](#arquitectura)
-4. [Stack técnico](#stack-técnico)
-5. [Estructura del repositorio](#estructura-del-repositorio)
-6. [Requisitos previos](#requisitos-previos)
-7. [Instalación](#instalación)
-8. [Configuración](#configuración)
-9. [Uso](#uso)
-10. [Comandos del bot familiar](#comandos-del-bot-familiar)
-11. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
-12. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
-13. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
-14. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
-15. [Tests](#tests)
-16. [Seguridad y privacidad](#seguridad-y-privacidad)
-17. [Roadmap](#roadmap)
-18. [Licencia](#licencia)
+4. [Diagramas de flujo](#diagramas-de-flujo)
+5. [Stack técnico](#stack-técnico)
+6. [Estructura del repositorio](#estructura-del-repositorio)
+7. [Requisitos previos](#requisitos-previos)
+8. [Instalación](#instalación)
+9. [Configuración](#configuración)
+10. [Uso](#uso)
+11. [Comandos del bot familiar](#comandos-del-bot-familiar)
+12. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
+13. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
+14. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
+15. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
+16. [Tests](#tests)
+17. [Seguridad y privacidad](#seguridad-y-privacidad)
+18. [Roadmap](#roadmap)
+19. [Licencia](#licencia)
 
 ---
 
@@ -95,49 +96,238 @@ Pre-routing determinístico por keywords: la consulta a la API ocurre **antes** 
 
 ## Arquitectura
 
-```
-┌─────────────────┐      voz/texto       ┌────────────────────┐
-│                 │ ───────────────────▶ │                    │
-│  Adulto mayor   │                      │   aikiu.py         │
-│    (Telegram)   │ ◀─────────────────── │   (Bot principal)  │
-│                 │   voz/texto + TTS    │                    │
-└─────────────────┘                      └────────┬───────────┘
-                                                  │
-                                                  │ STT + LLM + clasificación distress
-                                                  ▼
-                                         ┌──────────────────┐
-                                         │   Groq Cloud     │
-                                         │  (Whisper + Llama)│
-                                         └──────────────────┘
-                                                  │
-                                                  │ DISTRESS_LEVEL ≥ 1
-                                                  ▼
-┌─────────────────┐      alerta          ┌────────────────────┐
-│                 │ ◀─────────────────── │                    │
-│    Familia      │                      │  familiar_bot.py   │
-│   (Telegram)    │ ───────────────────▶ │  (Bot familiar)    │
-│                 │  /editar /mensaje    │                    │
-└─────────────────┘                      └────────┬───────────┘
-                                                  │
-                                                  ▼
-                                         ┌──────────────────┐
-                                         │   perfil.md      │
-                                         │   logs/          │
-                                         │   familiares.json│
-                                         └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph TG_USR["Telegram"]
+        USR["Adulto mayor"]
+    end
+    subgraph TG_FAM["Telegram"]
+        FAM["Familiares"]
+    end
+
+    USR <-->|"voz / texto"| AIKIU["aikiu.py<br/>(Bot principal)"]
+    AIKIU -->|"STT + LLM"| GROQ["Groq Cloud<br/>Whisper + Llama 3.3"]
+    AIKIU -->|"clima / dólar / noticias"| EXT["APIs externas<br/>wttr.in · dolarapi · La Nación"]
+    AIKIU -->|"distress ≥ 1<br/>inactividad"| FAMBOT["familiar_bot.py<br/>(Bot familiar)"]
+    FAM <-->|"/editar /mensaje<br/>/perfil /suscriptores"| FAMBOT
+    FAMBOT -->|"mensaje-puente"| AIKIU
+    AIKIU <--> STORE[("perfil.md<br/>logs/<br/>familiares.json")]
+    FAMBOT <--> STORE
+
+    classDef ext fill:#fdf6e3,stroke:#b58900,color:#073642;
+    classDef bot fill:#eee8d5,stroke:#268bd2,color:#073642;
+    classDef store fill:#e0e0e0,stroke:#586e75,color:#073642;
+    class GROQ,EXT ext;
+    class AIKIU,FAMBOT bot;
+    class STORE store;
 ```
 
-### Flujo de un mensaje de voz
+---
 
-1. El usuario envía una nota de voz al bot principal.
-2. `aikiu.py` descarga el OGG y lo manda a **Groq Whisper** para transcribirlo.
-3. **Pre-routing**: se buscan keywords (clima, dólar, noticias) y se hace la llamada HTTP correspondiente si aplica.
-4. Se arma el `system_prompt` con el perfil, fecha actual e instrucciones del distress.
-5. Se llama a **Groq Llama 3.3 70B** con el historial reciente y los datos externos.
-6. Se separa `DISTRESS_LEVEL` del texto visible (`core/distress.py`).
-7. El texto se sintetiza con **edge-tts** y se convierte a OGG/Opus con **ffmpeg**.
-8. Se envía como nota de voz al usuario.
-9. En paralelo: se loguea la conversación y, si el distress lo amerita, se notifica al bot familiar (`core/alerts.py`).
+## Diagramas de flujo
+
+### Flujo 1 — Mensaje de voz (entrada → respuesta)
+
+Desde que el adulto mayor envía una nota de voz hasta que recibe la respuesta de Aikiu.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Adulto mayor<br/>(Telegram)
+    participant A as aikiu.py
+    participant G as Groq<br/>(Whisper + Llama)
+    participant E as APIs externas<br/>(clima/dólar/noticias)
+    participant TTS as edge-tts + ffmpeg
+    participant L as logs/ + perfil.md
+    participant F as familiar_bot.py
+
+    U->>A: Nota de voz (OGG)
+    A->>A: Descarga OGG a temp
+    A->>G: Transcribir (Whisper large-v3)
+    G-->>A: Texto transcripto
+
+    A->>A: _pre_route() detecta keywords
+    alt Hay keywords (clima/dólar/noticias)
+        A->>E: HTTP GET datos en tiempo real
+        E-->>A: Datos (temp, cotización, titulares)
+    end
+
+    A->>A: Construye system prompt<br/>(perfil + fecha + reglas distress)
+    A->>G: chat.completions (historial + datos)
+    G-->>A: Respuesta + DISTRESS_LEVEL
+
+    A->>A: parse_llm_response()<br/>separa texto y nivel
+
+    A->>TTS: Sintetizar respuesta a MP3 → OGG/Opus
+    TTS-->>A: archivo OGG
+
+    A->>U: send_voice() respuesta hablada
+
+    par En background
+        A->>L: registrar_log()
+    and
+        opt distress ≥ 1 y sin cooldown
+            A->>F: notify_family() alerta
+        end
+    end
+```
+
+### Flujo 2 — Detección de angustia y alerta
+
+Cómo se clasifica el riesgo emocional y cuándo se dispara la alerta a los familiares.
+
+```mermaid
+flowchart TD
+    START(["LLM responde con DISTRESS_LEVEL: 0-3"]) --> PARSE["parse_llm_response()<br/>extrae nivel y limpia texto"]
+    PARSE --> NIVEL{"Nivel?"}
+
+    NIVEL -->|"0"| NORMAL["Sin alerta<br/>(conversación normal)"]
+    NIVEL -->|"1"| C1{"Pasó 60 min<br/>desde última<br/>alerta nivel 1?"}
+    NIVEL -->|"2"| C2{"Pasaron 30 min<br/>desde última<br/>alerta nivel 2?"}
+    NIVEL -->|"3"| C3["Sin cooldown<br/>(emergencia)"]
+
+    C1 -->|"No"| SKIP["Saltar alerta<br/>(silenciar duplicados)"]
+    C1 -->|"Sí"| MSG1["🟡 Posible malestar"]
+    C2 -->|"No"| SKIP
+    C2 -->|"Sí"| MSG2["🟠 Angustia presente"]
+    C3 --> MSG3["🔴 ALERTA URGENTE"]
+
+    MSG1 --> RECORD["record_alert_sent()"]
+    MSG2 --> RECORD
+    MSG3 --> RECORD
+    RECORD --> SUBS["Cargar suscriptores<br/>(familiares.json)"]
+    SUBS --> SEND["notify_family() →<br/>send_message a cada familiar<br/>con timestamp + extracto"]
+
+    NORMAL --> END(["Fin"])
+    SKIP --> END
+    SEND --> END
+
+    classDef alert fill:#ffeaa7,stroke:#d63031,color:#2d3436;
+    classDef ok fill:#d4f5dd,stroke:#2ecc71,color:#1e272e;
+    class MSG3,SEND alert;
+    class NORMAL ok;
+```
+
+### Flujo 3 — Mensaje-puente del familiar (`/mensaje`)
+
+Un familiar le envía algo al adulto mayor usando el bot familiar; Aikiu lo entrega preservando el medio.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FAM as Familiar<br/>(Telegram)
+    participant FB as familiar_bot.py
+    participant G as Groq Whisper
+    participant TTS as edge-tts
+    participant RB as Bot principal<br/>(rosa_bot)
+    participant U as Adulto mayor
+
+    FAM->>FB: /mensaje
+    FB-->>FAM: "Enviá tu mensaje (texto o voz)"
+    FAM->>FB: Texto o nota de voz
+
+    alt Es nota de voz
+        FB->>G: Transcribir audio
+        G-->>FB: Texto transcripto
+    end
+
+    FB->>FB: nombre_para_rosa()<br/>obtiene alias del familiar
+    FB->>FB: Construye "[Nombre] te manda a decir: [texto]"
+
+    alt Original era voz
+        FB->>TTS: Sintetizar mensaje
+        TTS-->>FB: OGG
+        FB->>RB: send_voice() al chat de Rosa
+    else Original era texto
+        FB->>RB: send_message() al chat de Rosa
+    end
+
+    RB->>U: Mensaje del familiar
+    FB-->>FAM: "Listo, le mandé a Rosa: ..."
+```
+
+### Flujo 4 — Análisis nocturno (aprendizaje continuo)
+
+Job programado (default 23:30) que extrae aprendizajes nuevos y mejoras de conversación a partir del log del día.
+
+```mermaid
+flowchart TD
+    SCHED(["APScheduler dispara<br/>analisis_nocturno()"]) --> CHECK{"Existe<br/>logs/YYYY-MM-DD.md?"}
+    CHECK -->|"No"| END(["Fin sin hacer nada"])
+    CHECK -->|"Sí"| READ["Leer log del día completo"]
+    READ --> EXTR["Extraer sección<br/>## Aprendizajes actual<br/>de perfil.md"]
+    EXTR --> PROMPT["Armar prompt único:<br/>log + aprendizajes conocidos +<br/>instrucción de extraer novedades"]
+    PROMPT --> LLM["Groq Llama 3.3<br/>(temperature 0.2)"]
+    LLM --> PARSE["_parsear_seccion()<br/>extrae APRENDIZAJES_NUEVOS<br/>y AJUSTES_CONVERSACION"]
+    PARSE --> A{"¿Hay<br/>aprendizajes<br/>nuevos?"}
+    PARSE --> B{"¿Hay<br/>ajustes<br/>sugeridos?"}
+    A -->|"Sí"| WRITE_A["_actualizar_seccion_perfil()<br/>## Aprendizajes (con fecha)"]
+    A -->|"No"| END
+    B -->|"Sí"| WRITE_B["_actualizar_seccion_perfil()<br/>## Ajustes sugeridos (con fecha)"]
+    B -->|"No"| END
+    WRITE_A --> NEXT(["Mañana el system prompt<br/>incluye los nuevos aprendizajes"])
+    WRITE_B --> NEXT
+    NEXT --> END
+
+    classDef job fill:#dfe6e9,stroke:#0984e3,color:#2d3436;
+    classDef llm fill:#fdf6e3,stroke:#b58900,color:#073642;
+    class SCHED,LLM job;
+    class LLM llm;
+```
+
+### Flujo 5 — Alerta de inactividad
+
+Checks programados (default 11:30 y 19:00) que avisan a la familia si el adulto mayor lleva varias horas sin escribir.
+
+```mermaid
+flowchart TD
+    START(["APScheduler dispara<br/>verificar_inactividad()"]) --> ACTIVA{"alerta_inactividad.activa<br/>en config.yml?"}
+    ACTIVA -->|"No"| END(["Fin"])
+    ACTIVA -->|"Sí"| BASE{"_ultima_actividad<br/>definida?"}
+    BASE -->|"No (bot recién arrancó)"| END
+    BASE -->|"Sí"| CALC["horas = ahora − _ultima_actividad"]
+    CALC --> UMBRAL{"horas ≥<br/>horas_umbral<br/>(default 4)?"}
+    UMBRAL -->|"No"| END
+    UMBRAL -->|"Sí"| HOY{"¿Ya se alertó hoy?<br/>_alerta_inactividad_fecha"}
+    HOY -->|"Sí"| END
+    HOY -->|"No"| MARK["Marcar fecha de alerta hoy"]
+    MARK --> CHECKBOT{"family_bot<br/>configurado?"}
+    CHECKBOT -->|"No"| WARN["log.warning<br/>(no se envía)"]
+    CHECKBOT -->|"Sí"| NOTIFY["notify_inactividad()<br/>a todos los suscriptores"]
+    NOTIFY --> MSG["⚠️ Sin noticias de Rosa<br/>(N horas, último mensaje HH:MM)"]
+    MSG --> END
+    WARN --> END
+
+    classDef warn fill:#ffeaa7,stroke:#fdcb6e,color:#2d3436;
+    class MSG,NOTIFY warn;
+```
+
+### Flujo 6 — Saludo matutino proactivo
+
+Cada mañana a la hora configurada (`saludo_diario.hora`), Aikiu inicia la conversación con la temperatura del día.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as APScheduler
+    participant A as aikiu.py
+    participant W as wttr.in
+    participant TTS as edge-tts + ffmpeg
+    participant U as Adulto mayor
+
+    S->>A: cron HH:MM<br/>saludo_matutino(app)
+    A->>W: GET clima de la ciudad (config.yml)
+    alt Clima OK
+        W-->>A: temp_C, FeelsLikeC, ...
+        A->>A: Extrae temperatura y sensación<br/>arma frase de clima
+    else Clima falla
+        A->>A: log.warning + frase sin clima
+    end
+    A->>A: "Buenos días [nombre], soy [asistente]. <br/>Hoy hay X grados. ¿Cómo amaneciste?"
+    A->>TTS: Sintetizar saludo
+    TTS-->>A: OGG
+    A->>U: send_voice() saludo matutino
+```
 
 ---
 
