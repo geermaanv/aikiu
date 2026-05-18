@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/logo.png" alt="aikiu" width="220" />
+<img src="./assets/logo.svg" alt="aikiu" width="260" />
 
 ### La tranquilidad de estar conectado · Sin comprar nada
 

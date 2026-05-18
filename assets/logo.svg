@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200" role="img" aria-label="aikiu">
+  <title>aikiu</title>
+  <text
+    x="50%"
+    y="62%"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="'Playfair Display', 'Cormorant Garamond', 'EB Garamond', 'Didot', 'Bodoni 72', Georgia, 'Times New Roman', serif"
+    font-size="170"
+    font-weight="500"
+    letter-spacing="-2">
+    <tspan fill="#111111">aik</tspan><tspan font-style="italic" fill="#C5532C">iu</tspan>
+  </text>
+</svg>
