@@ -384,7 +384,45 @@ flowchart TD
     class MSG,NOTIFY warn;
 ```
 
-### Flujo 6 — Saludo matutino proactivo
+### Flujo 6 — Edición de perfil desde el bot familiar (`/editar`)
+
+Conversación multi-estado para que un familiar actualice una sección de `perfil.md`. Refleja `cmd_editar`, `elegir_seccion`, `recibir_contenido` y `cancelar` en `familiar_bot.py`, dentro de una `ConversationHandler` con estados `ELIGIENDO` y `RECIBIENDO`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Inicio: /editar
+
+    Inicio --> ELIGIENDO: es_suscriptor() OK<br/>responde con ReplyKeyboardMarkup<br/>(6 secciones + ❌ Cancelar)
+    Inicio --> [*]: No suscriptor →<br/>"Mandá /start"
+
+    ELIGIENDO --> ELIGIENDO: Texto no coincide<br/>con ninguna sección<br/>(unicodedata.normalize NFD<br/>+ ascii lower) →<br/>"Elegí una opción de la lista"
+    ELIGIENDO --> [*]: ❌ Cancelar → ReplyKeyboardRemove
+    ELIGIENDO --> [*]: /cancelar
+    ELIGIENDO --> RECIBIENDO: Sección válida →<br/>guarda en context.user_data['seccion']<br/>muestra contenido actual<br/>pide nuevo texto
+
+    RECIBIENDO --> [*]: /cancelar
+    RECIBIENDO --> EscrituraDisco: Texto recibido →<br/>actualizar_seccion()<br/>regex sub sobre perfil.md
+
+    EscrituraDisco --> [*]: ✓ "Sección actualizada"<br/>(reply al familiar)
+
+    note right of EscrituraDisco
+        perfil.md se reescribe en disco,
+        pero el bot principal NO recarga
+        en vivo (ver Modelo de procesos).
+        El cambio aplica al próximo reinicio.
+    end note
+```
+
+**Secciones editables** (constante `SECCIONES`):
+
+1. Quién es
+2. Familia y contactos cercanos
+3. Gustos y temas que la alegran
+4. Salud (para contexto, no para diagnosticar)
+5. Temas a manejar con cuidado
+6. Reglas del asistente
+
+### Flujo 7 — Saludo matutino proactivo
 
 Cada mañana a la hora configurada (`saludo_diario.hora`), Aikiu inicia la conversación con la temperatura del día.
 
