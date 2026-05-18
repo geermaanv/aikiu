@@ -10,6 +10,8 @@
 Sin comprar ningún dispositivo. Sin costo mensual para empezar.
 Solo necesitás el celular que ya tiene. Nada más.
 
+📱 **[Ver demo animado del flujo](./demo/index.html)** — abrí en cualquier navegador
+
 </div>
 
 ---

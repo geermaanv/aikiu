@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>aikiu — Sabés que está bien.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cream: #F5EFE6;
+  --cream-2: #EFE7DA;
+  --terracotta: #C5532C;
+  --terracotta-soft: #d96d4d;
+  --ink: #1a1a1a;
+  --muted: #6b6b6b;
+  --tg-header: #517da2;
+  --tg-blue: #4ea4eb;
+  --tg-bg: #efebe5;
+  --me-bubble: #d9fdd3;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #000;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+/* Vertical 9:16 viewport, scaled to fit window */
+.viewport {
+  width: min(56.25vh, 100vw);
+  height: min(100vh, 177.78vw);
+  background: var(--cream);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 80px rgba(0,0,0,0.5);
+}
+
+/* Background ambience */
+.viewport::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(217,109,77,0.08), transparent 50%),
+    radial-gradient(circle at 80% 90%, rgba(197,83,44,0.06), transparent 50%);
+  pointer-events: none;
+}
+
+/* Scene system */
+.scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 5vw;
+  pointer-events: none;
+}
+
+.scene.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ==================== INTRO / OUTRO ==================== */
+.brand {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: clamp(56px, 14vh, 120px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.brand .it {
+  color: var(--terracotta);
+  font-style: italic;
+}
+
+.tagline {
+  margin-top: 2.5vh;
+  font-size: clamp(11px, 1.6vh, 16px);
+  color: var(--muted);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.kicker {
+  position: absolute;
+  top: 6vh;
+  font-size: clamp(10px, 1.4vh, 14px);
+  color: var(--muted);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0;
+}
+
+.scene.active .kicker {
+  animation: kickerIn 0.6s 0.2s ease forwards;
+}
+
+@keyframes kickerIn {
+  to { opacity: 1; }
+}
+
+.scene.active .brand {
+  animation: brandIn 0.9s 0.3s cubic-bezier(0.2,0.7,0.2,1) forwards;
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@keyframes brandIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scene.active .tagline {
+  animation: tagIn 0.6s 0.9s ease forwards;
+  opacity: 0;
+}
+@keyframes tagIn { to { opacity: 1; } }
+
+.outro-cta {
+  margin-top: 3vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1vh;
+  opacity: 0;
+}
+.scene.active .outro-cta {
+  animation: tagIn 0.6s 1.4s ease forwards;
+}
+.outro-cta .pill {
+  font-size: clamp(11px, 1.5vh, 14px);
+  background: var(--ink);
+  color: var(--cream);
+  padding: 0.8vh 2vh;
+  border-radius: 100px;
+  letter-spacing: 0.06em;
+}
+.outro-cta .url {
+  font-size: clamp(10px, 1.3vh, 13px);
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+}
+
+/* ==================== PHONE MOCKUP ==================== */
+.phone-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2vh;
+}
+
+.phone {
+  width: clamp(260px, 36vh, 340px);
+  aspect-ratio: 9/18.5;
+  background: white;
+  border-radius: 32px;
+  border: 8px solid #0d0d0d;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.05);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(20px) scale(0.96);
+}
+
+.scene.active .phone {
+  animation: phoneIn 0.7s 0.1s cubic-bezier(0.2,0.7,0.2,1) forwards;
+}
+
+@keyframes phoneIn {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.phone-notch {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 18px;
+  background: #0d0d0d;
+  border-radius: 0 0 12px 12px;
+  z-index: 100;
+}
+
+/* Telegram header */
+.tg-header {
+  background: linear-gradient(to bottom, #5a8aaf, #4d7ca0);
+  color: white;
+  padding: 30px 10px 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.tg-back {
+  font-size: 18px;
+  opacity: 0.9;
+  margin-right: -3px;
+}
+
+.tg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--terracotta-soft), var(--terracotta));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: 'Playfair Display', Georgia, serif;
+  flex-shrink: 0;
+}
+
+.tg-info { flex: 1; min-width: 0; }
+.tg-name { font-weight: 600; font-size: 13px; line-height: 1.2; }
+.tg-status { font-size: 10px; opacity: 0.85; margin-top: 1px; }
+
+.tg-chat {
+  flex: 1;
+  background: var(--tg-bg);
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(0,0,0,0.03) 0%, transparent 40%);
+  padding: 10px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 82%;
+  padding: 6px 9px 5px;
+  border-radius: 11px;
+  font-size: 11.5px;
+  line-height: 1.32;
+  word-wrap: break-word;
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  box-shadow: 0 1px 1px rgba(0,0,0,0.07);
+  position: relative;
+}
+
+.bubble.bot {
+  background: white;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  color: #111;
+}
+
+.bubble.me {
+  background: var(--me-bubble);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+  color: #111;
+}
+
+.bubble .time {
+  display: inline-block;
+  font-size: 9px;
+  color: #8c8c8c;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+
+/* Bubbles inside an active scene animate in sequence using --d delay var */
+.scene.active .bubble {
+  animation: bubbleIn 0.4s cubic-bezier(0.2,0.7,0.2,1) forwards;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes bubbleIn {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Typing indicator */
+.typing {
+  display: flex;
+  gap: 3px;
+  padding: 7px 10px;
+  background: white;
+  border-radius: 11px;
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+  align-items: center;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.07);
+  opacity: 0;
+}
+.typing span {
+  width: 5px; height: 5px;
+  background: #999;
+  border-radius: 50%;
+  animation: typingDot 1.2s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.18s; }
+.typing span:nth-child(3) { animation-delay: 0.36s; }
+
+.scene.active .typing {
+  animation: bubbleIn 0.3s forwards;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes typingDot {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+
+/* Voice note */
+.voice-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.voice-play {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--tg-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.voice-play svg { width: 12px; height: 12px; }
+
+.voice-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+
+.voice-bar {
+  width: 2px;
+  background: var(--tg-blue);
+  border-radius: 2px;
+  opacity: 0.55;
+  height: 30%;
+}
+
+.voice-time {
+  font-size: 9.5px;
+  color: #555;
+  margin-top: 1px;
+}
+
+/* Animated waveform when "playing" */
+.scene.active .voice-bubble.playing .voice-bar {
+  animation: barPulse 1.2s ease-in-out infinite;
+  opacity: 1;
+}
+
+.scene.active .voice-bubble.playing .voice-bar:nth-child(1) { animation-delay: 0s; height: 30%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(2) { animation-delay: 0.1s; height: 60%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(3) { animation-delay: 0.15s; height: 90%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(4) { animation-delay: 0.2s; height: 50%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(5) { animation-delay: 0.25s; height: 80%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(6) { animation-delay: 0.3s; height: 95%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(7) { animation-delay: 0.35s; height: 40%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(8) { animation-delay: 0.4s; height: 70%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(9) { animation-delay: 0.45s; height: 55%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(10) { animation-delay: 0.5s; height: 85%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(11) { animation-delay: 0.55s; height: 65%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(12) { animation-delay: 0.6s; height: 95%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(13) { animation-delay: 0.65s; height: 50%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(14) { animation-delay: 0.7s; height: 75%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(15) { animation-delay: 0.75s; height: 90%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(16) { animation-delay: 0.8s; height: 35%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(17) { animation-delay: 0.85s; height: 60%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(18) { animation-delay: 0.9s; height: 80%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(19) { animation-delay: 0.95s; height: 45%; }
+.scene.active .voice-bubble.playing .voice-bar:nth-child(20) { animation-delay: 1.0s; height: 70%; }
+
+@keyframes barPulse {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+/* Input bar at bottom of phone */
+.tg-input {
+  background: white;
+  padding: 8px 10px;
+  border-top: 1px solid #e6e3df;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #999;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.tg-input .field {
+  flex: 1;
+  background: #f5f3ef;
+  border-radius: 16px;
+  padding: 5px 10px;
+  color: #999;
+  font-size: 11px;
+}
+
+.tg-input .mic {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--tg-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+/* Recording state */
+.tg-input.recording .field {
+  background: #fff0f0;
+  color: #c0392b;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tg-input.recording .field::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c0392b;
+  animation: recordDot 1s infinite;
+}
+@keyframes recordDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Caption (below or above phone) */
+.caption {
+  position: absolute;
+  bottom: 4vh;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: clamp(13px, 1.9vh, 18px);
+  font-weight: 500;
+  color: var(--ink);
+  padding: 0 6vw;
+  line-height: 1.4;
+  opacity: 0;
+}
+
+.caption.top {
+  bottom: auto;
+  top: 4vh;
+}
+
+.scene.active .caption {
+  animation: tagIn 0.6s 0.8s ease forwards;
+}
+
+.caption strong {
+  color: var(--terracotta);
+  font-weight: 600;
+}
+
+/* Big text scene */
+.big-text {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: clamp(42px, 9vh, 80px);
+  font-weight: 500;
+  color: var(--ink);
+  text-align: center;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.big-text em {
+  color: var(--terracotta);
+  font-style: italic;
+  font-weight: 500;
+}
+.big-text .sub {
+  display: block;
+  margin-top: 2vh;
+  font-size: clamp(14px, 2vh, 20px);
+  font-weight: 400;
+  font-style: normal;
+  font-family: 'Inter', sans-serif;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+/* Mini header label */
+.mini-label {
+  position: absolute;
+  top: 5vh;
+  font-size: clamp(10px, 1.3vh, 13px);
+  color: var(--terracotta);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: rgba(197,83,44,0.08);
+  padding: 0.6vh 1.6vh;
+  border-radius: 100px;
+  opacity: 0;
+}
+.scene.active .mini-label {
+  animation: tagIn 0.4s 0.3s ease forwards;
+}
+
+/* Progress bar */
+.progress {
+  position: absolute;
+  top: 0; left: 0;
+  height: 3px;
+  background: var(--terracotta);
+  width: 0%;
+  z-index: 1000;
+  transition: width 0.1s linear;
+}
+
+/* Click to restart hint */
+.restart-hint {
+  position: absolute;
+  bottom: 1.4vh;
+  right: 1.8vh;
+  font-size: clamp(9px, 1.1vh, 11px);
+  color: var(--muted);
+  opacity: 0.5;
+  z-index: 999;
+  font-family: 'Inter', sans-serif;
+}
+
+/* No-phone illustration: hands/heart bg for emotion */
+.heart-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.06;
+}
+.heart-bg svg {
+  width: 70%;
+  max-width: 400px;
+  color: var(--terracotta);
+}
+
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="viewport" id="viewport">
+    <div class="progress" id="progress"></div>
+
+    <!-- ============== SCENE 0: INTRO ============== -->
+    <div class="scene" id="s0">
+      <div class="kicker">aikiu · open source</div>
+      <div class="brand">a<span>i</span>k<span class="it">iu</span></div>
+      <div class="tagline">La tranquilidad de estar conectado</div>
+    </div>
+
+    <!-- ============== SCENE 1: GERMÁN ABRE EL BOT FAMILIAR ============== -->
+    <div class="scene" id="s1">
+      <div class="mini-label">El hijo</div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="tg-header">
+            <span class="tg-back">‹</span>
+            <div class="tg-avatar">C</div>
+            <div class="tg-info">
+              <div class="tg-name">Clara · familiar</div>
+              <div class="tg-status">bot</div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="bubble bot" style="--d:0.6s">Hola Germán, ya estabas registrado.<span class="time">21:42</span></div>
+            <div class="bubble bot" style="--d:0.9s">/mensaje — enviarle un mensaje a Rosa<br>/perfil — ver el perfil<br>/editar — editar una sección<span class="time">21:42</span></div>
+            <div class="bubble me" style="--d:2.6s">/mensaje<span class="time">21:43</span></div>
+          </div>
+          <div class="tg-input">
+            <div class="field">Escribí un mensaje</div>
+            <div class="mic">🎤</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Germán quiere hablarle a su mamá.</div>
+    </div>
+
+    <!-- ============== SCENE 2: BOT PIDE EL MENSAJE ============== -->
+    <div class="scene" id="s2">
+      <div class="mini-label">Clara responde</div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="tg-header">
+            <span class="tg-back">‹</span>
+            <div class="tg-avatar">C</div>
+            <div class="tg-info">
+              <div class="tg-name">Clara · familiar</div>
+              <div class="tg-status">bot</div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="bubble me" style="--d:0.3s">/mensaje<span class="time">21:43</span></div>
+            <div class="typing" style="--d:0.9s"><span></span><span></span><span></span></div>
+            <div class="bubble bot" style="--d:2.2s">Enviá tu mensaje para Rosa (texto o nota de voz). /cancelar para salir.<span class="time">21:43</span></div>
+          </div>
+          <div class="tg-input">
+            <div class="field">Escribí un mensaje</div>
+            <div class="mic">🎤</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Le pide que grabe lo que quiere decir.</div>
+    </div>
+
+    <!-- ============== SCENE 3: GERMÁN GRABA Y ENVÍA ============== -->
+    <div class="scene" id="s3">
+      <div class="mini-label">El audio</div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="tg-header">
+            <span class="tg-back">‹</span>
+            <div class="tg-avatar">C</div>
+            <div class="tg-info">
+              <div class="tg-name">Clara · familiar</div>
+              <div class="tg-status">bot</div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="bubble bot" style="--d:0.3s">Enviá tu mensaje para Rosa (texto o nota de voz).<span class="time">21:43</span></div>
+            <div class="bubble me voice-bubble playing" style="--d:2.6s; padding: 6px 10px;">
+              <div class="voice-play">
+                <svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div class="voice-content">
+                <div class="voice-wave">
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                </div>
+                <div class="voice-time">0:08</div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-input recording" id="rec-input">
+            <div class="field">grabando... 0:08</div>
+            <div class="mic" style="background:#c0392b">⬛</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">"¿Cómo amaneciste, ma? Acordate de los remedios. Te quiero."</div>
+    </div>
+
+    <!-- ============== SCENE 4: CONFIRMACIÓN ============== -->
+    <div class="scene" id="s4">
+      <div class="mini-label">Entregado</div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="tg-header">
+            <span class="tg-back">‹</span>
+            <div class="tg-avatar">C</div>
+            <div class="tg-info">
+              <div class="tg-name">Clara · familiar</div>
+              <div class="tg-status">bot</div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="bubble me voice-bubble" style="--d:0.2s; padding: 6px 10px;">
+              <div class="voice-play">
+                <svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div class="voice-content">
+                <div class="voice-wave">
+                  <div class="voice-bar" style="height:30%"></div><div class="voice-bar" style="height:60%"></div><div class="voice-bar" style="height:90%"></div>
+                  <div class="voice-bar" style="height:50%"></div><div class="voice-bar" style="height:80%"></div><div class="voice-bar" style="height:95%"></div>
+                  <div class="voice-bar" style="height:40%"></div><div class="voice-bar" style="height:70%"></div><div class="voice-bar" style="height:55%"></div>
+                  <div class="voice-bar" style="height:85%"></div><div class="voice-bar" style="height:65%"></div><div class="voice-bar" style="height:95%"></div>
+                  <div class="voice-bar" style="height:50%"></div><div class="voice-bar" style="height:75%"></div><div class="voice-bar" style="height:90%"></div>
+                  <div class="voice-bar" style="height:35%"></div><div class="voice-bar" style="height:60%"></div><div class="voice-bar" style="height:80%"></div>
+                </div>
+                <div class="voice-time">0:08</div>
+              </div>
+            </div>
+            <div class="typing" style="--d:1.0s"><span></span><span></span><span></span></div>
+            <div class="bubble bot" style="--d:2.4s">Listo, le mandé a Rosa: "Germán te manda a decir: ¿Cómo amaneciste, ma? Acordate de los remedios. Te quiero."<span class="time">21:43</span></div>
+          </div>
+          <div class="tg-input">
+            <div class="field">Escribí un mensaje</div>
+            <div class="mic">🎤</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">En segundos, Rosa lo escucha con la voz de Clara.</div>
+    </div>
+
+    <!-- ============== SCENE 5: TRANSICIÓN ============== -->
+    <div class="scene" id="s5">
+      <div class="big-text">
+        Mientras<br><em>tanto...</em>
+      </div>
+    </div>
+
+    <!-- ============== SCENE 6: ROSA RECIBE EL AUDIO ============== -->
+    <div class="scene" id="s6">
+      <div class="mini-label">La abuela</div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="tg-header">
+            <span class="tg-back">‹</span>
+            <div class="tg-avatar">C</div>
+            <div class="tg-info">
+              <div class="tg-name">Clara</div>
+              <div class="tg-status">en línea</div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="bubble bot" style="--d:0.3s">Buenos días Rosa, soy Clara. Hoy en Olivos hay 18 grados. ¿Cómo amaneciste hoy?<span class="time">08:30</span></div>
+            <div class="bubble bot voice-bubble playing" style="--d:1.8s; padding: 6px 10px;">
+              <div class="voice-play">
+                <svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div class="voice-content">
+                <div class="voice-wave">
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                  <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                </div>
+                <div class="voice-time">0:09 · reproduciendo</div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-input">
+            <div class="field">Escribí un mensaje</div>
+            <div class="mic">🎤</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Sin instalar nada. Sin aprender nada nuevo. <strong>Solo escuchar.</strong></div>
+    </div>
+
+    <!-- ============== SCENE 7: TEXTO EMOCIONAL ============== -->
+    <div class="scene" id="s7">
+      <div class="heart-bg">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      </div>
+      <div class="big-text">
+        Sabés que<br><em>está bien.</em>
+        <span class="sub">No necesitás llamar para saberlo.</span>
+      </div>
+    </div>
+
+    <!-- ============== SCENE 8: OUTRO ============== -->
+    <div class="scene" id="s8">
+      <div class="kicker">Sin comprar nada · Open source</div>
+      <div class="brand">a<span>i</span>k<span class="it">iu</span></div>
+      <div class="tagline">El acompañante de IA para tu adulto mayor</div>
+      <div class="outro-cta">
+        <div class="pill">github.com/geermaanv/aikiu</div>
+        <div class="url">solo necesita un celular con Telegram</div>
+      </div>
+    </div>
+
+    <div class="restart-hint">click para reiniciar</div>
+  </div>
+</div>
+
+<script>
+const scenes = [
+  { id: 's0', dur: 3200 },   // intro
+  { id: 's1', dur: 5200 },   // germán abre /mensaje
+  { id: 's2', dur: 4200 },   // bot pide mensaje
+  { id: 's3', dur: 5500 },   // graba y envía audio
+  { id: 's4', dur: 5200 },   // confirmación
+  { id: 's5', dur: 2400 },   // transición "mientras tanto"
+  { id: 's6', dur: 5800 },   // rosa recibe
+  { id: 's7', dur: 4200 },   // sabes que está bien
+  { id: 's8', dur: 5000 },   // outro / CTA
+];
+
+const totalDuration = scenes.reduce((a, s) => a + s.dur, 0);
+let currentIdx = 0;
+let timer = null;
+let progressInterval = null;
+let progressStart = 0;
+
+function setActive(idx) {
+  document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+  const scene = scenes[idx];
+  const el = document.getElementById(scene.id);
+  // Force CSS animation restart by re-flowing
+  el.classList.remove('active');
+  void el.offsetHeight;
+  el.classList.add('active');
+}
+
+function startProgress() {
+  progressStart = performance.now();
+  const bar = document.getElementById('progress');
+  clearInterval(progressInterval);
+  progressInterval = setInterval(() => {
+    const elapsed = performance.now() - progressStart;
+    const pct = Math.min(100, (elapsed / totalDuration) * 100);
+    bar.style.width = pct + '%';
+    if (pct >= 100) clearInterval(progressInterval);
+  }, 80);
+}
+
+function playScene(idx) {
+  clearTimeout(timer);
+  setActive(idx);
+  timer = setTimeout(() => {
+    const next = (idx + 1) % scenes.length;
+    if (next === 0) {
+      // restart progress
+      document.getElementById('progress').style.width = '0%';
+      startProgress();
+    }
+    playScene(next);
+  }, scenes[idx].dur);
+}
+
+function start() {
+  currentIdx = 0;
+  document.getElementById('progress').style.width = '0%';
+  startProgress();
+  playScene(0);
+}
+
+// Auto-start on load
+window.addEventListener('load', start);
+
+// Click to restart
+document.querySelector('.stage').addEventListener('click', () => {
+  start();
+});
+
+// Pause on spacebar (nice-to-have)
+let paused = false;
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (paused) {
+      start();
+    } else {
+      clearTimeout(timer);
+      clearInterval(progressInterval);
+    }
+    paused = !paused;
+  }
+});
+</script>
+
+</body>
+</html>
