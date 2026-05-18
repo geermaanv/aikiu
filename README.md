@@ -15,20 +15,21 @@ No requiere hardware especial: corre en cualquier computadora con Python.
 3. [Arquitectura](#arquitectura)
 4. [Diagramas de flujo](#diagramas-de-flujo)
 5. [Stack técnico](#stack-técnico)
-6. [Estructura del repositorio](#estructura-del-repositorio)
-7. [Requisitos previos](#requisitos-previos)
-8. [Instalación](#instalación)
-9. [Configuración](#configuración)
-10. [Uso](#uso)
-11. [Comandos del bot familiar](#comandos-del-bot-familiar)
-12. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
-13. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
-14. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
-15. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
-16. [Tests](#tests)
-17. [Seguridad y privacidad](#seguridad-y-privacidad)
-18. [Roadmap](#roadmap)
-19. [Licencia](#licencia)
+6. [Modelo de procesos y persistencia](#modelo-de-procesos-y-persistencia)
+7. [Estructura del repositorio](#estructura-del-repositorio)
+8. [Requisitos previos](#requisitos-previos)
+9. [Instalación](#instalación)
+10. [Configuración](#configuración)
+11. [Uso](#uso)
+12. [Comandos del bot familiar](#comandos-del-bot-familiar)
+13. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
+14. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
+15. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
+16. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
+17. [Tests](#tests)
+18. [Seguridad y privacidad](#seguridad-y-privacidad)
+19. [Roadmap](#roadmap)
+20. [Licencia](#licencia)
 
 ---
 
@@ -96,31 +97,66 @@ Pre-routing determinístico por keywords: la consulta a la API ocurre **antes** 
 
 ## Arquitectura
 
+Dos procesos Python independientes, sin servidor propio, sin base de datos. Ambos hacen **long-polling** a Telegram y comparten estado mediante archivos en disco. La comunicación entre los dos bots ocurre **a través de la API de Telegram**, no por IPC interno.
+
 ```mermaid
 flowchart LR
-    subgraph TG_USR["Telegram"]
-        USR["Adulto mayor"]
-    end
-    subgraph TG_FAM["Telegram"]
-        FAM["Familiares"]
+    USR["👤 Adulto mayor<br/>(Telegram)"]
+    FAM["👥 Familiares<br/>(Telegram)"]
+
+    subgraph TG["Telegram Bot API"]
+        BOTA["Bot principal"]
+        BOTF["Bot familiar"]
     end
 
-    USR <-->|"voz / texto"| AIKIU["aikiu.py<br/>(Bot principal)"]
-    AIKIU -->|"STT + LLM"| GROQ["Groq Cloud<br/>Whisper + Llama 3.3"]
-    AIKIU -->|"clima / dólar / noticias"| EXT["APIs externas<br/>wttr.in · dolarapi · La Nación"]
-    AIKIU -->|"distress ≥ 1<br/>inactividad"| FAMBOT["familiar_bot.py<br/>(Bot familiar)"]
-    FAM <-->|"/editar /mensaje<br/>/perfil /suscriptores"| FAMBOT
-    FAMBOT -->|"mensaje-puente"| AIKIU
-    AIKIU <--> STORE[("perfil.md<br/>logs/<br/>familiares.json")]
-    FAMBOT <--> STORE
+    subgraph HOST["Host (Mac / Linux / Windows)"]
+        AIKIU["aikiu.py<br/>(proceso 1)"]
+        FAMBOT["familiar_bot.py<br/>(proceso 2)"]
+        subgraph STORE["Archivos en disco (compartidos)"]
+            PERFIL[("perfil.md")]
+            FAMJSON[("familiares.json")]
+            LOGS[("logs/YYYY-MM-DD.md")]
+            CFG[("config.yml + .env")]
+        end
+    end
+
+    GROQ["☁️ Groq Cloud<br/>Whisper large-v3<br/>Llama 3.3 70B"]
+    EXT["🌐 APIs públicas<br/>wttr.in · dolarapi · La Nación RSS"]
+
+    USR <-->|"voz / texto"| BOTA
+    FAM <-->|"/editar /mensaje<br/>/perfil /suscriptores"| BOTF
+
+    BOTA <--> AIKIU
+    BOTF <--> FAMBOT
+
+    AIKIU -->|"STT + LLM<br/>(async)"| GROQ
+    AIKIU -->|"clima / dólar / noticias<br/>(httpx async)"| EXT
+    FAMBOT -->|"STT para voz<br/>de familiares"| GROQ
+
+    AIKIU -.->|"alerta distress<br/>vía Bot(FAMILIAR_TOKEN)"| BOTF
+    FAMBOT -.->|"mensaje-puente<br/>vía Bot(BOT_TOKEN)"| BOTA
+
+    AIKIU <--> PERFIL
+    AIKIU --> LOGS
+    AIKIU <--> CFG
+    FAMBOT <--> PERFIL
+    FAMBOT <--> FAMJSON
+    FAMBOT <--> CFG
 
     classDef ext fill:#fdf6e3,stroke:#b58900,color:#073642;
     classDef bot fill:#eee8d5,stroke:#268bd2,color:#073642;
     classDef store fill:#e0e0e0,stroke:#586e75,color:#073642;
     class GROQ,EXT ext;
-    class AIKIU,FAMBOT bot;
-    class STORE store;
+    class AIKIU,FAMBOT,BOTA,BOTF bot;
+    class STORE,PERFIL,FAMJSON,LOGS,CFG store;
 ```
+
+**Puntos clave:**
+- Los dos bots de Telegram son cuentas distintas creadas en BotFather y reciben actualizaciones por long-polling (`drop_pending_updates=True`).
+- Para enviarle alertas al bot familiar, `aikiu.py` crea su propia instancia `Bot(token=FAMILIAR_BOT_TOKEN)` y la guarda en `app.bot_data["family_bot"]`.
+- Para enviarle mensajes-puente al bot principal, `familiar_bot.py` instancia `Bot(token=ROSA_BOT_TOKEN)` on-demand dentro de un `async with`.
+- No hay IPC ni base de datos: el estado persistente es `perfil.md`, `familiares.json` y `logs/`.
+- El estado en memoria (historial, `_ultima_actividad`, cooldowns, fecha de última alerta de inactividad) se pierde al reiniciar el bot.
 
 ---
 
@@ -128,7 +164,7 @@ flowchart LR
 
 ### Flujo 1 — Mensaje de voz (entrada → respuesta)
 
-Desde que el adulto mayor envía una nota de voz hasta que recibe la respuesta de Aikiu.
+Desde que el adulto mayor envía una nota de voz hasta que recibe la respuesta de Aikiu. Refleja `handle_message()` + `generar_respuesta()` en `aikiu.py`.
 
 ```mermaid
 sequenceDiagram
@@ -136,67 +172,87 @@ sequenceDiagram
     participant U as Adulto mayor<br/>(Telegram)
     participant A as aikiu.py
     participant G as Groq<br/>(Whisper + Llama)
-    participant E as APIs externas<br/>(clima/dólar/noticias)
+    participant E as APIs externas<br/>(wttr.in / dolarapi / La Nación)
     participant TTS as edge-tts + ffmpeg
-    participant L as logs/ + perfil.md
-    participant F as familiar_bot.py
+    participant L as logs/<br/>(append diario)
+    participant FBOT as Bot familiar<br/>(via Telegram API)
 
-    U->>A: Nota de voz (OGG)
-    A->>A: Descarga OGG a temp
-    A->>G: Transcribir (Whisper large-v3)
+    U->>A: Nota de voz (OGG/Opus)
+    A->>A: chat_id_autorizado()<br/>(rechaza si no es CHAT_ID)
+    A->>U: send_chat_action(record_voice)
+    A->>A: tempdir + download_to_drive
+    A->>G: transcribir() Whisper large-v3<br/>(language="es", format="text")
     G-->>A: Texto transcripto
 
-    A->>A: _pre_route() detecta keywords
-    alt Hay keywords (clima/dólar/noticias)
-        A->>E: HTTP GET datos en tiempo real
-        E-->>A: Datos (temp, cotización, titulares)
+    alt Transcripción vacía
+        A->>TTS: "No te escuché bien, ¿podés repetir?"
+        TTS-->>A: OGG
+        A->>U: send_voice() y termina
     end
 
-    A->>A: Construye system prompt<br/>(perfil + fecha + reglas distress)
-    A->>G: chat.completions (historial + datos)
-    G-->>A: Respuesta + DISTRESS_LEVEL
+    A->>A: generar_respuesta()<br/>construir_system_prompt(perfil + fecha + reglas distress)
+    A->>A: messages = [system] + historial[-10:]
+    A->>A: _pre_route() detecta keywords
+    alt Hay keywords (clima/dólar/noticias)
+        A->>E: httpx.AsyncClient GET
+        E-->>A: Datos en tiempo real
+        A->>A: Append system message con datos
+    end
+    A->>A: Append user message
+    A->>G: chat.completions.create<br/>(llama-3.3-70b, temp=0.7, max_tokens=300)
+    G-->>A: Texto + línea "DISTRESS_LEVEL: N"
 
-    A->>A: parse_llm_response()<br/>separa texto y nivel
+    A->>A: parse_llm_response()<br/>separa texto limpio y nivel 0-3
+    A->>A: historial.append(user + assistant)<br/>(memoria, crece sin límite)
 
-    A->>TTS: Sintetizar respuesta a MP3 → OGG/Opus
+    A->>TTS: sintetizar() MP3 → ffmpeg → OGG/Opus
     TTS-->>A: archivo OGG
-
     A->>U: send_voice() respuesta hablada
 
-    par En background
-        A->>L: registrar_log()
-    and
-        opt distress ≥ 1 y sin cooldown
-            A->>F: notify_family() alerta
-        end
+    A->>A: _ultima_actividad = now()<br/>(para alerta de inactividad)
+    A->>L: registrar_log() (sync, append a YYYY-MM-DD.md)
+
+    opt should_send_alert(distress_level)
+        A->>A: record_alert_sent()
+        A-)FBOT: create_background_task(notify_family())<br/>(no bloquea, strong ref en _background_tasks)
     end
 ```
 
 ### Flujo 2 — Detección de angustia y alerta
 
-Cómo se clasifica el riesgo emocional y cuándo se dispara la alerta a los familiares.
+Cómo se clasifica el riesgo emocional y cuándo se dispara la alerta a los familiares. Refleja `core/distress.py` + `core/alerts.py`.
 
 ```mermaid
 flowchart TD
-    START(["LLM responde con DISTRESS_LEVEL: 0-3"]) --> PARSE["parse_llm_response()<br/>extrae nivel y limpia texto"]
+    START(["LLM responde con línea<br/>DISTRESS_LEVEL: 0-3"]) --> PARSE["parse_llm_response()<br/>regex extrae nivel y limpia el texto<br/>(si falta la línea → nivel=0)"]
     PARSE --> NIVEL{"Nivel?"}
 
-    NIVEL -->|"0"| NORMAL["Sin alerta<br/>(conversación normal)"]
-    NIVEL -->|"1"| C1{"Pasó 60 min<br/>desde última<br/>alerta nivel 1?"}
-    NIVEL -->|"2"| C2{"Pasaron 30 min<br/>desde última<br/>alerta nivel 2?"}
-    NIVEL -->|"3"| C3["Sin cooldown<br/>(emergencia)"]
+    NIVEL -->|"0"| NORMAL["should_send_alert(0) = False<br/>Sin alerta"]
+    NIVEL -->|"1"| FIRST1{"¿Hay alerta nivel 1<br/>previa en memoria?"}
+    NIVEL -->|"2"| FIRST2{"¿Hay alerta nivel 2<br/>previa en memoria?"}
+    NIVEL -->|"3"| C3["cooldown = 0<br/>(emergencia → siempre alerta)"]
 
-    C1 -->|"No"| SKIP["Saltar alerta<br/>(silenciar duplicados)"]
-    C1 -->|"Sí"| MSG1["🟡 Posible malestar"]
+    FIRST1 -->|"No"| MSG1["🟡 Posible malestar"]
+    FIRST1 -->|"Sí"| C1{"¿Pasaron > 60 min<br/>desde esa alerta?"}
+    C1 -->|"No"| SKIP["Silenciado por cooldown"]
+    C1 -->|"Sí"| MSG1
+
+    FIRST2 -->|"No"| MSG2["🟠 Angustia presente"]
+    FIRST2 -->|"Sí"| C2{"¿Pasaron > 30 min<br/>desde esa alerta?"}
     C2 -->|"No"| SKIP
-    C2 -->|"Sí"| MSG2["🟠 Angustia presente"]
+    C2 -->|"Sí"| MSG2
+
     C3 --> MSG3["🔴 ALERTA URGENTE"]
 
-    MSG1 --> RECORD["record_alert_sent()"]
+    MSG1 --> RECORD["record_alert_sent(nivel)<br/>_last_alert_time[nivel] = now"]
     MSG2 --> RECORD
     MSG3 --> RECORD
-    RECORD --> SUBS["Cargar suscriptores<br/>(familiares.json)"]
-    SUBS --> SEND["notify_family() →<br/>send_message a cada familiar<br/>con timestamp + extracto"]
+    RECORD --> SUBS["cargar_suscriptores()<br/>lee familiares.json"]
+    SUBS --> FALLBACK{"¿Lista vacía<br/>y FAMILIAR_CHAT_ID set?"}
+    FALLBACK -->|"Sí"| FB["Usa FAMILIAR_CHAT_ID<br/>como único destinatario"]
+    FALLBACK -->|"No"| LOOP["Para cada chat_id"]
+    FB --> LOOP
+    LOOP --> SEND["family_bot.send_message<br/>(Markdown, timestamp,<br/>extracto[:200] de Rosa + bot)"]
 
     NORMAL --> END(["Fin"])
     SKIP --> END
@@ -210,7 +266,7 @@ flowchart TD
 
 ### Flujo 3 — Mensaje-puente del familiar (`/mensaje`)
 
-Un familiar le envía algo al adulto mayor usando el bot familiar; Aikiu lo entrega preservando el medio.
+Un familiar le envía algo al adulto mayor usando el bot familiar; Aikiu lo entrega preservando el medio. Refleja `cmd_mensaje` + `recibir_mensaje_familiar` en `familiar_bot.py`, dentro de una `ConversationHandler` (estado `ESPERANDO_MENSAJE`).
 
 ```mermaid
 sequenceDiagram
@@ -218,84 +274,110 @@ sequenceDiagram
     participant FAM as Familiar<br/>(Telegram)
     participant FB as familiar_bot.py
     participant G as Groq Whisper
-    participant TTS as edge-tts
-    participant RB as Bot principal<br/>(rosa_bot)
+    participant TTS as edge-tts + ffmpeg
+    participant RB as Bot(token=ROSA_BOT_TOKEN)<br/>(instancia efímera<br/>creada en familiar_bot)
     participant U as Adulto mayor
 
     FAM->>FB: /mensaje
-    FB-->>FAM: "Enviá tu mensaje (texto o voz)"
+    FB->>FB: es_suscriptor(chat_id)?
+    alt No es suscriptor
+        FB-->>FAM: "Mandá /start para registrarte"
+    end
+    FB->>FB: Validar ROSA_BOT_TOKEN<br/>y ROSA_CHAT_ID en .env
+    FB-->>FAM: "Enviá tu mensaje (texto o nota de voz). /cancelar para salir"
+    Note over FB: state = ESPERANDO_MENSAJE
+
     FAM->>FB: Texto o nota de voz
+    FB->>FB: nombre_para_rosa(chat_id)<br/>fallback = first_name de Telegram
 
     alt Es nota de voz
-        FB->>G: Transcribir audio
+        FB->>FB: Validar GROQ_API_KEY
+        FB->>G: AsyncGroq.audio.transcriptions.create<br/>(Whisper large-v3, es)
         G-->>FB: Texto transcripto
+        alt Error transcribiendo
+            FB-->>FAM: "No pude transcribir, probá texto"
+            Note over FB: state = ESPERANDO_MENSAJE (reintento)
+        end
     end
 
-    FB->>FB: nombre_para_rosa()<br/>obtiene alias del familiar
     FB->>FB: Construye "[Nombre] te manda a decir: [texto]"
 
+    FB->>RB: async with Bot(token=ROSA_BOT_TOKEN)<br/>(NO usa el bot principal directamente)
     alt Original era voz
-        FB->>TTS: Sintetizar mensaje
-        TTS-->>FB: OGG
-        FB->>RB: send_voice() al chat de Rosa
+        FB->>TTS: sintetizar() con voz_tts de config.yml
+        TTS-->>FB: OGG/Opus
+        FB->>RB: send_voice(chat_id=ROSA_CHAT_ID)
     else Original era texto
-        FB->>RB: send_message() al chat de Rosa
+        FB->>RB: send_message(chat_id=ROSA_CHAT_ID)
     end
+    RB->>U: Mensaje entregado vía Telegram
 
-    RB->>U: Mensaje del familiar
     FB-->>FAM: "Listo, le mandé a Rosa: ..."
+    Note over FB: state = ConversationHandler.END
 ```
 
 ### Flujo 4 — Análisis nocturno (aprendizaje continuo)
 
-Job programado (default 23:30) que extrae aprendizajes nuevos y mejoras de conversación a partir del log del día.
+Job programado (default 23:30) que extrae aprendizajes nuevos y mejoras de conversación a partir del log del día. Refleja `analisis_nocturno()` en `aikiu.py`.
 
 ```mermaid
 flowchart TD
-    SCHED(["APScheduler dispara<br/>analisis_nocturno()"]) --> CHECK{"Existe<br/>logs/YYYY-MM-DD.md?"}
+    SCHED(["APScheduler.cron<br/>analisis_nocturno_hora"]) --> CHECK{"¿Existe<br/>logs/YYYY-MM-DD.md?"}
     CHECK -->|"No"| END(["Fin sin hacer nada"])
-    CHECK -->|"Sí"| READ["Leer log del día completo"]
-    READ --> EXTR["Extraer sección<br/>## Aprendizajes actual<br/>de perfil.md"]
-    EXTR --> PROMPT["Armar prompt único:<br/>log + aprendizajes conocidos +<br/>instrucción de extraer novedades"]
-    PROMPT --> LLM["Groq Llama 3.3<br/>(temperature 0.2)"]
-    LLM --> PARSE["_parsear_seccion()<br/>extrae APRENDIZAJES_NUEVOS<br/>y AJUSTES_CONVERSACION"]
-    PARSE --> A{"¿Hay<br/>aprendizajes<br/>nuevos?"}
-    PARSE --> B{"¿Hay<br/>ajustes<br/>sugeridos?"}
-    A -->|"Sí"| WRITE_A["_actualizar_seccion_perfil()<br/>## Aprendizajes (con fecha)"]
-    A -->|"No"| END
-    B -->|"Sí"| WRITE_B["_actualizar_seccion_perfil()<br/>## Ajustes sugeridos (con fecha)"]
-    B -->|"No"| END
-    WRITE_A --> NEXT(["Mañana el system prompt<br/>incluye los nuevos aprendizajes"])
+    CHECK -->|"Sí"| READ["Leer log completo del día<br/>+ leer perfil.md ACTUAL del disco<br/>(no usa el cacheado en CONFIG)"]
+    READ --> EXTR["Regex extrae sección<br/>## Aprendizajes existente"]
+    EXTR --> PROMPT["Construir prompt único con:<br/>· log del día<br/>· aprendizajes ya conocidos<br/>· instrucción de extraer solo novedades"]
+    PROMPT --> LLM["Groq Llama 3.3<br/>(temperature=0.2, max_tokens=400)"]
+    LLM --> TRY{"¿LLM responde OK?"}
+    TRY -->|"No (excepción)"| WARN["log.warning<br/>(no rompe el bot)"]
+    TRY -->|"Sí"| PARSE["_parsear_seccion()<br/>regex sobre la respuesta:<br/>APRENDIZAJES_NUEVOS y AJUSTES_CONVERSACION"]
+    PARSE --> A{"¿Hay aprendizajes<br/>nuevos?"}
+    PARSE --> B{"¿Hay ajustes<br/>sugeridos?"}
+    A -->|"Sí"| WRITE_A["_actualizar_seccion_perfil('Aprendizajes', ...)<br/>· prepend al inicio de la sección<br/>· sufijo (DD/MM/YYYY) por línea"]
+    A -->|"No"| SKIP_A["Skip"]
+    B -->|"Sí"| WRITE_B["_actualizar_seccion_perfil('Ajustes sugeridos', ...)"]
+    B -->|"No"| SKIP_B["Skip"]
+    WRITE_A --> NEXT["perfil.md actualizado en disco"]
     WRITE_B --> NEXT
-    NEXT --> END
+    SKIP_A --> NEXT
+    SKIP_B --> NEXT
+    NEXT --> NOTE["⚠️ CONFIG['_perfil'] se cachea<br/>al arranque del bot.<br/>Los cambios se aplican al system prompt<br/>en el próximo reinicio."]
+    NOTE --> END
+    WARN --> END
 
     classDef job fill:#dfe6e9,stroke:#0984e3,color:#2d3436;
     classDef llm fill:#fdf6e3,stroke:#b58900,color:#073642;
-    class SCHED,LLM job;
+    classDef warn fill:#ffe5e5,stroke:#d63031,color:#2d3436;
+    class SCHED job;
     class LLM llm;
+    class NOTE,WARN warn;
 ```
+
+> **Nota técnica:** `perfil.md` es leído una sola vez al arranque del bot principal (`cargar_config()` → `CONFIG["_perfil"]`). El análisis nocturno escribe el archivo en disco, y los cambios entran al system prompt **al próximo reinicio del bot** (no en vivo). Lo mismo aplica a las ediciones desde `/editar` del bot familiar.
 
 ### Flujo 5 — Alerta de inactividad
 
-Checks programados (default 11:30 y 19:00) que avisan a la familia si el adulto mayor lleva varias horas sin escribir.
+Checks programados (default 11:30 y 19:00) que avisan a la familia si el adulto mayor lleva varias horas sin escribir. Refleja `verificar_inactividad()` en `aikiu.py` + `notify_inactividad()` en `core/alerts.py`.
 
 ```mermaid
 flowchart TD
-    START(["APScheduler dispara<br/>verificar_inactividad()"]) --> ACTIVA{"alerta_inactividad.activa<br/>en config.yml?"}
+    START(["APScheduler.cron<br/>alerta_inactividad.checks"]) --> ACTIVA{"cfg.activa<br/>en config.yml?"}
     ACTIVA -->|"No"| END(["Fin"])
-    ACTIVA -->|"Sí"| BASE{"_ultima_actividad<br/>definida?"}
-    BASE -->|"No (bot recién arrancó)"| END
-    BASE -->|"Sí"| CALC["horas = ahora − _ultima_actividad"]
+    ACTIVA -->|"Sí"| BASE{"¿_ultima_actividad<br/>definida?"}
+    BASE -->|"No → bot recién arrancó,<br/>no hay baseline"| END
+    BASE -->|"Sí"| CALC["horas = (now − _ultima_actividad) / 3600"]
     CALC --> UMBRAL{"horas ≥<br/>horas_umbral<br/>(default 4)?"}
     UMBRAL -->|"No"| END
-    UMBRAL -->|"Sí"| HOY{"¿Ya se alertó hoy?<br/>_alerta_inactividad_fecha"}
-    HOY -->|"Sí"| END
-    HOY -->|"No"| MARK["Marcar fecha de alerta hoy"]
-    MARK --> CHECKBOT{"family_bot<br/>configurado?"}
-    CHECKBOT -->|"No"| WARN["log.warning<br/>(no se envía)"]
-    CHECKBOT -->|"Sí"| NOTIFY["notify_inactividad()<br/>a todos los suscriptores"]
-    NOTIFY --> MSG["⚠️ Sin noticias de Rosa<br/>(N horas, último mensaje HH:MM)"]
-    MSG --> END
+    UMBRAL -->|"Sí"| HOY{"¿_alerta_inactividad_fecha<br/>== hoy?"}
+    HOY -->|"Sí (ya se alertó hoy)"| END
+    HOY -->|"No"| MARK["_alerta_inactividad_fecha = hoy<br/>(se marca ANTES de validar family_bot<br/>para no reintentar todo el día)"]
+    MARK --> CHECKBOT{"¿app.bot_data['family_bot']<br/>configurado?"}
+    CHECKBOT -->|"No"| WARN["log.warning<br/>(no se envía,<br/>pero ya quedó marcado hoy)"]
+    CHECKBOT -->|"Sí"| NOTIFY["create_background_task(<br/>notify_inactividad())"]
+    NOTIFY --> LOAD["cargar_suscriptores()<br/>(familiares.json)"]
+    LOAD --> MSG["⚠️ Sin noticias de Rosa<br/>(N horas, último mensaje HH:MM)<br/>Tono cálido, no alarmista"]
+    MSG --> SEND["send_message a cada suscriptor<br/>(Markdown, try/except por chat)"]
+    SEND --> END
     WARN --> END
 
     classDef warn fill:#ffeaa7,stroke:#fdcb6e,color:#2d3436;
@@ -333,19 +415,87 @@ sequenceDiagram
 
 ## Stack técnico
 
-| Componente | Tecnología |
-|---|---|
-| Lenguaje | Python 3.11+ |
-| Mensajería | python-telegram-bot 21.6 |
-| STT (voz → texto) | Groq Whisper large-v3 |
-| LLM | Groq llama-3.3-70b-versatile |
-| TTS (texto → voz) | edge-tts + ffmpeg (OGG/Opus) |
-| Scheduler | APScheduler 3.10 |
-| Cliente HTTP | httpx (async) |
-| Configuración | PyYAML + python-dotenv |
-| Tests | pytest (111 tests unitarios) |
+| Capa | Componente | Tecnología | Detalle de uso |
+|---|---|---|---|
+| Runtime | Lenguaje | Python 3.11+ | Probado en 3.14 sobre macOS |
+| Runtime | Concurrencia | `asyncio` + `async/await` | Loop único por proceso; tasks en background con strong refs en `_background_tasks: set` para evitar GC prematuro |
+| Mensajería | Telegram | `python-telegram-bot` 21.6 | Modo long-polling (`Application.builder()` + `updater.start_polling`), `drop_pending_updates=True` al arranque |
+| Mensajería | Flujos conversacionales | `ConversationHandler` (PTB) | Estados `ELIGIENDO`, `RECIBIENDO`, `ESPERANDO_MENSAJE` en bot familiar (`/editar`, `/mensaje`) |
+| IA — STT | Voz → texto | Groq Whisper `large-v3` | Vía `AsyncGroq`, `language="es"`, `response_format="text"` |
+| IA — LLM | Conversación | Groq `llama-3.3-70b-versatile` | `temperature=0.7`, `max_tokens=300`, historial = últimos 10 turnos |
+| IA — LLM | Análisis nocturno | Misma Llama 3.3 | `temperature=0.2`, `max_tokens=400`, una sola call por noche con todo el log + aprendizajes previos |
+| IA — TTS | Texto → voz | `edge-tts` ≥ 6.1.9 | Voz `es-AR-ElenaNeural` por defecto; genera MP3 |
+| Audio | Conversión a formato Telegram | `ffmpeg` (binario externo) | MP3 → OGG/Opus (`-c:a libopus`), formato nativo de voice notes |
+| Programación | Jobs cron | APScheduler 3.10 `AsyncIOScheduler` | Saludo matutino, recordatorios, análisis nocturno, checks de inactividad |
+| HTTP externo | Cliente | `httpx` ≥ 0.27 async | Timeout 8s para clima/dólar/noticias |
+| APIs externas | Clima | wttr.in (`?format=j1`) | Temperatura, sensación térmica, humedad, descripción |
+| APIs externas | Dólar | dolarapi.com | Blue y oficial, compra y venta |
+| APIs externas | Noticias | RSS de La Nación | Top 4 titulares vía regex sobre `<title><![CDATA[…]]></title>`, con fallback a `<title>` plano |
+| Config | Archivos | `PyYAML` + `python-dotenv` | `config.yml` no sensible + `.env` para secretos |
+| Persistencia | Datos del usuario | `perfil.md` (texto plano) | Editable a mano o vía wizard / bot familiar / análisis nocturno |
+| Persistencia | Suscriptores | `familiares.json` | `[{chat_id, nombre}]`, escrito atómicamente con `write_text` |
+| Persistencia | Conversaciones | `logs/YYYY-MM-DD.md` | Append per turno con timestamp `HH:MM` |
+| Persistencia | Logs del bot | `aikiu.log` | `logging.FileHandler` + stdout |
+| Tests | Suite | `pytest` (111 tests unitarios) | Cobertura: distress, alertas, tools, análisis nocturno, saludo, perfil, reglas del system prompt |
+| Despliegue | Orquestación | `bash start.sh` | Lanza ambos procesos Python en paralelo, `trap SIGINT/SIGTERM` para shutdown limpio |
+| Seguridad | Autorización | Chat ID hardcodeado en `.env` | Bot principal rechaza cualquier `chat_id` distinto a `CHAT_ID` |
 
 Dependencias completas en [`requirements.txt`](./requirements.txt).
+
+---
+
+## Modelo de procesos y persistencia
+
+### Procesos en ejecución
+
+```mermaid
+flowchart TD
+    SH["bash start.sh"] --> CHECK["Valida BOT_TOKEN, CHAT_ID,<br/>GROQ_API_KEY en .env"]
+    CHECK --> P1["python aikiu.py &<br/>(proceso 1)"]
+    CHECK --> COND{"¿FAMILIAR_BOT_TOKEN<br/>configurado?"}
+    COND -->|"Sí"| P2["python familiar_bot.py &<br/>(proceso 2)"]
+    COND -->|"No"| SKIP["Bot familiar deshabilitado<br/>(alertas no se envían)"]
+    P1 --> WAIT["wait + trap SIGINT/SIGTERM"]
+    P2 --> WAIT
+    SKIP --> WAIT
+    WAIT --> KILL["Ctrl+C → kill PIDS"]
+```
+
+Cada bot tiene:
+- Su propio `Application` de `python-telegram-bot` con su propio `Updater` de long-polling.
+- Su propio loop `asyncio` (uno por proceso).
+- Su propio `AsyncIOScheduler` (solo el bot principal usa scheduler real; el familiar es reactivo a comandos).
+
+### Estado en memoria vs. persistente
+
+| Dato | Dónde vive | Sobrevive a reinicio | Acceso |
+|---|---|---|---|
+| `historiales[chat_id]` (conversación) | RAM de `aikiu.py` | No | Solo bot principal |
+| `_ultima_actividad` | RAM de `aikiu.py` | No (sin baseline al arrancar) | Solo bot principal |
+| `_last_alert_time[nivel]` (cooldowns distress) | RAM de `core/distress.py` | No | Solo bot principal |
+| `_alerta_inactividad_fecha` | RAM de `aikiu.py` | No | Solo bot principal |
+| `_background_tasks` (strong refs) | RAM de `aikiu.py` | No | Solo bot principal |
+| `CONFIG["_perfil"]` (snapshot del perfil) | RAM de `aikiu.py` | No, **se cachea al arranque** | Solo bot principal |
+| `perfil.md` | Disco | Sí | Ambos bots (lectura/escritura) |
+| `familiares.json` | Disco | Sí | Ambos bots |
+| `logs/YYYY-MM-DD.md` | Disco | Sí | Escribe bot principal; nadie lee programáticamente |
+| `config.yml` + `.env` | Disco | Sí | Ambos bots (solo lectura) |
+
+### Patrones de implementación
+
+- **Background tasks con strong refs**: `aikiu.py::create_background_task()` agrega cada `asyncio.Task` a un `set` global y lo limpia en el callback de done. Sin esto, el GC podría cancelar tasks en vuelo (problema conocido de `asyncio.create_task` con refs débiles).
+- **Tempdirs aislados**: tanto STT como TTS usan `tempfile.TemporaryDirectory()` por operación — no quedan archivos huérfanos.
+- **Cliente Groq compartido por proceso**: una sola instancia `AsyncGroq` reutilizada para STT y LLM (HTTP keep-alive).
+- **Pre-routing determinístico**: las consultas al mundo real se hacen por keyword-matching ANTES del LLM, no por tool calling. Garantiza que el LLM siempre vea los datos reales (no puede "olvidarse" de llamar la herramienta). Las definiciones tool-calling de OpenAI están en `core/tools.py::TOOLS` listas para migrar si se desea.
+- **Anti-alucinación**: el system prompt incluye una instrucción explícita: si Rosa pregunta si alguien le escribió y no hay un mensaje real, debe responder "No recibí ningún mensaje para vos hoy."
+- **Fail-soft**: el análisis nocturno y los fetch HTTP están envueltos en try/except con `log.warning`; ningún fallo de servicios externos rompe la respuesta al usuario.
+- **No hay reload en vivo de perfil**: las ediciones desde `/editar` o el análisis nocturno escriben a disco pero entran al system prompt solo en el próximo arranque del bot principal (limitación conocida — ver Roadmap).
+
+### Despliegue típico
+
+- **macOS / Linux casero**: `bash start.sh` en una terminal, o como servicio systemd / launchd.
+- **No requiere puerto abierto**: long-polling sale hacia Telegram, no recibe webhooks. Funciona detrás de NAT residencial sin configuración.
+- **Sin contenedor por defecto**: el proyecto se ejecuta directo desde el venv. Dockerizar es trivial pero no está incluido.
 
 ---
 
