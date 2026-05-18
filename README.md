@@ -1,16 +1,44 @@
-# Aikiu
+<div align="center">
 
-> Asistente de voz para adultos mayores vía Telegram, con detección de angustia y alertas a la familia.
+<img src="./assets/logo.png" alt="aikiu" width="220" />
 
-Aikiu es un compañero conversacional pensado para personas mayores que viven solas. Recibe y responde mensajes de voz por Telegram, mantiene una conversación cálida en español rioplatense, recuerda detalles personales, y avisa a los familiares si detecta señales de soledad, dolor o emergencia.
+### La tranquilidad de estar conectado · Sin comprar nada
 
-No requiere hardware especial: corre en cualquier computadora con Python.
+# Sabés que está bien.
+
+**Aikiu acompaña a tu adulto mayor durante el día y te avisa si algo no está como debería.**
+Sin comprar ningún dispositivo. Sin costo mensual para empezar.
+Solo necesitás el celular que ya tiene. Nada más.
+
+</div>
+
+---
+
+## ¿Qué es Aikiu?
+
+Aikiu es un compañero conversacional vía **Telegram** pensado para personas mayores que viven solas. Recibe y responde mensajes de voz, mantiene una conversación cálida en español rioplatense, recuerda detalles personales, y **avisa a los familiares** si detecta señales de soledad, dolor o emergencia.
+
+No requiere hardware especial, ni suscripciones, ni instalar nada en el teléfono del adulto mayor: corre en cualquier computadora con Python y se conecta a Telegram, una app que la persona probablemente ya usa.
+
+### Visión
+
+Que ninguna familia tenga que elegir entre **gastar miles de dólares en dispositivos especializados** o **quedarse sin saber cómo está su ser querido**. La tecnología para acompañar ya existe en cualquier celular — solo hace falta orquestarla con criterio y cariño.
+
+### Misión
+
+Construir un acompañante de IA **abierto, gratuito y respetuoso**, que:
+
+- Use solo herramientas que **ya tiene la persona** (un celular con Telegram).
+- Sea **invisible para el adulto mayor**: nada de configurar, instalar o aprender. Solo hablar.
+- Dé a la familia **señales tempranas y honestas**, sin alarmar de más ni minimizar.
+- Aprenda de cada conversación para sonar **menos a bot y más a familiar cercano**.
+- Sea **transparente**: código abierto, sin cajas negras, sin datos médicos certificados que vender.
 
 ---
 
 ## Tabla de contenidos
 
-1. [Visión general](#visión-general)
+1. [Cómo funciona](#cómo-funciona)
 2. [Funcionalidades](#funcionalidades)
 3. [Arquitectura](#arquitectura)
 4. [Diagramas de flujo](#diagramas-de-flujo)
@@ -33,7 +61,7 @@ No requiere hardware especial: corre en cualquier computadora con Python.
 
 ---
 
-## Visión general
+## Cómo funciona
 
 Aikiu está compuesto por **dos bots de Telegram** que trabajan en conjunto:
 
