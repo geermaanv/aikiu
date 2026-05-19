@@ -27,16 +27,16 @@ servidor propio. Corre en cualquier Mac con Python.
   contención y sugerencia de consultar al médico o avisar a la familia
 
 ### Detección de angustia y alertas
-- El LLM clasifica cada respuesta con DISTRESS_LEVEL 0-3 (oculto para Rosa)
+- El LLM clasifica cada respuesta con DISTRESS_LEVEL 0-3 (oculto para Marta)
   - 0: conversación normal, pregunta informativa, saludo
-  - 1: Rosa expresa soledad, tristeza, que no duerme bien, que extraña a alguien
+  - 1: Marta expresa soledad, tristeza, que no duerme bien, que extraña a alguien
   - 2: llora, dice que está muy mal, dolor persistente, confusión/desorientación,
        caída reciente (aunque haya pasado), "soy una carga", no querer molestar
   - 3: emergencia activa ahora mismo (no puede levantarse, dolor de pecho, pide ayuda)
-- Los criterios de nivel ≥1 solo aplican cuando Rosa describe su propio estado
+- Los criterios de nivel ≥1 solo aplican cuando Marta describe su propio estado
   emocional o físico — preguntas neutras o saludos son siempre nivel 0
 - Si el nivel supera 0, el bot familiar recibe una alerta automática con
-  timestamp, fragmento de lo que dijo Rosa y lo que respondió Clara
+  timestamp, fragmento de lo que dijo Marta y lo que respondió Clara
 - Cooldown por nivel: 60 min (nivel 1), 30 min (nivel 2), sin cooldown (nivel 3)
 - Si el LLM omite la línea DISTRESS_LEVEL, el sistema asume 0 y no falla
 - Módulos separados: `core/distress.py` (parsing + cooldown) y `core/alerts.py` (envío)
@@ -57,28 +57,28 @@ servidor propio. Corre en cualquier Mac con Python.
 
 ### Recordatorios proactivos (scheduler)
 - Saludo diario con temperatura: cada mañana Clara dice la temperatura actual de
-  la ciudad de Rosa (Olivos, Buenos Aires) antes de preguntar cómo amaneció.
+  la ciudad de Marta (Olivos, Buenos Aires) antes de preguntar cómo amaneció.
   Si la API de clima falla, el saludo se envía igual sin temperatura.
   La ciudad es configurable en `config.yml` → `ciudad`
 - Recordatorios de medicamentos u otros eventos (hora y mensaje configurables)
-- El bot inicia la conversación sin que Rosa tenga que escribir
+- El bot inicia la conversación sin que Marta tenga que escribir
 
 ### Bot familiar (canal compartido)
 - Segundo bot de Telegram para toda la familia — no requiere configuración por familiar
 - Cualquier familiar manda `/start` y queda suscripto automáticamente
-- `/nombre [nombre]` — registra cómo te conoce Rosa (usado en el puente familiar)
+- `/nombre [nombre]` — registra cómo te conoce Marta (usado en el puente familiar)
 - `/mensaje` — **puente familiar**: el familiar envía texto o audio y Clara se lo
-  transmite a Rosa preservando el medio (texto → texto, voz → voz sintetizada).
+  transmite a Marta preservando el medio (texto → texto, voz → voz sintetizada).
   Usa el nombre registrado con `/nombre`, no el username de Telegram
 - `/perfil` — muestra el perfil completo actual
 - `/editar` — edita cualquier sección del perfil con menú interactivo
 - `/suscriptores` — lista de familiares registrados
 - `/ayuda` — lista de comandos
-- Alertas automáticas llegan a **todos** los suscriptores cuando Rosa muestra angustia
+- Alertas automáticas llegan a **todos** los suscriptores cuando Marta muestra angustia
 - `subscribers.json` y `familiares.json` excluidos del repo
 
 ### Consultas al mundo real (pre-routing determinístico)
-- Detección de keywords en el mensaje de Rosa antes de llamar al LLM (sin depender de tool calling del modelo)
+- Detección de keywords en el mensaje de Marta antes de llamar al LLM (sin depender de tool calling del modelo)
 - **Clima**: wttr.in — temperatura, sensación térmica, descripción, humedad
 - **Dólar**: dolarapi.com — blue y oficial, compra y venta
 - **Noticias**: RSS de La Nación — top 4 titulares, filtrables por tema
@@ -86,7 +86,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - Módulo separado: `core/tools.py` (definiciones + fetch + dispatcher)
 
 ### Alertas de inactividad
-- Si Rosa no envía mensajes en N horas, el bot familiar recibe una alerta automática
+- Si Marta no envía mensajes en N horas, el bot familiar recibe una alerta automática
 - Umbral configurable en `config.yml` → `alerta_inactividad.horas_umbral` (default: 4 horas)
 - Checks programados dos veces por día (default: 11:30 y 19:00), configurables
 - Cooldown de un alerta por día: si ya se alertó hoy, no vuelve a alertar hasta mañana
@@ -108,7 +108,7 @@ servidor propio. Corre en cualquier Mac con Python.
   - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
   - Reglas del system prompt: pre-routing, anti-hallucination específico a
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
-  - DISTRESS_LEVEL nunca visible para Rosa, criterios de caídas y "soy una carga"
+  - DISTRESS_LEVEL nunca visible para Marta, criterios de caídas y "soy una carga"
 - Checklist manual E2E en `tests/checklist.md`
 - Git pre-commit hook: los 111 tests corren automáticamente antes de cada commit
 
@@ -144,7 +144,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - [ ] **Historial persistente**: hoy el historial de conversación se pierde
       al reiniciar el bot. Guardarlo en disco para mantener continuidad entre sesiones
 - [ ] **Métricas de aislamiento**: cronjob que evalúe la frecuencia de mensajes
-      de Rosa. Si el volumen cae por debajo del 50% del promedio semanal, enviar
+      de Marta. Si el volumen cae por debajo del 50% del promedio semanal, enviar
       una alerta silenciosa al bot familiar indicando posible apatía o aislamiento.
 
 ### Baja prioridad / Ideas

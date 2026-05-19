@@ -74,8 +74,8 @@ def main():
     titulo("1 / 6  ·  Identidad")
 
     nombre = preguntar("¿Cómo se llama la persona?",
-                       config.get("nombre_adulto_mayor", "Rosa"))
-    edad = preguntar("¿Cuántos años tiene?", "78")
+                       config.get("nombre_adulto_mayor", "Marta"))
+    edad = preguntar("¿Cuántos años tiene?", "83")
     ciudad = preguntar("¿En qué ciudad vive?", "Buenos Aires")
     descripcion = preguntar(
         "Describila en una oración (personalidad, cómo es)",

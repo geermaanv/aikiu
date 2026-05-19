@@ -51,7 +51,7 @@ def test_saludo_incluye_temperatura_cuando_clima_ok():
     with patch("aikiu.consultar_clima", new=AsyncMock(return_value=clima_ok)), \
          patch("aikiu.sintetizar", new=AsyncMock()), \
          patch("aikiu.CONFIG", {
-             "nombre_adulto_mayor": "Rosa",
+             "nombre_adulto_mayor": "Marta",
              "nombre_asistente": "Clara",
              "ciudad": "Olivos, Buenos Aires",
              "chat_id": "123",
@@ -70,13 +70,13 @@ def test_saludo_incluye_temperatura_cuando_clima_ok():
         assert textos, "saludo_matutino no llamó a sintetizar"
         saludo = textos[0]
         assert "20 grados" in saludo
-        assert "Rosa" in saludo
+        assert "Marta" in saludo
         assert "Clara" in saludo
 
 def test_saludo_sin_clima_usa_fallback():
     with patch("aikiu.consultar_clima", new=AsyncMock(side_effect=Exception("timeout"))), \
          patch("aikiu.CONFIG", {
-             "nombre_adulto_mayor": "Rosa",
+             "nombre_adulto_mayor": "Marta",
              "nombre_asistente": "Clara",
              "ciudad": "Olivos, Buenos Aires",
              "chat_id": "123",
@@ -93,7 +93,7 @@ def test_saludo_sin_clima_usa_fallback():
         assert textos
         saludo = textos[0]
         # Sin clima, debe seguir saludando con el nombre
-        assert "Rosa" in saludo
+        assert "Marta" in saludo
         assert "Buenos días" in saludo
 
 def test_saludo_temperatura_igual_sensacion_no_repite():
@@ -101,7 +101,7 @@ def test_saludo_temperatura_igual_sensacion_no_repite():
     clima_igual = "Clima en Olivos: Clear. Temperatura 22°C (sensación 22°C), humedad 40%."
     with patch("aikiu.consultar_clima", new=AsyncMock(return_value=clima_igual)), \
          patch("aikiu.CONFIG", {
-             "nombre_adulto_mayor": "Rosa",
+             "nombre_adulto_mayor": "Marta",
              "nombre_asistente": "Clara",
              "ciudad": "Olivos, Buenos Aires",
              "chat_id": "123",

@@ -31,10 +31,10 @@ def actualizar_seccion(perfil: str, nombre: str, nuevo: str) -> str:
 
 
 PERFIL_EJEMPLO = """\
-# Perfil de Rosa
+# Perfil de Marta
 
 ## Quién es
-- Tiene 78 años
+- Tiene 83 años
 - Vive sola en Buenos Aires
 
 ## Gustos y temas que la alegran
@@ -52,7 +52,7 @@ PERFIL_EJEMPLO = """\
 
 def test_leer_seccion_existente():
     resultado = leer_seccion(PERFIL_EJEMPLO, "Quién es")
-    assert "78 años" in resultado
+    assert "83 años" in resultado
     assert "Buenos Aires" in resultado
 
 def test_leer_seccion_no_incluye_siguiente_seccion():
@@ -75,7 +75,7 @@ def test_leer_ultima_seccion():
 def test_actualizar_seccion_cambia_contenido():
     nuevo = actualizar_seccion(PERFIL_EJEMPLO, "Quién es", "- Tiene 79 años\n- Vive en Palermo")
     assert "79 años" in nuevo
-    assert "78 años" not in nuevo
+    assert "83 años" not in nuevo
 
 def test_actualizar_seccion_no_toca_otras_secciones():
     nuevo = actualizar_seccion(PERFIL_EJEMPLO, "Quién es", "- Tiene 79 años")
@@ -117,7 +117,7 @@ def test_no_duplica_familiar(tmp_path):
         _guardar(path, familiares)
     assert len(_cargar(path)) == 1
 
-def test_nombre_para_rosa(tmp_path):
+def test_nombre_registrado(tmp_path):
     path = tmp_path / "familiares.json"
     _guardar(path, [{"chat_id": 111, "nombre": "Germán"}, {"chat_id": 222, "nombre": "Lao"}])
     familiares = _cargar(path)

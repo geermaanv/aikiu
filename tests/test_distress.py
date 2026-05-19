@@ -14,10 +14,10 @@ from core.distress import parse_llm_response, should_send_alert, record_alert_se
 # ---------------------------------------------------------------------------
 
 def test_parse_extrae_nivel_0():
-    raw = "Hola Rosa, ¿cómo estás?\nDISTRESS_LEVEL: 0"
+    raw = "Hola Marta, ¿cómo estás?\nDISTRESS_LEVEL: 0"
     texto, nivel = parse_llm_response(raw)
     assert nivel == 0
-    assert "Hola Rosa" in texto
+    assert "Hola Marta" in texto
     assert "DISTRESS_LEVEL" not in texto
 
 def test_parse_extrae_nivel_1():
@@ -33,10 +33,10 @@ def test_parse_extrae_nivel_3():
     assert texto == "Llamá al médico ya."
 
 def test_parse_sin_distress_level_asume_0():
-    raw = "Buenas tardes, Rosa."
+    raw = "Buenas tardes, Marta."
     texto, nivel = parse_llm_response(raw)
     assert nivel == 0
-    assert texto == "Buenas tardes, Rosa."
+    assert texto == "Buenas tardes, Marta."
 
 def test_parse_distress_level_en_medio():
     raw = "Primera oración.\nDISTRESS_LEVEL: 2\nSegunda oración."

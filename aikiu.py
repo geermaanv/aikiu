@@ -217,7 +217,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
 
 historiales: dict[int, list] = {}
 
-_ultima_actividad: datetime | None = None        # último mensaje de Rosa
+_ultima_actividad: datetime | None = None        # último mensaje del adulto mayor
 _alerta_inactividad_fecha: object = None         # date del último aviso (evita duplicados)
 
 # ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.info(f"Enviando alerta nivel {distress_level} a suscriptores")
             create_background_task(notify_family(
                 distress_level=distress_level,
-                rosa_message=texto,
+                adulto_message=texto,
                 bot_response=respuesta,
                 family_bot=family_bot,
                 family_chat_id=family_chat_id,
@@ -480,7 +480,7 @@ async def verificar_inactividad(app: Application):
         log.warning("Inactividad detectada pero family_bot no está configurado")
         return
 
-    log.info(f"Alerta de inactividad: {horas:.1f}h sin actividad de Rosa")
+    log.info(f"Alerta de inactividad: {horas:.1f}h sin actividad de {CONFIG.get('nombre_adulto_mayor', 'Marta')}")
     create_background_task(notify_inactividad(
         horas=int(horas),
         ultima_actividad=_ultima_actividad,

@@ -86,7 +86,7 @@ def test_no_repite_en_mismo_dia():
     mock_notify.assert_not_called()
 
 def test_alerta_nuevo_dia_aunque_ya_se_alerto_ayer():
-    """Al día siguiente, vuelve a alertar si Rosa sigue sin escribir."""
+    """Al día siguiente, vuelve a alertar si Marta sigue sin escribir."""
     import aikiu
     async def caso():
         ayer = (datetime.now() - timedelta(days=1)).date()

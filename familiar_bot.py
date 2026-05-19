@@ -34,16 +34,22 @@ logging.basicConfig(
 log = logging.getLogger("aikiu-familiar")
 
 FAMILIAR_TOKEN = os.environ.get("FAMILIAR_BOT_TOKEN", "")
-ROSA_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-ROSA_CHAT_ID   = os.environ.get("CHAT_ID", "")
+ADULTO_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+ADULTO_CHAT_ID   = os.environ.get("CHAT_ID", "")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
-def _cargar_voz():
+def _cargar_config():
     cfg_path = BASE_DIR / "config.yml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("voz_tts", "es-AR-ElenaNeural")
-    return "es-AR-ElenaNeural"
+            return yaml.safe_load(f) or {}
+    return {}
+
+def _cargar_voz():
+    return _cargar_config().get("voz_tts", "es-AR-ElenaNeural")
+
+def _nombre_adulto() -> str:
+    return _cargar_config().get("nombre_adulto_mayor", "Marta")
 
 VOZ_TTS = _cargar_voz()
 
@@ -95,7 +101,7 @@ def actualizar_nombre(chat_id: int, nombre: str):
     familiares.append({"chat_id": chat_id, "nombre": nombre.strip()})
     guardar_familiares(familiares)
 
-def nombre_para_rosa(chat_id: int, fallback: str = "Tu familiar") -> str:
+def nombre_registrado(chat_id: int, fallback: str = "Tu familiar") -> str:
     for f in cargar_familiares():
         if f["chat_id"] == chat_id:
             return f["nombre"] or fallback
@@ -131,18 +137,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     nuevo = agregar_familiar(chat_id)
     nombre_tg = update.effective_user.first_name or "familiar"
-    nombre_rosa = nombre_para_rosa(chat_id, fallback="")
+    adulto = _nombre_adulto()
+    nombre_reg = nombre_registrado(chat_id, fallback="")
     aviso_nombre = (
-        f"\n\nUsá /nombre para decirme cómo te conoce Rosa "
+        f"\n\nUsá /nombre para decirme cómo te conoce {adulto} "
         f"(ej: /nombre Germán)."
-        if not nombre_rosa else ""
+        if not nombre_reg else ""
     )
     if nuevo:
         log.info(f"Nuevo suscriptor: {chat_id} ({nombre_tg})")
         await update.message.reply_text(
             f"Hola {nombre_tg}, quedaste registrado para recibir alertas de Aikiu.{aviso_nombre}\n\n"
-            "/mensaje — enviarle un mensaje a Rosa (texto o voz)\n"
-            "/nombre — registrar cómo te conoce Rosa\n"
+            f"/mensaje — enviarle un mensaje a {adulto} (texto o voz)\n"
+            f"/nombre — registrar cómo te conoce {adulto}\n"
             "/perfil — ver el perfil actual\n"
             "/editar — editar una sección del perfil\n"
             "/suscriptores — ver quién recibe alertas\n"
@@ -151,8 +158,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(
             f"Hola {nombre_tg}, ya estabas registrado.{aviso_nombre}\n\n"
-            "/mensaje — enviarle un mensaje a Rosa (texto o voz)\n"
-            "/nombre — registrar cómo te conoce Rosa\n"
+            f"/mensaje — enviarle un mensaje a {adulto} (texto o voz)\n"
+            f"/nombre — registrar cómo te conoce {adulto}\n"
             "/perfil — ver el perfil actual\n"
             "/editar — editar una sección del perfil\n"
             "/suscriptores — ver quién recibe alertas\n"
@@ -163,12 +170,13 @@ async def cmd_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
         await update.message.reply_text("Mandá /start para registrarte.")
         return
+    adulto = _nombre_adulto()
     nombre = " ".join(context.args).strip() if context.args else ""
     if not nombre:
-        actual = nombre_para_rosa(update.effective_chat.id, fallback="")
+        actual = nombre_registrado(update.effective_chat.id, fallback="")
         if actual:
             await update.message.reply_text(
-                f"Tu nombre para Rosa es: *{actual}*\n\n"
+                f"Tu nombre para {adulto} es: *{actual}*\n\n"
                 "Para cambiarlo: /nombre NuevoNombre",
                 parse_mode="Markdown"
             )
@@ -180,17 +188,21 @@ async def cmd_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     actualizar_nombre(update.effective_chat.id, nombre)
     log.info(f"Nombre registrado: {update.effective_chat.id} → '{nombre}'")
-    await update.message.reply_text(f"Listo, cuando le mandes mensajes a Rosa vas a aparecer como *{nombre}*.", parse_mode="Markdown")
+    await update.message.reply_text(
+        f"Listo, cuando le mandes mensajes a {adulto} vas a aparecer como *{nombre}*.",
+        parse_mode="Markdown",
+    )
 
 
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
         await update.message.reply_text("Mandá /start para registrarte.")
         return
+    adulto = _nombre_adulto()
     await update.message.reply_text(
         "*Comandos disponibles:*\n\n"
-        "/mensaje — enviarle un mensaje a Rosa (texto o nota de voz)\n"
-        "/nombre — registrar cómo te conoce Rosa\n"
+        f"/mensaje — enviarle un mensaje a {adulto} (texto o nota de voz)\n"
+        f"/nombre — registrar cómo te conoce {adulto}\n"
         "/perfil — muestra el perfil completo\n"
         "/editar — edita una sección del perfil\n"
         "/suscriptores — lista de familiares registrados\n"
@@ -283,16 +295,18 @@ async def cmd_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
         await update.message.reply_text("Mandá /start para registrarte.")
         return ConversationHandler.END
-    if not ROSA_BOT_TOKEN or not ROSA_CHAT_ID:
-        await update.message.reply_text("Error: BOT_TOKEN o CHAT_ID de Rosa no configurados.")
+    adulto = _nombre_adulto()
+    if not ADULTO_BOT_TOKEN or not ADULTO_CHAT_ID:
+        await update.message.reply_text(f"Error: BOT_TOKEN o CHAT_ID de {adulto} no configurados.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "Enviá tu mensaje para Rosa (texto o nota de voz). /cancelar para salir."
+        f"Enviá tu mensaje para {adulto} (texto o nota de voz). /cancelar para salir."
     )
     return ESPERANDO_MENSAJE
 
 async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nombre = nombre_para_rosa(
+    adulto = _nombre_adulto()
+    nombre = nombre_registrado(
         update.effective_chat.id,
         fallback=update.effective_user.first_name or "Tu familiar"
     )
@@ -328,23 +342,23 @@ async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("No entendí el mensaje. Intentá de nuevo.")
         return ESPERANDO_MENSAJE
 
-    mensaje_para_rosa = f"{nombre} te manda a decir: {texto}"
+    mensaje_para_adulto = f"{nombre} te manda a decir: {texto}"
 
     try:
-        async with Bot(token=ROSA_BOT_TOKEN) as rosa_bot:
+        async with Bot(token=ADULTO_BOT_TOKEN) as adulto_bot:
             if update.message.voice:
                 with tempfile.TemporaryDirectory() as tmp:
                     ogg = Path(tmp) / "puente.ogg"
-                    await sintetizar(mensaje_para_rosa, ogg, voz=VOZ_TTS)
+                    await sintetizar(mensaje_para_adulto, ogg, voz=VOZ_TTS)
                     with open(ogg, "rb") as audio:
-                        await rosa_bot.send_voice(chat_id=ROSA_CHAT_ID, voice=audio)
+                        await adulto_bot.send_voice(chat_id=ADULTO_CHAT_ID, voice=audio)
             else:
-                await rosa_bot.send_message(chat_id=ROSA_CHAT_ID, text=mensaje_para_rosa)
-        log.info(f"Mensaje de {nombre} entregado a Rosa: '{texto[:60]}'")
-        await update.message.reply_text(f"Listo, le mandé a Rosa: \"{mensaje_para_rosa}\"")
+                await adulto_bot.send_message(chat_id=ADULTO_CHAT_ID, text=mensaje_para_adulto)
+        log.info(f"Mensaje de {nombre} entregado a {adulto}: '{texto[:60]}'")
+        await update.message.reply_text(f"Listo, le mandé a {adulto}: \"{mensaje_para_adulto}\"")
     except Exception as e:
-        log.error(f"Error enviando mensaje a Rosa: {e}")
-        await update.message.reply_text("Hubo un error al enviarle el mensaje a Rosa.")
+        log.error(f"Error enviando mensaje a {adulto}: {e}")
+        await update.message.reply_text(f"Hubo un error al enviarle el mensaje a {adulto}.")
 
     return ConversationHandler.END
 

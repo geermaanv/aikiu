@@ -13,13 +13,13 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ---
 
-## 2. Conversación básica (bot de Rosa)
+## 2. Conversación básica (bot de Marta)
 
-- [ ] **Texto → texto**: enviar "Hola" por texto → Rosa recibe respuesta en texto (no audio)
-- [ ] **Voz → voz**: enviar nota de voz → Rosa recibe audio de Clara
+- [ ] **Texto → texto**: enviar "Hola" por texto → Marta recibe respuesta en texto (no audio)
+- [ ] **Voz → voz**: enviar nota de voz → Marta recibe audio de Clara
 - [ ] **`/start`**: enviar `/start` → Clara responde con un saludo (no silencio)
 - [ ] La respuesta usa español rioplatense, máximo 3 oraciones
-- [ ] Clara se llama Clara (no Rosa, no "yo soy el asistente")
+- [ ] Clara se llama Clara (no Marta, no "yo soy el asistente")
 - [ ] Texto desconocido no rompe el bot (responde algo coherente)
 
 ---
@@ -37,7 +37,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ## 4. Temas sensibles
 
-- [ ] **Guerra/política**: "¿qué pasa en Ucrania?" → una oración neutra + redirige a Rosa
+- [ ] **Guerra/política**: "¿qué pasa en Ucrania?" → una oración neutra + redirige a Marta
 - [ ] **Catástrofe**: "¿qué pasó con el terremoto?" → misma lógica: una oración + redirige
 - [ ] **Nunca inventa**: la oración de contexto es vaga pero no falsa
 
@@ -53,10 +53,10 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 | 2 | "Estoy llorando, me siento muy mal" | Alerta 🟠 al bot familiar |
 | 3 | "Me caí y no me puedo levantar" | Alerta 🔴 inmediata, sin cooldown |
 
-- [ ] La alerta llega al bot familiar con timestamp, fragmento de Rosa y respuesta de Clara
+- [ ] La alerta llega al bot familiar con timestamp, fragmento de Marta y respuesta de Clara
 - [ ] Nivel 1: segunda alerta en menos de 60 min **no** se envía (cooldown)
 - [ ] Nivel 3: segunda alerta inmediata **sí** se envía (sin cooldown)
-- [ ] DISTRESS_LEVEL no aparece en ningún mensaje que recibe Rosa
+- [ ] DISTRESS_LEVEL no aparece en ningún mensaje que recibe Marta
 
 ---
 
@@ -70,11 +70,11 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ---
 
-## 7. Bot familiar — nombre para Rosa
+## 7. Bot familiar — nombre para Marta
 
 - [ ] `/nombre` sin argumentos → muestra el nombre registrado actualmente
 - [ ] `/nombre Juan` → registra "Juan" y confirma
-- [ ] Enviar `/mensaje` luego un texto → Rosa recibe "Juan te manda a decir: ..."
+- [ ] Enviar `/mensaje` luego un texto → Marta recibe "Juan te manda a decir: ..."
 
 ---
 
@@ -91,10 +91,10 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 ## 9. Puente familiar (/mensaje)
 
 - [ ] `/mensaje` → bot pide el mensaje
-- [ ] **Texto**: familiar envía texto → Rosa recibe **texto** con el nombre del familiar
-- [ ] **Audio**: familiar envía nota de voz → Rosa recibe **audio** de Clara con el mensaje sintetizado
-- [ ] El bot familiar confirma con "Listo, le mandé a Rosa: ..."
-- [ ] `/cancelar` durante `/mensaje` → cancela sin enviar nada a Rosa
+- [ ] **Texto**: familiar envía texto → Marta recibe **texto** con el nombre del familiar
+- [ ] **Audio**: familiar envía nota de voz → Marta recibe **audio** de Clara con el mensaje sintetizado
+- [ ] El bot familiar confirma con "Listo, le mandé a Marta: ..."
+- [ ] `/cancelar` durante `/mensaje` → cancela sin enviar nada a Marta
 
 ---
 
@@ -107,9 +107,9 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ## 11. Recordatorios proactivos (verificar config.yml)
 
-- [ ] A la hora configurada de saludo, Rosa recibe audio de buenos días **con la temperatura** ("Hoy en Olivos hay X grados")
+- [ ] A la hora configurada de saludo, Marta recibe audio de buenos días **con la temperatura** ("Hoy en Olivos hay X grados")
 - [ ] Si la API de clima no responde, el saludo se envía igual sin temperatura
-- [ ] A las horas de medicamento, Rosa recibe el recordatorio en audio
+- [ ] A las horas de medicamento, Marta recibe el recordatorio en audio
 
 ---
 
@@ -122,7 +122,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 | C | "¿qué pasó hoy?" | Muestra noticias (no activa regla de mensajes de familiares) |
 | D | "¿cómo estás?" | No genera alerta de distress |
 | E | "me siento muy sola" | Genera alerta distress nivel 1 |
-| F | /mensaje desde el familiar | Llega a Rosa con el nombre correcto |
+| F | /mensaje desde el familiar | Llega a Marta con el nombre correcto |
 | G | Cualquier mensaje | DISTRESS_LEVEL no aparece en el texto |
 
 ---
@@ -133,11 +133,11 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 |-------|---------|-------|-----|
 | 2026-05-12 | Alertas no llegaban | `post_init` no se llama con patrón `async with app:` en PTB v21 | Mover init al body del `async with` |
 | 2026-05-12 | Audio duraba 0:00 | Salida .ogg pero codec equivocado | Forzar extensión .ogg en sintetizar |
-| 2026-05-12 | Clara se presentaba como Rosa | System prompt ambiguo | Explicitar "Tu nombre es X, hablás con Y" |
+| 2026-05-12 | Clara se presentaba como Rosa (nombre de la usuaria) | System prompt ambiguo | Explicitar "Tu nombre es X, hablás con Y" |
 | 2026-05-12 | /mensaje texto → audio | Siempre llamaba a responder_con_voz | Preservar medio original del familiar |
 | 2026-05-13 | Tools no se activaban (dólar, noticias) | System prompt no mencionaba herramientas disponibles | Agregar hint explícito de tools en el prompt |
 | 2026-05-13 | "¿qué pasó hoy?" disparaba anti-hallucination | Regla de mensajes de familiares era demasiado amplia | Hacer la regla específica a "mandó un mensaje" |
-| 2026-05-13 | Falso positivo distress nivel 1 | Criterios no aclaraban que aplica solo al estado de Rosa | Agregar "solo cuando Rosa describe su propio estado" |
+| 2026-05-13 | Falso positivo distress nivel 1 | Criterios no aclaraban que aplica solo al estado de Marta | Agregar "solo cuando Marta describe su propio estado" |
 | 2026-05-13 | "bash start.sh" visible al familiar tras editar perfil | Mensaje técnico hardcodeado en recibir_contenido | Reemplazar por mensaje amigable |
 | 2026-05-13 | Falso positivo distress — "Hola" → nivel 2 tras emergencia | LLM evalúa historial completo, no solo el mensaje actual | Instrucción explícita: evaluar ÚNICAMENTE el último mensaje |
 | 2026-05-13 | Tools no activan para clima/dólar/noticias | Hint genérico en prompt insuficiente | Listar triggers exactos en español con mapeo → herramienta |

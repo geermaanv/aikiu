@@ -10,7 +10,7 @@ _DISTRESS_RE = re.compile(r"DISTRESS_LEVEL:\s*([0-3])")
 
 def parse_llm_response(raw_response: str) -> tuple[str, int]:
     """
-    Separa el texto visible para Rosa del nivel de distress.
+    Separa el texto visible para el adulto mayor del nivel de distress.
     Retorna (texto_limpio, distress_level).
     Elimina la etiqueta DISTRESS_LEVEL dondequiera que aparezca en la respuesta.
     Si no encuentra DISTRESS_LEVEL, retorna level=0 (nunca falla).

@@ -1,7 +1,7 @@
 """
 Tests que verifican las reglas de comportamiento de Clara:
 - Nunca da consejos médicos
-- DISTRESS_LEVEL nunca llega al texto que ve Rosa
+- DISTRESS_LEVEL nunca llega al texto que ve Marta
 """
 
 from pathlib import Path
@@ -18,7 +18,7 @@ PERFIL_PATH = BASE_DIR / "perfil.md"
 def cargar_perfil() -> str:
     return PERFIL_PATH.read_text(encoding="utf-8")
 
-def construir_prompt(perfil: str, asistente: str = "Clara", nombre: str = "Rosa") -> str:
+def construir_prompt(perfil: str, asistente: str = "Clara", nombre: str = "Marta") -> str:
     from aikiu import construir_system_prompt
     return construir_system_prompt(perfil, asistente, nombre)
 
@@ -93,7 +93,7 @@ def test_system_prompt_sin_perfil_igual_funciona():
     """Sin perfil cargado, el prompt aún tiene instrucciones básicas."""
     prompt = construir_prompt(perfil="")
     assert "Clara" in prompt
-    assert "Rosa" in prompt
+    assert "Marta" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -132,11 +132,11 @@ def test_antihallucinacion_usa_palabra_explicitamente():
 
 
 # ---------------------------------------------------------------------------
-# Regla: distress nivel 1 solo para estado explícito de Rosa
+# Regla: distress nivel 1 solo para estado explícito de Marta
 # ---------------------------------------------------------------------------
 
 def test_distress_criterios_mencionan_estado_propio():
-    """El prompt debe aclarar que el nivel ≥1 aplica solo cuando Rosa describe su estado."""
+    """El prompt debe aclarar que el nivel ≥1 aplica solo cuando Marta describe su estado."""
     prompt = construir_prompt(perfil="")
     assert "su propio estado" in prompt.lower() or "estado emocional" in prompt.lower()
 
@@ -214,31 +214,31 @@ def test_pre_route_detecta_ciudad_en_mensaje():
 
 
 # ---------------------------------------------------------------------------
-# Regla: DISTRESS_LEVEL nunca llega a Rosa
+# Regla: DISTRESS_LEVEL nunca llega a Marta
 # ---------------------------------------------------------------------------
 
-def test_rosa_no_ve_distress_en_respuesta_normal():
-    raw = "Qué bueno que te sentís bien hoy, Rosa.\nDISTRESS_LEVEL: 0"
+def test_marta_no_ve_distress_en_respuesta_normal():
+    raw = "Qué bueno que te sentís bien hoy, Marta.\nDISTRESS_LEVEL: 0"
     texto, _ = parse_llm_response(raw)
     assert "DISTRESS_LEVEL" not in texto
 
-def test_rosa_no_ve_distress_en_alerta_nivel_1():
-    raw = "Entiendo que te sentís sola, Rosa. Estoy acá con vos.\nDISTRESS_LEVEL: 1"
+def test_marta_no_ve_distress_en_alerta_nivel_1():
+    raw = "Entiendo que te sentís sola, Marta. Estoy acá con vos.\nDISTRESS_LEVEL: 1"
     texto, nivel = parse_llm_response(raw)
     assert "DISTRESS_LEVEL" not in texto
     assert nivel == 1
 
-def test_rosa_no_ve_distress_en_emergencia():
-    raw = "DISTRESS_LEVEL: 3\nLlamá a Germán ahora, Rosa."
+def test_marta_no_ve_distress_en_emergencia():
+    raw = "DISTRESS_LEVEL: 3\nLlamá a Germán ahora, Marta."
     texto, nivel = parse_llm_response(raw)
     assert "DISTRESS_LEVEL" not in texto
     assert nivel == 3
 
-def test_rosa_recibe_respuesta_integra_sin_distress():
+def test_marta_recibe_respuesta_integra_sin_distress():
     """El texto de Clara llega completo, solo se elimina la línea de control."""
-    raw = "Hola Rosa, ¿cómo estás hoy?\nEspero que hayas dormido bien.\nDISTRESS_LEVEL: 0"
+    raw = "Hola Marta, ¿cómo estás hoy?\nEspero que hayas dormido bien.\nDISTRESS_LEVEL: 0"
     texto, _ = parse_llm_response(raw)
-    assert "Hola Rosa" in texto
+    assert "Hola Marta" in texto
     assert "dormido bien" in texto
     assert "DISTRESS_LEVEL" not in texto
 

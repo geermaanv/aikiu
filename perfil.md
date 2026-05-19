@@ -1,7 +1,7 @@
 # Perfil de Marta
 
 ## Quién es
-- Tiene 78 años, vive sola en su departamento en Buenos Aires
+- Tiene 83 años, vive sola en su departamento en Buenos Aires
 - Es alegre, curiosa y le gusta charlar
 - Se llama Marta; al asistente lo conoce como Clara
 
@@ -63,6 +63,16 @@
   orientar mejor que nadie."
 
 ## Aprendizajes
+- Marta tiene dolor en la mano. (18/05/2026)
+- Marta se siente un poco más relajada con la música de fondo. (17/05/2026)
+- Marta parece estar pasando por un momento de tristeza o nostalgia, ya que Clara intenta animarla con una canción. (17/05/2026)
+- Marta parece tener algún interés o gusto por la música de Carlos Gardel. (17/05/2026)
+- Marta parece estar de acuerdo con la elección musical de Clara, ya que respondió con un "Si" antes de que Clara mencionara el tango. (17/05/2026)
+- Marta parece necesitar relajación y está en un lugar con sol y plantas. (17/05/2026)
+- Marta puede necesitar ayuda para salir al balcón, lo que sugiere que puede tener alguna limitación física o problema de movilidad. (17/05/2026)
+- Marta está disfrutando del día lindo. (17/05/2026)
+- Marta considera que es un día largo, lo que podría indicar que está cansada o abrumada con sus actividades o planes del día. (17/05/2026)
+- Marta está tomando un remedio, lo que sugiere que puede estar enferma o tener algún problema de salud. (17/05/2026)
 - Marta está interesada en la película "El diablo viste a la moda 2" y posiblemente en moda o películas en general. (16/05/2026)
 - Marta tiene nietos llamados Lao y Cata. (16/05/2026)
 - Marta buscó un chiste y se rió (o al menos se le intentó hacer reír) con el chiste de Clara sobre el tango. (16/05/2026)
