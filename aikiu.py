@@ -24,6 +24,7 @@ from core.distress import parse_llm_response, should_send_alert, record_alert_se
 from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
+from core import state as state_mod
 
 # ---------------------------------------------------------------------------
 # Config
@@ -35,9 +36,12 @@ load_dotenv(BASE_DIR / ".env")
 def cargar_config():
     with open(BASE_DIR / "config.yml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
-    for key, env_var in [("bot_token", "BOT_TOKEN"), ("chat_id", "CHAT_ID"), ("groq_api_key", "GROQ_API_KEY")]:
-        value = os.environ.get(env_var)
-        if not value:
+    # Variables obligatorias: solo el token del bot y la API key del LLM.
+    # El chat_id del adulto se autoregistra en el primer /start (ver core/state.py),
+    # pero si está en .env se respeta como override (compat con instalaciones viejas).
+    for key, env_var in [("bot_token", "BOT_TOKEN"), ("groq_api_key", "GROQ_API_KEY")]:
+        value = os.environ.get(env_var, "").strip()
+        if not value or "PEGA_TU" in value:
             raise RuntimeError(f"Falta la variable de entorno {env_var} (definila en .env)")
         cfg[key] = value
     perfil_path = BASE_DIR / cfg.get("perfil", "perfil.md")
@@ -333,7 +337,19 @@ def _parsear_seccion(texto: str, seccion: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def chat_id_autorizado(chat_id: int) -> bool:
-    return str(chat_id) == str(CONFIG["chat_id"])
+    """True solo para el adulto registrado (TOFU). Si todavía no hay dueño,
+    nadie está autorizado: el registro se hace explícitamente en /start."""
+    return state_mod.es_owner(chat_id)
+
+
+def _owner_chat_id_o_warn() -> int | None:
+    """Devuelve el chat_id del adulto o None, logueando si no está bindeado."""
+    cid = state_mod.owner_chat_id()
+    if cid is None:
+        log.warning(
+            "No hay adulto registrado todavía: pedile que abra el bot y mande /start."
+        )
+    return cid
 
 async def responder_con_voz(context, chat_id: int, texto: str):
     with tempfile.TemporaryDirectory() as tmp:
@@ -348,10 +364,26 @@ async def responder_con_voz(context, chat_id: int, texto: str):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    if not chat_id_autorizado(chat_id):
-        return
     nombre = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
+
+    # TOFU: si todavía no hay adulto registrado, este /start lo registra.
+    if not state_mod.tiene_owner():
+        if state_mod.registrar_owner(chat_id):
+            log.warning(
+                f"[OWNER REGISTRADO] chat_id={chat_id} usuario_tg={update.effective_user.first_name!r} "
+                f"hora={datetime.now().isoformat(timespec='seconds')}"
+            )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+            )
+            return
+
+    if not chat_id_autorizado(chat_id):
+        log.warning(f"/start rechazado: chat_id={chat_id} no es el adulto registrado")
+        return
+
     await context.bot.send_message(
         chat_id=chat_id,
         text=f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
@@ -403,8 +435,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
-        family_bot     = context.bot_data.get("family_bot")
-        family_chat_id = context.bot_data.get("family_chat_id")
+        family_bot = context.bot_data.get("family_bot")
         if family_bot:
             log.info(f"Enviando alerta nivel {distress_level} a suscriptores")
             create_background_task(notify_family(
@@ -412,7 +443,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 adulto_message=texto,
                 bot_response=respuesta,
                 family_bot=family_bot,
-                family_chat_id=family_chat_id,
             ))
         else:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
@@ -422,7 +452,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 
 async def enviar_mensaje_voz(app: Application, texto: str):
-    chat_id = CONFIG["chat_id"]
+    chat_id = _owner_chat_id_o_warn()
+    if chat_id is None:
+        log.warning(f"Proactivo NO enviado (sin adulto registrado): '{texto}'")
+        return
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "proactivo.ogg"
         await sintetizar(texto, ogg, voz=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
@@ -546,15 +579,21 @@ async def main():
         programar_recordatorios(scheduler, app)
         scheduler.start()
 
-        familiar_token   = os.environ.get("FAMILIAR_BOT_TOKEN", "")
-        familiar_chat_id = os.environ.get("FAMILIAR_CHAT_ID", "")
+        familiar_token = os.environ.get("FAMILIAR_BOT_TOKEN", "").strip()
         log.info(f"FAMILIAR_BOT_TOKEN: {'presente (' + str(len(familiar_token)) + ' chars)' if familiar_token else 'no encontrado'}")
         if familiar_token and "PEGA_TU" not in familiar_token:
-            app.bot_data["family_bot"]     = Bot(token=familiar_token)
-            app.bot_data["family_chat_id"] = familiar_chat_id
+            app.bot_data["family_bot"] = Bot(token=familiar_token)
             log.info("Alertas al familiar activadas — family_bot listo en bot_data")
         else:
             log.warning("Bot familiar no configurado — alertas desactivadas (revisá FAMILIAR_BOT_TOKEN en .env)")
+
+        if not state_mod.tiene_owner():
+            log.warning(
+                "Todavía no hay adulto registrado. Pedile a la persona que abra el bot "
+                "(@<username_del_bot>) y mande /start. Ese chat va a quedar bindeado."
+            )
+        else:
+            log.info(f"Adulto registrado: chat_id={state_mod.owner_chat_id()}")
 
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)

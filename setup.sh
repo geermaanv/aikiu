@@ -32,19 +32,22 @@ if [ ! -f "$DIR/.env" ]; then
     cp "$DIR/.env.example" "$DIR/.env"
 fi
 
-if grep -q "PEGA_TU" "$DIR/.env"; then
+if grep -q "PEGA_TU_TELEGRAM_BOT_TOKEN\|PEGA_TU_GROQ" "$DIR/.env"; then
     echo ""
     echo "  Completá .env antes de iniciar:"
     echo "  open -e .env"
     echo ""
-    echo "  Necesitás:"
+    echo "  Necesitás (solo 2 obligatorios):"
     echo "  - BOT_TOKEN    → @BotFather en Telegram"
-    echo "  - CHAT_ID      → del celular del anciano"
     echo "  - GROQ_API_KEY → console.groq.com (gratis)"
+    echo ""
+    echo "  Opcional: FAMILIAR_BOT_TOKEN (un segundo bot para alertas a la familia)."
+    echo "  Los chat_id se registran solos cuando el adulto/familiar mandan /start."
     echo ""
 else
     echo ""
     ok ".env configurado"
     echo -e "${GREEN}  Iniciá con: bash start.sh${RESET}"
+    echo -e "${YELLOW}  Tip: la primera vez, pedile al adulto que abra el bot y mande /start.${RESET}"
     echo ""
 fi

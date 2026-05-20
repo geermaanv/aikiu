@@ -61,9 +61,8 @@ async def notify_family(
     adulto_message: str,
     bot_response: str,
     family_bot: Bot,
-    family_chat_id: str,
 ) -> None:
-    """Envía alerta a todos los familiares registrados."""
+    """Envía alerta a todos los familiares registrados en familiares.json."""
     nombre = _nombre_adulto()
     timestamp = datetime.now().strftime("%H:%M")
     header = _distress_messages(nombre)[distress_level]
@@ -75,8 +74,13 @@ async def notify_family(
     )
 
     suscriptores = cargar_suscriptores()
-    if not suscriptores and family_chat_id:
-        suscriptores = [int(family_chat_id)]
+    if not suscriptores:
+        from logging import getLogger
+        getLogger("aikiu").warning(
+            "Alerta detectada pero no hay familiares suscriptos al bot familiar — "
+            "pedile a alguien que mande /start al bot familiar."
+        )
+        return
 
     for chat_id in suscriptores:
         try:
