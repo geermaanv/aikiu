@@ -430,6 +430,22 @@ async def enviar_mensaje_voz(app: Application, texto: str):
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
+DIAS_SEMANA = [
+    "lunes", "martes", "miércoles", "jueves",
+    "viernes", "sábado", "domingo",
+]
+MESES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+def fecha_en_espanol(fecha: datetime | None = None) -> str:
+    """Devuelve la fecha en formato 'miércoles 20 de mayo'."""
+    fecha = fecha or datetime.now()
+    return f"{DIAS_SEMANA[fecha.weekday()]} {fecha.day} de {MESES[fecha.month - 1]}"
+
+
 async def saludo_matutino(app: Application):
     nombre    = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
@@ -448,7 +464,11 @@ async def saludo_matutino(app: Application):
     except Exception as e:
         log.warning(f"saludo_matutino: no pude obtener clima: {e}")
 
-    texto = f"Buenos días {nombre}, soy {asistente}.{clima_frase} ¿Cómo amaneciste hoy?"
+    fecha_frase = fecha_en_espanol()
+    texto = (
+        f"Hola {nombre}, soy {asistente}. Hoy es {fecha_frase}."
+        f"{clima_frase} ¿Cómo amaneciste hoy?"
+    )
     await enviar_mensaje_voz(app, texto)
 
 async def verificar_inactividad(app: Application):

@@ -56,10 +56,12 @@ servidor propio. Corre en cualquier Mac con Python.
     mejor calidad, sin costo por turno
 
 ### Recordatorios proactivos (scheduler)
-- Saludo diario con temperatura: cada mañana Clara dice la temperatura actual de
-  la ciudad de Marta (Olivos, Buenos Aires) antes de preguntar cómo amaneció.
-  Si la API de clima falla, el saludo se envía igual sin temperatura.
-  La ciudad es configurable en `config.yml` → `ciudad`
+- Saludo diario con fecha y temperatura: cada mañana Clara saluda a Marta
+  diciendo el día de la semana y la fecha (por ej. "Hoy es miércoles 20 de mayo")
+  y la temperatura actual de la ciudad (Olivos, Buenos Aires), antes de
+  preguntar cómo amaneció. Si la API de clima falla, el saludo se envía igual
+  sin temperatura (la fecha siempre aparece). La ciudad es configurable en
+  `config.yml` → `ciudad`
 - Recordatorios de medicamentos u otros eventos (hora y mensaje configurables)
 - El bot inicia la conversación sin que Marta tenga que escribir
 

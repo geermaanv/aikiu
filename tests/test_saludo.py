@@ -92,9 +92,47 @@ def test_saludo_sin_clima_usa_fallback():
             run(saludo_matutino(app := _mock_app()))
         assert textos
         saludo = textos[0]
-        # Sin clima, debe seguir saludando con el nombre
+        # Sin clima, debe seguir saludando con el nombre y la fecha
         assert "Marta" in saludo
-        assert "Buenos días" in saludo
+        assert "Hola" in saludo
+        assert "Hoy es" in saludo
+
+def test_fecha_en_espanol_formato():
+    """fecha_en_espanol devuelve 'día_semana N de mes' en castellano."""
+    from datetime import datetime
+    from aikiu import fecha_en_espanol
+    # miércoles 20 de mayo de 2026
+    assert fecha_en_espanol(datetime(2026, 5, 20)) == "miércoles 20 de mayo"
+    # domingo 1 de enero de 2023
+    assert fecha_en_espanol(datetime(2023, 1, 1)) == "domingo 1 de enero"
+    # sábado 31 de diciembre de 2022
+    assert fecha_en_espanol(datetime(2022, 12, 31)) == "sábado 31 de diciembre"
+
+
+def test_saludo_incluye_dia_y_mes():
+    """El saludo debe incluir el día de la semana y el día del mes."""
+    clima_ok = "Clima en Olivos: Sunny. Temperatura 18°C (sensación 16°C), humedad 60%."
+    with patch("aikiu.consultar_clima", new=AsyncMock(return_value=clima_ok)), \
+         patch("aikiu.CONFIG", {
+             "nombre_adulto_mayor": "Marta",
+             "nombre_asistente": "Clara",
+             "ciudad": "Olivos, Buenos Aires",
+             "chat_id": "123",
+             "voz_tts": "es-AR-ElenaNeural",
+         }):
+        textos = []
+        async def capturar(texto, salida, voz):
+            textos.append(texto)
+            salida.touch()
+        with patch("aikiu.sintetizar", side_effect=capturar), \
+             patch("builtins.open", MagicMock()):
+            run(__import__("aikiu").saludo_matutino(app := _mock_app()))
+        saludo = textos[0]
+        from aikiu import fecha_en_espanol
+        assert fecha_en_espanol() in saludo
+        assert "Hoy es" in saludo
+        assert "18 grados" in saludo
+
 
 def test_saludo_temperatura_igual_sensacion_no_repite():
     """Si temperatura y sensación son iguales, no mencionar sensación."""
