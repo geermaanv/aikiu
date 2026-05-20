@@ -213,6 +213,16 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
                        f"{', '.join(evitar)}. No los sugieras ni los menciones.",
         })
 
+    # Inyectar temas de alto engagement como sugerencia de iniciativa
+    preferidos = _temas_preferidos()
+    preferidos_filtrados = [t for t in preferidos if t not in evitar]
+    if preferidos_filtrados:
+        messages.append({
+            "role": "system",
+            "content": f"Temas con alto engagement reciente de {nombre} (úsalos si la conversación se frena): "
+                       f"{', '.join(preferidos_filtrados[:3])}.",
+        })
+
     messages.append({"role": "user", "content": texto_usuario})
 
     response = await groq.chat.completions.create(
@@ -315,13 +325,14 @@ async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
             elif linea.upper().startswith("RECEPTIVIDAD:"):
                 receptividad = linea.split(":", 1)[1].strip().lower()
         if tema and receptividad in ("alta", "baja", "neutra") and tema != "general":
-            _guardar_receptividad(tema, receptividad)
-            log.info(f"Receptividad: tema='{tema}' nivel='{receptividad}'")
+            palabras = len(texto_usuario.split())
+            _guardar_receptividad(tema, receptividad, palabras)
+            log.info(f"Receptividad: tema='{tema}' nivel='{receptividad}' palabras={palabras}")
     except Exception as e:
         log.warning(f"clasificar_receptividad falló: {e}")
 
 
-def _guardar_receptividad(tema: str, receptividad: str):
+def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 0):
     """Agrega entrada al historial de receptividad."""
     entradas = []
     if RECEPTIVIDAD_PATH.exists():
@@ -332,6 +343,7 @@ def _guardar_receptividad(tema: str, receptividad: str):
     entradas.append({
         "tema": tema,
         "receptividad": receptividad,
+        "palabras_usuario": palabras_usuario,
         "ts": datetime.now().isoformat(),
     })
     # Mantener solo los últimos 200 registros
@@ -363,6 +375,77 @@ def _temas_a_evitar() -> list[str]:
                 altos.add(e["tema"])
     # No excluir un tema si también tuvo receptividad alta recientemente
     return [t for t in bajos if t not in altos]
+
+
+def _temas_preferidos() -> list[str]:
+    """Devuelve ranking de temas por engagement (precalculado en stats.json)."""
+    if not STATS_PATH.exists():
+        return []
+    try:
+        stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
+        # Buscar el ranking más reciente (último día con dato)
+        for dia in sorted(stats.keys(), reverse=True):
+            ranking = stats[dia].get("ranking_temas")
+            if ranking:
+                return ranking[:5]
+    except Exception:
+        pass
+    return []
+
+
+def _calcular_ranking_temas() -> list[str]:
+    """Agrega métricas por tema y devuelve ranking por score de engagement."""
+    if not RECEPTIVIDAD_PATH.exists():
+        return []
+    try:
+        entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    # Leer aprendizajes del perfil para bonus
+    temas_en_perfil: set[str] = set()
+    try:
+        perfil = PERFIL_PATH.read_text(encoding="utf-8")
+        import re as _re
+        m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil, _re.DOTALL)
+        if m:
+            for linea in m.group(1).splitlines():
+                for palabra in linea.lower().split():
+                    if len(palabra) > 4:
+                        temas_en_perfil.add(palabra)
+    except Exception:
+        pass
+
+    # Agregar por tema (últimas 96h para ranking más rico)
+    limite = datetime.now().timestamp() - 96 * 3600
+    temas: dict[str, dict] = {}
+    for e in entradas:
+        try:
+            ts = datetime.fromisoformat(e["ts"]).timestamp()
+        except Exception:
+            continue
+        if ts < limite:
+            continue
+        t = e["tema"]
+        d = temas.setdefault(t, {"turnos": 0, "palabras": [], "alta": 0, "baja": 0})
+        d["turnos"] += 1
+        d["palabras"].append(e.get("palabras_usuario", 0))
+        if e["receptividad"] == "alta":
+            d["alta"] += 1
+        elif e["receptividad"] == "baja":
+            d["baja"] += 1
+
+    scored = []
+    for tema, d in temas.items():
+        avg_palabras = sum(d["palabras"]) / len(d["palabras"]) if d["palabras"] else 0
+        total = d["alta"] + d["baja"] + (d["turnos"] - d["alta"] - d["baja"])
+        alta_ratio = d["alta"] / total if total else 0
+        en_perfil_bonus = 10 if any(p in tema for p in temas_en_perfil) else 0
+        score = (avg_palabras * 0.4) + (alta_ratio * 30) + (d["turnos"] * 2) + en_perfil_bonus
+        scored.append((tema, round(score, 1)))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [t for t, _ in scored]
 
 
 def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
@@ -449,8 +532,11 @@ AJUSTES_CONVERSACION:
             _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones)
             log.info(f"analisis_nocturno: {len(instrucciones)} ajuste(s) convertido(s) a instrucciones")
 
+        # Calcular ranking de engagement por tema y guardarlo en stats
+        ranking = _calcular_ranking_temas()
+
         # Guardar resumen del día en stats.json
-        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia)
+        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia, ranking)
 
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
@@ -489,7 +575,7 @@ def _stats_del_dia(hoy: str) -> dict:
             pass
     return {}
 
-def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict):
+def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict, ranking: list[str] | None = None):
     """Agrega al stats del día el resumen del análisis nocturno."""
     stats = {}
     if STATS_PATH.exists():
@@ -502,6 +588,8 @@ def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, sta
         "aprendizajes_nuevos": n_aprendizajes,
         "ajustes_sugeridos": n_ajustes,
     }
+    if ranking:
+        dia["ranking_temas"] = ranking
     STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
     log.info(f"analisis_nocturno: stats actualizadas para {hoy}")
 
