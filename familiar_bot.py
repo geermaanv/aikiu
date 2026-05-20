@@ -9,7 +9,6 @@ import logging
 import os
 import re
 import tempfile
-import unicodedata
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -20,6 +19,7 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes,
 )
 from core.tts import sintetizar
+from core.utils import norm, load_json
 
 BASE_DIR         = Path(__file__).parent
 PERFIL_PATH      = BASE_DIR / "perfil.md"
@@ -39,20 +39,18 @@ ADULTO_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ADULTO_CHAT_ID   = os.environ.get("CHAT_ID", "")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
-def _cargar_config():
+def _cargar_config() -> dict:
     cfg_path = BASE_DIR / "config.yml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
 
-def _cargar_voz():
-    return _cargar_config().get("voz_tts", "es-AR-ElenaNeural")
+_CONFIG = _cargar_config()
+VOZ_TTS = _CONFIG.get("voz_tts", "es-AR-ElenaNeural")
 
 def _nombre_adulto() -> str:
-    return _cargar_config().get("nombre_adulto_mayor", "Marta")
-
-VOZ_TTS = _cargar_voz()
+    return _CONFIG.get("nombre_adulto_mayor", "Marta")
 
 ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE = range(3)
 
@@ -70,9 +68,7 @@ SECCIONES = [
 # ---------------------------------------------------------------------------
 
 def cargar_familiares() -> list[dict]:
-    if FAMILIARES_PATH.exists():
-        return json.loads(FAMILIARES_PATH.read_text(encoding="utf-8"))
-    return []
+    return load_json(FAMILIARES_PATH, default=[])
 
 def guardar_familiares(familiares: list[dict]):
     FAMILIARES_PATH.write_text(
@@ -244,9 +240,8 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not STATS_PATH.exists():
         await update.message.reply_text("Todavía no hay estadísticas registradas.")
         return
-    try:
-        stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    stats = load_json(STATS_PATH)
+    if not stats:
         await update.message.reply_text("Error al leer las estadísticas.")
         return
 
@@ -311,18 +306,14 @@ async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ELIGIENDO
 
-def _norm(s: str) -> str:
-    """Normaliza texto para comparación sin tildes ni mayúsculas."""
-    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").lower().strip()
-
-_SECCIONES_NORM = {_norm(s): s for s in SECCIONES}
+_SECCIONES_NORM = {norm(s): s for s in SECCIONES}
 
 async def elegir_seccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     if texto == "❌ Cancelar":
         await update.message.reply_text("Cancelado.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
-    seccion = _SECCIONES_NORM.get(_norm(texto))
+    seccion = _SECCIONES_NORM.get(norm(texto))
     if not seccion:
         await update.message.reply_text("Elegí una opción de la lista.")
         return ELIGIENDO

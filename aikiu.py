@@ -13,7 +13,7 @@ import tempfile
 import os
 import yaml
 import httpx
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -24,6 +24,11 @@ from core.distress import parse_llm_response, should_send_alert, record_alert_se
 from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
+from core.utils import (
+    norm, load_json, nombre_adulto, read_section,
+    fecha_hora_es, fecha_en_espanol,
+    CLIMA_KEYWORDS, DOLAR_KEYWORDS, NOTICIAS_KEYWORDS,
+)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -90,14 +95,6 @@ async def transcribir(ogg_path: Path) -> str:
 # LLM: Groq llama-3.3-70b
 # ---------------------------------------------------------------------------
 
-_DIAS_ES  = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
-             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-
-def _fecha_hora_es() -> str:
-    now = datetime.now()
-    return (f"{_DIAS_ES[now.weekday()]} {now.day} de "
-            f"{_MESES_ES[now.month - 1]} de {now.year}, {now.strftime('%H:%M')}")
 
 
 def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
@@ -115,7 +112,7 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
             f"Nunca uses markdown. Máximo 3 oraciones."
         )
     prompt += (
-        f"\n\nFecha y hora actual: {_fecha_hora_es()} (hora de Buenos Aires)."
+        f"\n\nFecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires)."
         "\n\n---\n"
         "INSTRUCCIÓN DE SISTEMA (nunca leer en voz alta ni mencionar al usuario):\n"
         "- Cuando el mensaje incluya datos en tiempo real (clima, dólar, noticias),\n"
@@ -169,17 +166,10 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
     return prompt
 
 
-def _norm(s: str) -> str:
-    """Minúsculas sin tildes para comparación de keywords."""
-    return re.sub(r"[áàä]", "a", re.sub(r"[éèë]", "e", re.sub(r"[íìï]", "i",
-           re.sub(r"[óòö]", "o", re.sub(r"[úùü]", "u", s.lower())))))
-
 async def _pre_route(texto: str) -> str:
     """Detecta si el mensaje requiere datos externos y los obtiene antes del LLM."""
-    t = _norm(texto)
-    if any(w in t for w in ["clima", "tiempo", "temperatura", "grados", "llueve",
-                             "lluvia", "frio", "calor", "pronostico", "nublado",
-                             "viento", "humedad"]):
+    t = norm(texto)
+    if any(w in t for w in CLIMA_KEYWORDS):
         ciudad = CONFIG.get("ciudad", "Buenos Aires")
         # Detectar ciudad mencionada explícitamente: "en Córdoba", "en Mendoza"
         m = re.search(r"\ben\s+([A-ZÁÉÍÓÚ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚ][a-záéíóúñ]+)?)", texto)
@@ -189,12 +179,12 @@ async def _pre_route(texto: str) -> str:
         log.info(f"Pre-route clima({ciudad}) → {resultado[:80]}")
         return resultado
 
-    if any(w in t for w in ["dolar", "cotizacion", "tipo de cambio", "cambio", "billete"]):
+    if any(w in t for w in DOLAR_KEYWORDS):
         resultado = await consultar_dolar()
         log.info(f"Pre-route dolar → {resultado[:80]}")
         return resultado
 
-    if any(w in t for w in ["noticias", "que paso", "novedades", "titulares", "hoy que"]):
+    if any(w in t for w in NOTICIAS_KEYWORDS):
         resultado = await consultar_noticias()
         log.info(f"Pre-route noticias → {resultado[:80]}")
         return resultado
@@ -271,7 +261,6 @@ STATS_PATH        = BASE_DIR / "stats.json"
 RECEPTIVIDAD_PATH = BASE_DIR / "receptividad.json"
 
 def registrar_log(usuario: str, respuesta: str):
-    from datetime import datetime
     now = datetime.now()
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / f"{now.strftime('%Y-%m-%d')}.md"
@@ -290,13 +279,7 @@ def registrar_stats(distress_level: int):
     now = datetime.now()
     hoy = now.strftime("%Y-%m-%d")
     hora = now.strftime("%H:%M")
-
-    stats = {}
-    if STATS_PATH.exists():
-        try:
-            stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            stats = {}
+    stats = load_json(STATS_PATH)
 
     dia = stats.setdefault(hoy, {
         "mensajes": 0,
@@ -350,12 +333,7 @@ async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
 
 def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 0):
     """Agrega entrada al historial de receptividad."""
-    entradas = []
-    if RECEPTIVIDAD_PATH.exists():
-        try:
-            entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            entradas = []
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
     entradas.append({
         "tema": tema,
         "receptividad": receptividad,
@@ -370,11 +348,8 @@ def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 
 
 def _temas_a_evitar() -> list[str]:
     """Devuelve temas con receptividad baja en las últimas 48 horas."""
-    if not RECEPTIVIDAD_PATH.exists():
-        return []
-    try:
-        entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    if not entradas:
         return []
     limite = datetime.now().timestamp() - 48 * 3600
     bajos = set()
@@ -395,46 +370,33 @@ def _temas_a_evitar() -> list[str]:
 
 def _temas_preferidos() -> list[str]:
     """Devuelve ranking de temas por engagement (precalculado en stats.json)."""
-    if not STATS_PATH.exists():
-        return []
-    try:
-        stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
-        # Buscar el ranking más reciente (último día con dato)
-        for dia in sorted(stats.keys(), reverse=True):
-            ranking = stats[dia].get("ranking_temas")
-            if ranking:
-                return ranking[:5]
-    except Exception:
-        pass
+    stats = load_json(STATS_PATH)
+    for dia in sorted(stats.keys(), reverse=True):
+        ranking = stats[dia].get("ranking_temas")
+        if ranking:
+            return ranking[:5]
     return []
 
 
+def _palabras_en_aprendizajes() -> set[str]:
+    """Palabras largas del bloque Aprendizajes del perfil (para bonus de scoring)."""
+    try:
+        seccion = read_section(PERFIL_PATH.read_text(encoding="utf-8"), "Aprendizajes")
+        return {p for linea in seccion.splitlines() for p in linea.lower().split() if len(p) > 4}
+    except Exception:
+        return set()
+
+
 def _calcular_ranking_temas() -> list[str]:
-    """Agrega métricas por tema y devuelve ranking por score de engagement."""
-    if not RECEPTIVIDAD_PATH.exists():
-        return []
-    try:
-        entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    """Devuelve temas ordenados por score de engagement (últimas 96h)."""
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    if not entradas:
         return []
 
-    # Leer aprendizajes del perfil para bonus
-    temas_en_perfil: set[str] = set()
-    try:
-        perfil = PERFIL_PATH.read_text(encoding="utf-8")
-        import re as _re
-        m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil, _re.DOTALL)
-        if m:
-            for linea in m.group(1).splitlines():
-                for palabra in linea.lower().split():
-                    if len(palabra) > 4:
-                        temas_en_perfil.add(palabra)
-    except Exception:
-        pass
-
-    # Agregar por tema (últimas 96h para ranking más rico)
+    palabras_perfil = _palabras_en_aprendizajes()
     limite = datetime.now().timestamp() - 96 * 3600
     temas: dict[str, dict] = {}
+
     for e in entradas:
         try:
             ts = datetime.fromisoformat(e["ts"]).timestamp()
@@ -451,40 +413,29 @@ def _calcular_ranking_temas() -> list[str]:
         elif e["receptividad"] == "baja":
             d["baja"] += 1
 
-    scored = []
-    for tema, d in temas.items():
+    def _score(tema: str, d: dict) -> float:
         avg_palabras = sum(d["palabras"]) / len(d["palabras"]) if d["palabras"] else 0
-        total = d["alta"] + d["baja"] + (d["turnos"] - d["alta"] - d["baja"])
-        alta_ratio = d["alta"] / total if total else 0
-        en_perfil_bonus = 10 if any(p in tema for p in temas_en_perfil) else 0
-        score = (avg_palabras * 0.4) + (alta_ratio * 30) + (d["turnos"] * 2) + en_perfil_bonus
-        scored.append((tema, round(score, 1)))
+        alta_ratio = d["alta"] / d["turnos"] if d["turnos"] else 0
+        bonus = 10 if any(p in tema for p in palabras_perfil) else 0
+        return (avg_palabras * 0.4) + (alta_ratio * 30) + (d["turnos"] * 2) + bonus
 
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [t for t, _ in scored]
+    return [t for t, _ in sorted(temas.items(), key=lambda x: _score(x[0], x[1]), reverse=True)]
 
 
 def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
-    """Reemplaza el contenido de una sección ## en perfil.md."""
-    from datetime import date
+    """Agrega nuevas líneas al inicio de una sección ## en perfil.md."""
     hoy = date.today().strftime("%d/%m/%Y")
+    nuevas = "".join(f"{l} ({hoy})\n" for l in nuevas_lineas)
     content = PERFIL_PATH.read_text(encoding="utf-8")
-    bloque = f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
-    import re as _re
     patron = rf"## {seccion}\n.*?(?=\n## |\Z)"
-    if _re.search(patron, content, _re.DOTALL):
-        # Preservar entradas anteriores: agregar al inicio de la sección existente
-        content = content.replace(
-            f"## {seccion}\n",
-            f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas),
-        )
+    if re.search(patron, content, re.DOTALL):
+        content = content.replace(f"## {seccion}\n", f"## {seccion}\n{nuevas}")
     else:
-        content = content.rstrip() + f"\n\n## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
+        content = content.rstrip() + f"\n\n## {seccion}\n{nuevas}"
     PERFIL_PATH.write_text(content, encoding="utf-8")
 
 async def analisis_nocturno(app=None):
     """Job nocturno: extrae aprendizajes del log del día y detecta patrones de mejora."""
-    from datetime import date
     nombre = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
     hoy = date.today().strftime("%Y-%m-%d")
@@ -496,10 +447,7 @@ async def analisis_nocturno(app=None):
     log_dia = log_path.read_text(encoding="utf-8")
     perfil_actual = PERFIL_PATH.read_text(encoding="utf-8")
 
-    # Extraer sólo la sección Aprendizajes actual para pasarla al LLM
-    import re as _re
-    m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil_actual, _re.DOTALL)
-    aprendizajes_actuales = m.group(1).strip() if m else "(ninguno)"
+    aprendizajes_actuales = read_section(perfil_actual, "Aprendizajes") or "(ninguno)"
 
     # Estadísticas del día para el resumen nocturno
     stats_dia = _stats_del_dia(hoy)
@@ -584,21 +532,11 @@ async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[s
 
 def _stats_del_dia(hoy: str) -> dict:
     """Devuelve las stats acumuladas del día o un dict vacío."""
-    if STATS_PATH.exists():
-        try:
-            return json.loads(STATS_PATH.read_text(encoding="utf-8")).get(hoy, {})
-        except Exception:
-            pass
-    return {}
+    return load_json(STATS_PATH).get(hoy, {})
 
 def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict, ranking: list[str] | None = None):
     """Agrega al stats del día el resumen del análisis nocturno."""
-    stats = {}
-    if STATS_PATH.exists():
-        try:
-            stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    stats = load_json(STATS_PATH)
     dia = stats.setdefault(hoy, stats_dia or {})
     dia["analisis_nocturno"] = {
         "aprendizajes_nuevos": n_aprendizajes,
@@ -614,9 +552,8 @@ def _parsear_seccion(texto: str, seccion: str) -> list[str]:
     """Extrae líneas con '- ' de una sección del output del LLM.
     Tolera variantes: 'SECCION:', '## SECCION', 'SECCION\n'.
     """
-    import re as _re
     patron = rf"(?:##\s*)?{seccion}[:\n](.*?)(?=\n(?:##\s*)?[A-Z_]{{3,}}[:\n]|\Z)"
-    m = _re.search(patron, texto, _re.DOTALL)
+    m = re.search(patron, texto, re.DOTALL)
     if not m:
         return []
     bloque = m.group(1).strip()
@@ -731,21 +668,6 @@ async def enviar_mensaje_voz(app: Application, texto: str):
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
-DIAS_SEMANA = [
-    "lunes", "martes", "miércoles", "jueves",
-    "viernes", "sábado", "domingo",
-]
-MESES = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-]
-
-
-def fecha_en_espanol(fecha: datetime | None = None) -> str:
-    """Devuelve la fecha en formato 'miércoles 20 de mayo'."""
-    fecha = fecha or datetime.now()
-    return f"{DIAS_SEMANA[fecha.weekday()]} {fecha.day} de {MESES[fecha.month - 1]}"
-
 
 async def consultar_feriado(fecha: datetime | None = None) -> str:
     """Devuelve el nombre del feriado argentino si hoy es feriado, o cadena vacía."""
@@ -815,7 +737,6 @@ async def verificar_inactividad(app: Application):
         log.info(f"Inactividad: {horas:.1f}h — dentro del rango normal ({umbral}h)")
         return
 
-    from datetime import date as date_type
     hoy = datetime.now().date()
     if _alerta_inactividad_fecha == hoy:
         log.info("Inactividad: ya se alertó hoy, no se repite")
