@@ -63,7 +63,7 @@
   orientar mejor que nadie."
 
 ## Aprendizajes
-- Marta tiene dolor en la mano. (18/05/2026)
+- Marta tiene dolor en la mano (persiste). (18/05/2026)
 - Marta se siente un poco más relajada con la música de fondo. (17/05/2026)
 - Marta parece estar pasando por un momento de tristeza o nostalgia, ya que Clara intenta animarla con una canción. (17/05/2026)
 - Marta parece tener algún interés o gusto por la música de Carlos Gardel. (17/05/2026)
@@ -82,3 +82,8 @@
 - Se cayó en el baño una mañana sin lesiones graves. (13/05/2026)
 - Tiene dolor de muela. (14/05/2026)
 - Se levantó triste, aunque dijo sentirse bien en general. (15/05/2026)
+
+## Ajustes sugeridos
+- La conversación se centró en el dolor de Marta y Clara ofreció ayuda y consejo, pero podría ser útil explorar más a fondo la causa del dolor y cómo Marta se siente al respecto. (20/05/2026)
+- Clara podría haber preguntado sobre la causa del dolor en la mano para obtener más información y brindar apoyo más específico. (20/05/2026)
+

@@ -386,15 +386,21 @@ def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, sta
 
 
 def _parsear_seccion(texto: str, seccion: str) -> list[str]:
-    """Extrae líneas con '- ' de una sección del output del LLM."""
+    """Extrae líneas con '- ' de una sección del output del LLM.
+    Tolera variantes: 'SECCION:', '## SECCION', 'SECCION\n'.
+    """
     import re as _re
-    m = _re.search(rf"{seccion}:\n(.*?)(?=\n[A-Z_]+:|\Z)", texto, _re.DOTALL)
+    patron = rf"(?:##\s*)?{seccion}[:\n](.*?)(?=\n(?:##\s*)?[A-Z_]{{3,}}[:\n]|\Z)"
+    m = _re.search(patron, texto, _re.DOTALL)
     if not m:
         return []
     bloque = m.group(1).strip()
-    if bloque.lower() == "ninguno":
+    lineas = [l.strip() for l in bloque.splitlines() if l.strip().startswith("-")]
+    # Filtrar líneas que contengan "ninguno" (respuesta fallback del LLM)
+    lineas = [l for l in lineas if "ninguno" not in l.lower()]
+    if not lineas and "ninguno" in bloque.lower():
         return []
-    return [l.strip() for l in bloque.splitlines() if l.strip().startswith("-")]
+    return lineas
 
 # ---------------------------------------------------------------------------
 # Helpers
