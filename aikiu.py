@@ -210,7 +210,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     modelo        = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
 
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(historial[-10:])
+    messages.extend(historial[-20:])
 
     # Pre-routing: obtener datos externos antes del LLM
     datos_externos = await _pre_route(texto_usuario)
