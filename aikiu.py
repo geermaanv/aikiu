@@ -204,6 +204,15 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
             "content": f"Datos en tiempo real para responder este mensaje: {datos_externos}",
         })
 
+    # Inyectar blacklist de temas con baja receptividad en las últimas 48h
+    evitar = _temas_a_evitar()
+    if evitar:
+        messages.append({
+            "role": "system",
+            "content": f"Temas a evitar en esta respuesta (baja receptividad reciente de {nombre}): "
+                       f"{', '.join(evitar)}. No los sugieras ni los menciones.",
+        })
+
     messages.append({"role": "user", "content": texto_usuario})
 
     response = await groq.chat.completions.create(
@@ -231,8 +240,9 @@ _alerta_inactividad_fecha: object = None         # date del último aviso (evita
 # ---------------------------------------------------------------------------
 
 PERFIL_PATH = BASE_DIR / "perfil.md"
-LOGS_DIR    = BASE_DIR / "logs"
-STATS_PATH  = BASE_DIR / "stats.json"
+LOGS_DIR          = BASE_DIR / "logs"
+STATS_PATH        = BASE_DIR / "stats.json"
+RECEPTIVIDAD_PATH = BASE_DIR / "receptividad.json"
 
 def registrar_log(usuario: str, respuesta: str):
     from datetime import datetime
@@ -274,6 +284,85 @@ def registrar_stats(distress_level: int):
         dia["distress"][str(distress_level)] = dia["distress"].get(str(distress_level), 0) + 1
 
     STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
+    """Background task: detecta tema y receptividad del último intercambio."""
+    nombre = CONFIG["nombre_adulto_mayor"]
+    prompt = (
+        f"Analizá este intercambio y respondé con exactamente dos líneas.\n\n"
+        f"{nombre}: {texto_usuario}\n"
+        f"Asistente: {respuesta_bot}\n\n"
+        f"TEMA: (1-3 palabras que describan el tema principal, ej: 'tango', 'cocina', 'familia'."
+        f" Si es saludo o no hay tema claro, escribí 'general')\n"
+        f"RECEPTIVIDAD: (una sola palabra: 'alta', 'baja' o 'neutra'.\n"
+        f"  alta = {nombre} amplió, preguntó más, se entusiasmó\n"
+        f"  baja = {nombre} cortó el tema, respondió con pocas palabras, rechazó la sugerencia\n"
+        f"  neutra = intercambio normal sin señal clara)"
+    )
+    try:
+        r = await groq.chat.completions.create(
+            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=30,
+            temperature=0.1,
+        )
+        texto = r.choices[0].message.content.strip()
+        tema = receptividad = None
+        for linea in texto.splitlines():
+            if linea.upper().startswith("TEMA:"):
+                tema = linea.split(":", 1)[1].strip().lower()
+            elif linea.upper().startswith("RECEPTIVIDAD:"):
+                receptividad = linea.split(":", 1)[1].strip().lower()
+        if tema and receptividad in ("alta", "baja", "neutra") and tema != "general":
+            _guardar_receptividad(tema, receptividad)
+            log.info(f"Receptividad: tema='{tema}' nivel='{receptividad}'")
+    except Exception as e:
+        log.warning(f"clasificar_receptividad falló: {e}")
+
+
+def _guardar_receptividad(tema: str, receptividad: str):
+    """Agrega entrada al historial de receptividad."""
+    entradas = []
+    if RECEPTIVIDAD_PATH.exists():
+        try:
+            entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            entradas = []
+    entradas.append({
+        "tema": tema,
+        "receptividad": receptividad,
+        "ts": datetime.now().isoformat(),
+    })
+    # Mantener solo los últimos 200 registros
+    RECEPTIVIDAD_PATH.write_text(
+        json.dumps(entradas[-200:], ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _temas_a_evitar() -> list[str]:
+    """Devuelve temas con receptividad baja en las últimas 48 horas."""
+    if not RECEPTIVIDAD_PATH.exists():
+        return []
+    try:
+        entradas = json.loads(RECEPTIVIDAD_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    limite = datetime.now().timestamp() - 48 * 3600
+    bajos = set()
+    altos = set()
+    for e in entradas:
+        try:
+            ts = datetime.fromisoformat(e["ts"]).timestamp()
+        except Exception:
+            continue
+        if ts >= limite:
+            if e["receptividad"] == "baja":
+                bajos.add(e["tema"])
+            elif e["receptividad"] == "alta":
+                altos.add(e["tema"])
+    # No excluir un tema si también tuvo receptividad alta recientemente
+    return [t for t in bajos if t not in altos]
 
 
 def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
@@ -507,6 +596,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Tareas en background (no bloquean la respuesta)
     registrar_log(texto, respuesta)
     registrar_stats(distress_level)
+    create_background_task(clasificar_receptividad(texto, respuesta))
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
