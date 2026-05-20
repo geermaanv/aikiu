@@ -84,6 +84,5 @@
 - Se levantó triste, aunque dijo sentirse bien en general. (15/05/2026)
 
 ## Ajustes sugeridos
-- La conversación se centró en el dolor de Marta y Clara ofreció ayuda y consejo, pero podría ser útil explorar más a fondo la causa del dolor y cómo Marta se siente al respecto. (20/05/2026)
-- Clara podría haber preguntado sobre la causa del dolor en la mano para obtener más información y brindar apoyo más específico. (20/05/2026)
+- Preguntale a Marta sobre la causa del dolor en la mano antes de cambiar de tema. (20/05/2026)
 

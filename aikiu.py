@@ -350,14 +350,40 @@ AJUSTES_CONVERSACION:
             _actualizar_seccion_perfil("Aprendizajes", aprendizajes)
             log.info(f"analisis_nocturno: {len(aprendizajes)} aprendizaje(s) nuevo(s)")
         if ajustes:
-            _actualizar_seccion_perfil("Ajustes sugeridos", ajustes)
-            log.info(f"analisis_nocturno: {len(ajustes)} ajuste(s) sugerido(s)")
+            instrucciones = await _ajustes_a_instrucciones(ajustes, CONFIG.get("nombre_asistente", "Clara"))
+            _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones)
+            log.info(f"analisis_nocturno: {len(instrucciones)} ajuste(s) convertido(s) a instrucciones")
 
         # Guardar resumen del día en stats.json
         _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia)
 
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
+
+async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[str]:
+    """Convierte ajustes descriptivos en instrucciones imperativas para el system prompt."""
+    if not ajustes:
+        return []
+    lista = "\n".join(ajustes)
+    prompt = (
+        f"Convertí cada observación en una instrucción directa e imperativa para {asistente}, "
+        f"un asistente de voz. Sin explicaciones, solo la instrucción. "
+        f"Una línea por ítem, empezando con '- '. Observaciones:\n{lista}"
+    )
+    try:
+        r = await groq.chat.completions.create(
+            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.1,
+        )
+        resultado = r.choices[0].message.content.strip()
+        instrucciones = [l.strip() for l in resultado.splitlines() if l.strip().startswith("-")]
+        return instrucciones if instrucciones else ajustes
+    except Exception as e:
+        log.warning(f"_ajustes_a_instrucciones falló: {e}")
+        return ajustes  # fallback: guardar los originales
+
 
 def _stats_del_dia(hoy: str) -> dict:
     """Devuelve las stats acumuladas del día o un dict vacío."""
