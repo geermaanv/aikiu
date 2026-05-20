@@ -6,5 +6,6 @@ __pycache__/
 logs/
 subscribers.json
 familiares.json
+stats.json
 .DS_Store
 

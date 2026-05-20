@@ -226,6 +226,7 @@ _alerta_inactividad_fecha: object = None         # date del último aviso (evita
 
 PERFIL_PATH = BASE_DIR / "perfil.md"
 LOGS_DIR    = BASE_DIR / "logs"
+STATS_PATH  = BASE_DIR / "stats.json"
 
 def registrar_log(usuario: str, respuesta: str):
     from datetime import datetime
@@ -241,6 +242,33 @@ def registrar_log(usuario: str, respuesta: str):
     else:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(entrada)
+
+def registrar_stats(distress_level: int):
+    """Acumula estadísticas diarias en stats.json para el dashboard familiar."""
+    now = datetime.now()
+    hoy = now.strftime("%Y-%m-%d")
+    hora = now.strftime("%H:%M")
+
+    stats = {}
+    if STATS_PATH.exists():
+        try:
+            stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            stats = {}
+
+    dia = stats.setdefault(hoy, {
+        "mensajes": 0,
+        "primer_mensaje": hora,
+        "ultimo_mensaje": hora,
+        "distress": {"1": 0, "2": 0, "3": 0},
+    })
+    dia["mensajes"] += 1
+    dia["ultimo_mensaje"] = hora
+    if distress_level >= 1:
+        dia["distress"][str(distress_level)] = dia["distress"].get(str(distress_level), 0) + 1
+
+    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+
 
 def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
     """Reemplaza el contenido de una sección ## en perfil.md."""
@@ -279,6 +307,9 @@ async def analisis_nocturno(app=None):
     m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil_actual, _re.DOTALL)
     aprendizajes_actuales = m.group(1).strip() if m else "(ninguno)"
 
+    # Estadísticas del día para el resumen nocturno
+    stats_dia = _stats_del_dia(hoy)
+
     prompt = f"""Sos un asistente que analiza conversaciones de {asistente} con {nombre}, una adulta mayor.
 
 --- LOG DEL DÍA ---
@@ -287,13 +318,20 @@ async def analisis_nocturno(app=None):
 --- APRENDIZAJES YA CONOCIDOS SOBRE {nombre.upper()} ---
 {aprendizajes_actuales}
 
-Respondé con exactamente dos secciones:
+Respondé con exactamente dos secciones.
+
+REGLAS ESTRICTAS para APRENDIZAJES_NUEVOS:
+- Comparar cada dato contra los aprendizajes ya conocidos antes de incluirlo
+- Si el dato ya está mencionado (aunque con distintas palabras), NO incluirlo
+- Solo hechos concretos sobre {nombre}: eventos, salud, familia, gustos, estado de ánimo
+- NO incluir observaciones sobre {asistente} ni sobre la conversación en sí
+- Si no hay datos genuinamente nuevos, escribir "ninguno"
 
 APRENDIZAJES_NUEVOS:
-(listá solo datos concretos y nuevos sobre {nombre} que NO estén ya en los aprendizajes conocidos: eventos, salud, familia, gustos, estado de ánimo. Máximo 5 líneas, cada una empezando con "- ". Si no hay nada nuevo, escribí "ninguno")
+(máximo 5 líneas, cada una empezando con "- ". Si no hay nada nuevo: "ninguno")
 
 AJUSTES_CONVERSACION:
-(detectá patrones problemáticos en la conversación de hoy: respuestas cortadas, preguntas innecesarias, temas que {nombre} evitó, etc. Sugerí ajustes concretos para mejorar. Máximo 3 líneas, cada una empezando con "- ". Si la conversación estuvo bien, escribí "ninguno")"""
+(patrones problemáticos observados hoy: respuestas cortadas, preguntas innecesarias al final cuando ya respondiste, temas que {nombre} evitó o cambió, confusiones. Sugerí ajustes accionables. Máximo 3 líneas con "- ". Si la conversación estuvo bien: "ninguno")"""
 
     try:
         r = await groq.chat.completions.create(
@@ -314,8 +352,38 @@ AJUSTES_CONVERSACION:
         if ajustes:
             _actualizar_seccion_perfil("Ajustes sugeridos", ajustes)
             log.info(f"analisis_nocturno: {len(ajustes)} ajuste(s) sugerido(s)")
+
+        # Guardar resumen del día en stats.json
+        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia)
+
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
+
+def _stats_del_dia(hoy: str) -> dict:
+    """Devuelve las stats acumuladas del día o un dict vacío."""
+    if STATS_PATH.exists():
+        try:
+            return json.loads(STATS_PATH.read_text(encoding="utf-8")).get(hoy, {})
+        except Exception:
+            pass
+    return {}
+
+def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict):
+    """Agrega al stats del día el resumen del análisis nocturno."""
+    stats = {}
+    if STATS_PATH.exists():
+        try:
+            stats = json.loads(STATS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    dia = stats.setdefault(hoy, stats_dia or {})
+    dia["analisis_nocturno"] = {
+        "aprendizajes_nuevos": n_aprendizajes,
+        "ajustes_sugeridos": n_ajustes,
+    }
+    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info(f"analisis_nocturno: stats actualizadas para {hoy}")
+
 
 def _parsear_seccion(texto: str, seccion: str) -> list[str]:
     """Extrae líneas con '- ' de una sección del output del LLM."""
@@ -400,6 +468,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Tareas en background (no bloquean la respuesta)
     registrar_log(texto, respuesta)
+    registrar_stats(distress_level)
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
@@ -446,6 +515,24 @@ def fecha_en_espanol(fecha: datetime | None = None) -> str:
     return f"{DIAS_SEMANA[fecha.weekday()]} {fecha.day} de {MESES[fecha.month - 1]}"
 
 
+async def consultar_feriado(fecha: datetime | None = None) -> str:
+    """Devuelve el nombre del feriado argentino si hoy es feriado, o cadena vacía."""
+    fecha = fecha or datetime.now()
+    hoy = fecha.date().isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            r = await client.get(
+                f"https://date.nager.at/api/v3/PublicHolidays/{fecha.year}/AR"
+            )
+            r.raise_for_status()
+        for f in r.json():
+            if f.get("date") == hoy:
+                return f.get("localName") or f.get("name", "Feriado nacional")
+    except Exception as e:
+        log.warning(f"consultar_feriado: {e}")
+    return ""
+
+
 async def saludo_matutino(app: Application):
     nombre    = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
@@ -464,10 +551,18 @@ async def saludo_matutino(app: Application):
     except Exception as e:
         log.warning(f"saludo_matutino: no pude obtener clima: {e}")
 
+    feriado_frase = ""
+    feriado = await consultar_feriado()
+    if feriado:
+        feriado_frase = (
+            f" Hoy es feriado — {feriado}."
+            f" Algunos negocios como los bancos pueden no estar abiertos con el horario normal."
+        )
+
     fecha_frase = fecha_en_espanol()
     texto = (
         f"Hola {nombre}, soy {asistente}. Hoy es {fecha_frase}."
-        f"{clima_frase} ¿Cómo amaneciste hoy?"
+        f"{clima_frase}{feriado_frase} ¿Cómo amaneciste hoy?"
     )
     await enviar_mensaje_voz(app, texto)
 

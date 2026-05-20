@@ -158,6 +158,82 @@ def test_escribe_ajustes_sugeridos():
         assert "pregunta" in contenido
 
 
+# ---------------------------------------------------------------------------
+# registrar_stats
+# ---------------------------------------------------------------------------
+
+def test_registrar_stats_crea_entrada():
+    import aikiu, json
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        stats_path = Path(f.name)
+    stats_path.unlink()  # que no exista aún
+    with patch("aikiu.STATS_PATH", stats_path), \
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+        aikiu.registrar_stats(0)
+    data = json.loads(stats_path.read_text())
+    hoy = date.today().strftime("%Y-%m-%d")
+    assert hoy in data
+    assert data[hoy]["mensajes"] == 1
+
+
+def test_registrar_stats_acumula_mensajes():
+    import aikiu, json
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        stats_path = Path(f.name)
+    stats_path.unlink()
+    with patch("aikiu.STATS_PATH", stats_path), \
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+        aikiu.registrar_stats(0)
+        aikiu.registrar_stats(0)
+        aikiu.registrar_stats(1)
+    data = json.loads(stats_path.read_text())
+    hoy = date.today().strftime("%Y-%m-%d")
+    assert data[hoy]["mensajes"] == 3
+    assert data[hoy]["distress"]["1"] == 1
+
+
+def test_registrar_stats_no_registra_distress_0():
+    import aikiu, json
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        stats_path = Path(f.name)
+    stats_path.unlink()
+    with patch("aikiu.STATS_PATH", stats_path), \
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+        aikiu.registrar_stats(0)
+    data = json.loads(stats_path.read_text())
+    hoy = date.today().strftime("%Y-%m-%d")
+    assert data[hoy]["distress"] == {"1": 0, "2": 0, "3": 0}
+
+
+def test_analisis_nocturno_actualiza_stats():
+    import aikiu, json
+    respuesta_llm = "APRENDIZAJES_NUEVOS:\nninguno\nAJUSTES_CONVERSACION:\nninguno"
+    hoy = date.today().strftime("%Y-%m-%d")
+    with tempfile.TemporaryDirectory() as tmp_logs, \
+         tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_perfil, \
+         tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_stats:
+
+        log_path = Path(tmp_logs) / f"{hoy}.md"
+        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
+        tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
+        tmp_perfil.flush()
+        stats_path = Path(tmp_stats.name)
+        stats_path.write_text("{}")
+
+        with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
+             patch("aikiu.PERFIL_PATH", Path(tmp_perfil.name)), \
+             patch("aikiu.STATS_PATH", stats_path), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.groq", _mock_groq(respuesta_llm)):
+            run(aikiu.analisis_nocturno())
+
+        data = json.loads(stats_path.read_text())
+        assert hoy in data
+        assert "analisis_nocturno" in data[hoy]
+        assert data[hoy]["analisis_nocturno"]["aprendizajes_nuevos"] == 0
+        assert data[hoy]["analisis_nocturno"]["ajustes_sugeridos"] == 0
+
+
 def test_fallo_llm_no_rompe():
     import aikiu
     hoy = date.today().strftime("%Y-%m-%d")
