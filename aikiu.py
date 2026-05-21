@@ -13,7 +13,7 @@ import tempfile
 import os
 import yaml
 import httpx
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,6 +25,11 @@ from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
 from core import state as state_mod
+from core.utils import (
+    norm, load_json, nombre_adulto, read_section,
+    fecha_hora_es, fecha_en_espanol,
+    CLIMA_KEYWORDS, DOLAR_KEYWORDS, NOTICIAS_KEYWORDS,
+)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -94,14 +99,6 @@ async def transcribir(ogg_path: Path) -> str:
 # LLM: Groq llama-3.3-70b
 # ---------------------------------------------------------------------------
 
-_DIAS_ES  = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
-             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-
-def _fecha_hora_es() -> str:
-    now = datetime.now()
-    return (f"{_DIAS_ES[now.weekday()]} {now.day} de "
-            f"{_MESES_ES[now.month - 1]} de {now.year}, {now.strftime('%H:%M')}")
 
 
 def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
@@ -119,7 +116,7 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
             f"Nunca uses markdown. Máximo 3 oraciones."
         )
     prompt += (
-        f"\n\nFecha y hora actual: {_fecha_hora_es()} (hora de Buenos Aires)."
+        f"\n\nFecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires)."
         "\n\n---\n"
         "INSTRUCCIÓN DE SISTEMA (nunca leer en voz alta ni mencionar al usuario):\n"
         "- Cuando el mensaje incluya datos en tiempo real (clima, dólar, noticias),\n"
@@ -146,22 +143,37 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         "     expresa no querer molestar a nadie o sentirse prescindible\n"
         "- 3: emergencia activa ahora mismo: no puede moverse o levantarse, dolor de pecho,\n"
         "     no puede respirar, pide ayuda urgente, caída que acaba de ocurrir\n"
-        "Nunca omitas esta línea. Si no hay señales en el mensaje actual, escribí DISTRESS_LEVEL: 0."
+        "Nunca omitas esta línea. Si no hay señales en el mensaje actual, escribí DISTRESS_LEVEL: 0.\n"
+        "\n--- MODO CONVERSACIONAL ---\n"
+        f"Si DISTRESS_LEVEL es 0 (conversación estable): podés ser juguetona, usar humor liviano,\n"
+        f"contar un chiste malo, hacerte la distraída ('ay, me colgué pensando en otra cosa...').\n"
+        f"Mostrá distintas facetas — no siempre el mismo tono cuidador y terapéutico.\n"
+        f"Si DISTRESS_LEVEL es 1 o más: bloqueá el humor completamente. Modo contención:\n"
+        f"calidez, escucha, presencia. Sin chistes ni ligereza hasta que {nombre} esté estable.\n"
+        "\n--- SALUDOS ---\n"
+        f"Nunca uses siempre '¿Cómo estás hoy?' como saludo. Usá la hora actual (ya está en este prompt) para elegir:\n"
+        f"06:00–11:59 (mañana): '¿Cómo amaneciste?', '¿Dormiste bien?'\n"
+        f"12:00–18:59 (tarde): '¿Cómo va tu tarde?', '¿Cómo estuvo el día?', '¿Qué estuviste haciendo?'\n"
+        f"19:00–23:59 (noche): '¿Cómo estuvo tu día?', '¿Ya cenaste?', '¿Cómo te sentís esta noche?'\n"
+        f"También podés arrancar sin pregunta — aportando algo vos primero.\n"
+        "\n--- CUANDO MARTA TRAE UN TEMA ---\n"
+        f"Si {nombre} menciona algo concreto (plantas, cocina, una película, el tiempo),\n"
+        f"primero aportá algo relacionado — un dato, una curiosidad, una pregunta específica\n"
+        f"sobre ESE tema. No cambies de tema hasta haber respondido lo que ella trajo.\n"
+        f"Ejemplo: si dice 'mis plantas en invierno no tienen mucho para hacer', respondé\n"
+        f"con algo útil sobre plantas en invierno antes de preguntar otra cosa.\n"
+        "\n--- TEMAS RECHAZADOS EN ESTA SESIÓN ---\n"
+        f"Si {nombre} rechazó un tema en esta misma conversación (dijo 'no', 'no gracias',\n"
+        f"cambió el tema, respondió con pocas palabras), NO lo vuelvas a sugerir en toda\n"
+        f"la sesión. Esto aplica incluso si el tema está en el perfil como algo que le gusta."
     )
     return prompt
 
 
-def _norm(s: str) -> str:
-    """Minúsculas sin tildes para comparación de keywords."""
-    return re.sub(r"[áàä]", "a", re.sub(r"[éèë]", "e", re.sub(r"[íìï]", "i",
-           re.sub(r"[óòö]", "o", re.sub(r"[úùü]", "u", s.lower())))))
-
 async def _pre_route(texto: str) -> str:
     """Detecta si el mensaje requiere datos externos y los obtiene antes del LLM."""
-    t = _norm(texto)
-    if any(w in t for w in ["clima", "tiempo", "temperatura", "grados", "llueve",
-                             "lluvia", "frio", "calor", "pronostico", "nublado",
-                             "viento", "humedad"]):
+    t = norm(texto)
+    if any(w in t for w in CLIMA_KEYWORDS):
         ciudad = CONFIG.get("ciudad", "Buenos Aires")
         # Detectar ciudad mencionada explícitamente: "en Córdoba", "en Mendoza"
         m = re.search(r"\ben\s+([A-ZÁÉÍÓÚ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚ][a-záéíóúñ]+)?)", texto)
@@ -171,12 +183,12 @@ async def _pre_route(texto: str) -> str:
         log.info(f"Pre-route clima({ciudad}) → {resultado[:80]}")
         return resultado
 
-    if any(w in t for w in ["dolar", "cotizacion", "tipo de cambio", "cambio", "billete"]):
+    if any(w in t for w in DOLAR_KEYWORDS):
         resultado = await consultar_dolar()
         log.info(f"Pre-route dolar → {resultado[:80]}")
         return resultado
 
-    if any(w in t for w in ["noticias", "que paso", "novedades", "titulares", "hoy que"]):
+    if any(w in t for w in NOTICIAS_KEYWORDS):
         resultado = await consultar_noticias()
         log.info(f"Pre-route noticias → {resultado[:80]}")
         return resultado
@@ -192,7 +204,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     modelo        = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
 
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(historial[-10:])
+    messages.extend(historial[-20:])
 
     # Pre-routing: obtener datos externos antes del LLM
     datos_externos = await _pre_route(texto_usuario)
@@ -200,6 +212,25 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
         messages.append({
             "role": "system",
             "content": f"Datos en tiempo real para responder este mensaje: {datos_externos}",
+        })
+
+    # Inyectar blacklist de temas con baja receptividad en las últimas 48h
+    evitar = _temas_a_evitar()
+    if evitar:
+        messages.append({
+            "role": "system",
+            "content": f"Temas a evitar en esta respuesta (baja receptividad reciente de {nombre}): "
+                       f"{', '.join(evitar)}. No los sugieras ni los menciones.",
+        })
+
+    # Inyectar temas de alto engagement como sugerencia de iniciativa
+    preferidos = _temas_preferidos()
+    preferidos_filtrados = [t for t in preferidos if t not in evitar]
+    if preferidos_filtrados:
+        messages.append({
+            "role": "system",
+            "content": f"Temas con alto engagement reciente de {nombre} (úsalos si la conversación se frena): "
+                       f"{', '.join(preferidos_filtrados[:3])}.",
         })
 
     messages.append({"role": "user", "content": texto_usuario})
@@ -229,10 +260,11 @@ _alerta_inactividad_fecha: object = None         # date del último aviso (evita
 # ---------------------------------------------------------------------------
 
 PERFIL_PATH = BASE_DIR / "perfil.md"
-LOGS_DIR    = BASE_DIR / "logs"
+LOGS_DIR          = BASE_DIR / "logs"
+STATS_PATH        = BASE_DIR / "stats.json"
+RECEPTIVIDAD_PATH = BASE_DIR / "receptividad.json"
 
 def registrar_log(usuario: str, respuesta: str):
-    from datetime import datetime
     now = datetime.now()
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / f"{now.strftime('%Y-%m-%d')}.md"
@@ -246,27 +278,168 @@ def registrar_log(usuario: str, respuesta: str):
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(entrada)
 
-def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
-    """Reemplaza el contenido de una sección ## en perfil.md."""
-    from datetime import date
-    hoy = date.today().strftime("%d/%m/%Y")
-    content = PERFIL_PATH.read_text(encoding="utf-8")
-    bloque = f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
-    import re as _re
-    patron = rf"## {seccion}\n.*?(?=\n## |\Z)"
-    if _re.search(patron, content, _re.DOTALL):
-        # Preservar entradas anteriores: agregar al inicio de la sección existente
-        content = content.replace(
-            f"## {seccion}\n",
-            f"## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas),
+def registrar_stats(distress_level: int):
+    """Acumula estadísticas diarias en stats.json para el dashboard familiar."""
+    now = datetime.now()
+    hoy = now.strftime("%Y-%m-%d")
+    hora = now.strftime("%H:%M")
+    stats = load_json(STATS_PATH)
+
+    dia = stats.setdefault(hoy, {
+        "mensajes": 0,
+        "primer_mensaje": hora,
+        "ultimo_mensaje": hora,
+        "distress": {"1": 0, "2": 0, "3": 0},
+    })
+    dia["mensajes"] += 1
+    dia["ultimo_mensaje"] = hora
+    if distress_level >= 1:
+        dia["distress"][str(distress_level)] = dia["distress"].get(str(distress_level), 0) + 1
+
+    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
+    """Background task: detecta tema y receptividad del último intercambio."""
+    nombre = CONFIG["nombre_adulto_mayor"]
+    prompt = (
+        f"Analizá este intercambio y respondé con exactamente dos líneas.\n\n"
+        f"{nombre}: {texto_usuario}\n"
+        f"Asistente: {respuesta_bot}\n\n"
+        f"TEMA: (1-3 palabras que describan el tema principal, ej: 'tango', 'cocina', 'familia'."
+        f" Si es saludo o no hay tema claro, escribí 'general')\n"
+        f"RECEPTIVIDAD: (una sola palabra: 'alta', 'baja' o 'neutra'.\n"
+        f"  alta = {nombre} amplió, preguntó más, se entusiasmó\n"
+        f"  baja = {nombre} cortó el tema, respondió con pocas palabras, rechazó la sugerencia\n"
+        f"  neutra = intercambio normal sin señal clara)"
+    )
+    try:
+        r = await groq.chat.completions.create(
+            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=30,
+            temperature=0.1,
         )
+        texto = r.choices[0].message.content.strip()
+        tema = receptividad = None
+        for linea in texto.splitlines():
+            if linea.upper().startswith("TEMA:"):
+                tema = linea.split(":", 1)[1].strip().lower()
+            elif linea.upper().startswith("RECEPTIVIDAD:"):
+                receptividad = linea.split(":", 1)[1].strip().lower()
+        if tema and receptividad in ("alta", "baja", "neutra") and tema != "general":
+            palabras = len(texto_usuario.split())
+            _guardar_receptividad(tema, receptividad, palabras)
+            log.info(f"Receptividad: tema='{tema}' nivel='{receptividad}' palabras={palabras}")
+    except Exception as e:
+        log.warning(f"clasificar_receptividad falló: {e}")
+
+
+def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 0):
+    """Agrega entrada al historial de receptividad."""
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    entradas.append({
+        "tema": tema,
+        "receptividad": receptividad,
+        "palabras_usuario": palabras_usuario,
+        "ts": datetime.now().isoformat(),
+    })
+    # Mantener solo los últimos 200 registros
+    RECEPTIVIDAD_PATH.write_text(
+        json.dumps(entradas[-200:], ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _temas_a_evitar() -> list[str]:
+    """Devuelve temas con receptividad baja en las últimas 48 horas."""
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    if not entradas:
+        return []
+    limite = datetime.now().timestamp() - 48 * 3600
+    bajos = set()
+    altos = set()
+    for e in entradas:
+        try:
+            ts = datetime.fromisoformat(e["ts"]).timestamp()
+        except Exception:
+            continue
+        if ts >= limite:
+            if e["receptividad"] == "baja":
+                bajos.add(e["tema"])
+            elif e["receptividad"] == "alta":
+                altos.add(e["tema"])
+    # No excluir un tema si también tuvo receptividad alta recientemente
+    return [t for t in bajos if t not in altos]
+
+
+def _temas_preferidos() -> list[str]:
+    """Devuelve ranking de temas por engagement (precalculado en stats.json)."""
+    stats = load_json(STATS_PATH)
+    for dia in sorted(stats.keys(), reverse=True):
+        ranking = stats[dia].get("ranking_temas")
+        if ranking:
+            return ranking[:5]
+    return []
+
+
+def _palabras_en_aprendizajes() -> set[str]:
+    """Palabras largas del bloque Aprendizajes del perfil (para bonus de scoring)."""
+    try:
+        seccion = read_section(PERFIL_PATH.read_text(encoding="utf-8"), "Aprendizajes")
+        return {p for linea in seccion.splitlines() for p in linea.lower().split() if len(p) > 4}
+    except Exception:
+        return set()
+
+
+def _calcular_ranking_temas() -> list[str]:
+    """Devuelve temas ordenados por score de engagement (últimas 96h)."""
+    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    if not entradas:
+        return []
+
+    palabras_perfil = _palabras_en_aprendizajes()
+    limite = datetime.now().timestamp() - 96 * 3600
+    temas: dict[str, dict] = {}
+
+    for e in entradas:
+        try:
+            ts = datetime.fromisoformat(e["ts"]).timestamp()
+        except Exception:
+            continue
+        if ts < limite:
+            continue
+        t = e["tema"]
+        d = temas.setdefault(t, {"turnos": 0, "palabras": [], "alta": 0, "baja": 0})
+        d["turnos"] += 1
+        d["palabras"].append(e.get("palabras_usuario", 0))
+        if e["receptividad"] == "alta":
+            d["alta"] += 1
+        elif e["receptividad"] == "baja":
+            d["baja"] += 1
+
+    def _score(tema: str, d: dict) -> float:
+        avg_palabras = sum(d["palabras"]) / len(d["palabras"]) if d["palabras"] else 0
+        alta_ratio = d["alta"] / d["turnos"] if d["turnos"] else 0
+        bonus = 10 if any(p in tema for p in palabras_perfil) else 0
+        return (avg_palabras * 0.4) + (alta_ratio * 30) + (d["turnos"] * 2) + bonus
+
+    return [t for t, _ in sorted(temas.items(), key=lambda x: _score(x[0], x[1]), reverse=True)]
+
+
+def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
+    """Agrega nuevas líneas al inicio de una sección ## en perfil.md."""
+    hoy = date.today().strftime("%d/%m/%Y")
+    nuevas = "".join(f"{l} ({hoy})\n" for l in nuevas_lineas)
+    content = PERFIL_PATH.read_text(encoding="utf-8")
+    patron = rf"## {seccion}\n.*?(?=\n## |\Z)"
+    if re.search(patron, content, re.DOTALL):
+        content = content.replace(f"## {seccion}\n", f"## {seccion}\n{nuevas}")
     else:
-        content = content.rstrip() + f"\n\n## {seccion}\n" + "".join(f"{l} ({hoy})\n" for l in nuevas_lineas) + "\n"
+        content = content.rstrip() + f"\n\n## {seccion}\n{nuevas}"
     PERFIL_PATH.write_text(content, encoding="utf-8")
 
 async def analisis_nocturno(app=None):
     """Job nocturno: extrae aprendizajes del log del día y detecta patrones de mejora."""
-    from datetime import date
     nombre = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
     hoy = date.today().strftime("%Y-%m-%d")
@@ -278,10 +451,10 @@ async def analisis_nocturno(app=None):
     log_dia = log_path.read_text(encoding="utf-8")
     perfil_actual = PERFIL_PATH.read_text(encoding="utf-8")
 
-    # Extraer sólo la sección Aprendizajes actual para pasarla al LLM
-    import re as _re
-    m = _re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil_actual, _re.DOTALL)
-    aprendizajes_actuales = m.group(1).strip() if m else "(ninguno)"
+    aprendizajes_actuales = read_section(perfil_actual, "Aprendizajes") or "(ninguno)"
+
+    # Estadísticas del día para el resumen nocturno
+    stats_dia = _stats_del_dia(hoy)
 
     prompt = f"""Sos un asistente que analiza conversaciones de {asistente} con {nombre}, una adulta mayor.
 
@@ -291,13 +464,20 @@ async def analisis_nocturno(app=None):
 --- APRENDIZAJES YA CONOCIDOS SOBRE {nombre.upper()} ---
 {aprendizajes_actuales}
 
-Respondé con exactamente dos secciones:
+Respondé con exactamente dos secciones.
+
+REGLAS ESTRICTAS para APRENDIZAJES_NUEVOS:
+- Comparar cada dato contra los aprendizajes ya conocidos antes de incluirlo
+- Si el dato ya está mencionado (aunque con distintas palabras), NO incluirlo
+- Solo hechos concretos sobre {nombre}: eventos, salud, familia, gustos, estado de ánimo
+- NO incluir observaciones sobre {asistente} ni sobre la conversación en sí
+- Si no hay datos genuinamente nuevos, escribir "ninguno"
 
 APRENDIZAJES_NUEVOS:
-(listá solo datos concretos y nuevos sobre {nombre} que NO estén ya en los aprendizajes conocidos: eventos, salud, familia, gustos, estado de ánimo. Máximo 5 líneas, cada una empezando con "- ". Si no hay nada nuevo, escribí "ninguno")
+(máximo 5 líneas, cada una empezando con "- ". Si no hay nada nuevo: "ninguno")
 
 AJUSTES_CONVERSACION:
-(detectá patrones problemáticos en la conversación de hoy: respuestas cortadas, preguntas innecesarias, temas que {nombre} evitó, etc. Sugerí ajustes concretos para mejorar. Máximo 3 líneas, cada una empezando con "- ". Si la conversación estuvo bien, escribí "ninguno")"""
+(patrones problemáticos observados hoy: respuestas cortadas, preguntas innecesarias al final cuando ya respondiste, temas que {nombre} evitó o cambió, confusiones. Sugerí ajustes accionables. Máximo 3 líneas con "- ". Si la conversación estuvo bien: "ninguno")"""
 
     try:
         r = await groq.chat.completions.create(
@@ -316,21 +496,77 @@ AJUSTES_CONVERSACION:
             _actualizar_seccion_perfil("Aprendizajes", aprendizajes)
             log.info(f"analisis_nocturno: {len(aprendizajes)} aprendizaje(s) nuevo(s)")
         if ajustes:
-            _actualizar_seccion_perfil("Ajustes sugeridos", ajustes)
-            log.info(f"analisis_nocturno: {len(ajustes)} ajuste(s) sugerido(s)")
+            instrucciones = await _ajustes_a_instrucciones(ajustes, CONFIG.get("nombre_asistente", "Clara"))
+            _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones)
+            log.info(f"analisis_nocturno: {len(instrucciones)} ajuste(s) convertido(s) a instrucciones")
+
+        # Calcular ranking de engagement por tema y guardarlo en stats
+        ranking = _calcular_ranking_temas()
+
+        # Guardar resumen del día en stats.json
+        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia, ranking)
+
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
 
+async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[str]:
+    """Convierte ajustes descriptivos en instrucciones imperativas para el system prompt."""
+    if not ajustes:
+        return []
+    lista = "\n".join(ajustes)
+    prompt = (
+        f"Convertí cada observación en una instrucción directa e imperativa para {asistente}, "
+        f"un asistente de voz. Sin explicaciones, solo la instrucción. "
+        f"Una línea por ítem, empezando con '- '. Observaciones:\n{lista}"
+    )
+    try:
+        r = await groq.chat.completions.create(
+            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.1,
+        )
+        resultado = r.choices[0].message.content.strip()
+        instrucciones = [l.strip() for l in resultado.splitlines() if l.strip().startswith("-")]
+        return instrucciones if instrucciones else ajustes
+    except Exception as e:
+        log.warning(f"_ajustes_a_instrucciones falló: {e}")
+        return ajustes  # fallback: guardar los originales
+
+
+def _stats_del_dia(hoy: str) -> dict:
+    """Devuelve las stats acumuladas del día o un dict vacío."""
+    return load_json(STATS_PATH).get(hoy, {})
+
+def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict, ranking: list[str] | None = None):
+    """Agrega al stats del día el resumen del análisis nocturno."""
+    stats = load_json(STATS_PATH)
+    dia = stats.setdefault(hoy, stats_dia or {})
+    dia["analisis_nocturno"] = {
+        "aprendizajes_nuevos": n_aprendizajes,
+        "ajustes_sugeridos": n_ajustes,
+    }
+    if ranking:
+        dia["ranking_temas"] = ranking
+    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info(f"analisis_nocturno: stats actualizadas para {hoy}")
+
+
 def _parsear_seccion(texto: str, seccion: str) -> list[str]:
-    """Extrae líneas con '- ' de una sección del output del LLM."""
-    import re as _re
-    m = _re.search(rf"{seccion}:\n(.*?)(?=\n[A-Z_]+:|\Z)", texto, _re.DOTALL)
+    """Extrae líneas con '- ' de una sección del output del LLM.
+    Tolera variantes: 'SECCION:', '## SECCION', 'SECCION\n'.
+    """
+    patron = rf"(?:##\s*)?{seccion}[:\n](.*?)(?=\n(?:##\s*)?[A-Z_]{{3,}}[:\n]|\Z)"
+    m = re.search(patron, texto, re.DOTALL)
     if not m:
         return []
     bloque = m.group(1).strip()
-    if bloque.lower() == "ninguno":
+    lineas = [l.strip() for l in bloque.splitlines() if l.strip().startswith("-")]
+    # Filtrar líneas que contengan "ninguno" (respuesta fallback del LLM)
+    lineas = [l for l in lineas if "ninguno" not in l.lower()]
+    if not lineas and "ninguno" in bloque.lower():
         return []
-    return [l.strip() for l in bloque.splitlines() if l.strip().startswith("-")]
+    return lineas
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -432,6 +668,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Tareas en background (no bloquean la respuesta)
     registrar_log(texto, respuesta)
+    registrar_stats(distress_level)
+    create_background_task(clasificar_receptividad(texto, respuesta))
 
     if should_send_alert(distress_level):
         record_alert_sent(distress_level)
@@ -463,6 +701,25 @@ async def enviar_mensaje_voz(app: Application, texto: str):
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
     log.info(f"Proactivo enviado: '{texto}'")
 
+
+async def consultar_feriado(fecha: datetime | None = None) -> str:
+    """Devuelve el nombre del feriado argentino si hoy es feriado, o cadena vacía."""
+    fecha = fecha or datetime.now()
+    hoy = fecha.date().isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            r = await client.get(
+                f"https://date.nager.at/api/v3/PublicHolidays/{fecha.year}/AR"
+            )
+            r.raise_for_status()
+        for f in r.json():
+            if f.get("date") == hoy:
+                return f.get("localName") or f.get("name", "Feriado nacional")
+    except Exception as e:
+        log.warning(f"consultar_feriado: {e}")
+    return ""
+
+
 async def saludo_matutino(app: Application):
     nombre    = CONFIG["nombre_adulto_mayor"]
     asistente = CONFIG["nombre_asistente"]
@@ -481,7 +738,19 @@ async def saludo_matutino(app: Application):
     except Exception as e:
         log.warning(f"saludo_matutino: no pude obtener clima: {e}")
 
-    texto = f"Buenos días {nombre}, soy {asistente}.{clima_frase} ¿Cómo amaneciste hoy?"
+    feriado_frase = ""
+    feriado = await consultar_feriado()
+    if feriado:
+        feriado_frase = (
+            f" Hoy es feriado — {feriado}."
+            f" Algunos negocios como los bancos pueden no estar abiertos con el horario normal."
+        )
+
+    fecha_frase = fecha_en_espanol()
+    texto = (
+        f"Hola {nombre}, soy {asistente}. Hoy es {fecha_frase}."
+        f"{clima_frase}{feriado_frase} ¿Cómo amaneciste hoy?"
+    )
     await enviar_mensaje_voz(app, texto)
 
 async def verificar_inactividad(app: Application):
@@ -501,7 +770,6 @@ async def verificar_inactividad(app: Application):
         log.info(f"Inactividad: {horas:.1f}h — dentro del rango normal ({umbral}h)")
         return
 
-    from datetime import date as date_type
     hoy = datetime.now().date()
     if _alerta_inactividad_fecha == hoy:
         log.info("Inactividad: ya se alertó hoy, no se repite")

@@ -107,8 +107,8 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 ## 11. Recordatorios proactivos (verificar config.yml)
 
-- [ ] A la hora configurada de saludo, Marta recibe audio de buenos días **con la temperatura** ("Hoy en Olivos hay X grados")
-- [ ] Si la API de clima no responde, el saludo se envía igual sin temperatura
+- [ ] A la hora configurada de saludo, Marta recibe audio con **fecha** ("Hoy es miércoles 20 de mayo") y **temperatura** ("Hoy en Olivos hay X grados")
+- [ ] Si la API de clima no responde, el saludo se envía igual con la fecha pero sin temperatura
 - [ ] A las horas de medicamento, Marta recibe el recordatorio en audio
 
 ---

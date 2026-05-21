@@ -54,12 +54,22 @@ servidor propio. Corre en cualquier Mac con Python.
     de `perfil.md`, que Clara lee en la próxima conversación
   - Reemplaza el enfoque anterior (un LLM call extra por cada mensaje) — menos ruido,
     mejor calidad, sin costo por turno
+  - Prompt estricto: el LLM compara cada dato contra los aprendizajes existentes antes
+    de incluirlo — elimina duplicados y comentarios sobre el bot (no sobre Marta)
+- **Estadísticas diarias** en `stats.json` (excluido del repo):
+  - Por mensaje: contador, hora del primero y último, distress por nivel
+  - Por análisis nocturno: aprendizajes nuevos y ajustes sugeridos del día
+  - **Ranking de temas por engagement**: score calculado noche a noche combinando
+    promedio de palabras por turno, ratio de receptividad alta, frecuencia de aparición
+    y bonus si el tema aparece en los aprendizajes del perfil
+  - Base de datos lista para un futuro dashboard familiar
 
 ### Recordatorios proactivos (scheduler)
-- Saludo diario con temperatura: cada mañana Clara dice la temperatura actual de
-  la ciudad de Marta (Olivos, Buenos Aires) antes de preguntar cómo amaneció.
-  Si la API de clima falla, el saludo se envía igual sin temperatura.
-  La ciudad es configurable en `config.yml` → `ciudad`
+- Saludo diario con fecha, temperatura y feriados: cada mañana Clara saluda a Marta
+  diciendo el día de la semana y la fecha (por ej. "Hoy es miércoles 20 de mayo"),
+  la temperatura actual de la ciudad y, si corresponde, si es feriado en Argentina
+  (via date.nager.at). Si alguna API falla, el saludo se envía igual con los datos
+  disponibles. La ciudad es configurable en `config.yml` → `ciudad`
 - Recordatorios de medicamentos u otros eventos (hora y mensaje configurables)
 - El bot inicia la conversación sin que Marta tenga que escribir
 
@@ -72,6 +82,8 @@ servidor propio. Corre en cualquier Mac con Python.
   Usa el nombre registrado con `/nombre`, no el username de Telegram
 - `/perfil` — muestra el perfil completo actual
 - `/editar` — edita cualquier sección del perfil con menú interactivo
+- `/stats` — muestra estadísticas de los últimos 7 días (mensajes, horarios, alertas, aprendizajes)
+- `/aprendizajes` — muestra los aprendizajes actuales y ajustes sugeridos del perfil
 - `/suscriptores` — lista de familiares registrados
 - `/ayuda` — lista de comandos
 - Alertas automáticas llegan a **todos** los suscriptores cuando Marta muestra angustia
@@ -95,8 +107,22 @@ servidor propio. Corre en cualquier Mac con Python.
 - Se envía a todos los suscriptores del bot familiar
 - Función: `verificar_inactividad()` en `aikiu.py` + `notify_inactividad()` en `core/alerts.py`
 
+### Calidad conversacional (Estrategias activas)
+- **Estrategia 1 — Iniciativa proactiva**: reglas explícitas en el perfil para que Clara
+  no solo reaccione. Cuando la conversación se frena, Clara aporta un dato, anécdota
+  o curiosidad antes de preguntar. Máximo una pregunta por respuesta; ante respuestas
+  cortas de cierre ("nada", "no sé"), cambia de tema sin insistir.
+- **Estrategia 2 — Blacklist de receptividad**: tras cada intercambio, un LLM call
+  liviano (max_tokens=30) detecta el tema y la receptividad (alta/baja/neutra). Los
+  temas con baja receptividad en las últimas 48h se excluyen automáticamente del
+  siguiente turno. Los temas con alta receptividad se inyectan como sugerencia de
+  iniciativa, tomados del ranking nocturno. Historial en `receptividad.json`.
+- **Estrategia 3 — Matriz de rol dinámica**: si DISTRESS_LEVEL es 0, Clara puede
+  usar humor liviano; si es ≥1, bloquea el humor completamente y activa modo
+  contención hasta que Marta esté estable.
+
 ### Tests y calidad
-- **111 unit tests** con pytest cubriendo:
+- **132 unit tests** con pytest cubriendo:
   - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
   - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
     límite de 4 titulares, manejo de errores HTTP en las tres herramientas
@@ -104,13 +130,15 @@ servidor propio. Corre en cualquier Mac con Python.
     baseline, config activa/inactiva, mensaje al familiar (horas, timestamp, tono)
   - `aikiu.analisis_nocturno`: parsing de secciones, aprendizajes nuevos vs. existentes,
     ajustes de conversación, fallo de LLM sin romper
-  - Saludo matutino: extracción de temperatura, fallback sin clima, temperatura == sensación
+  - Saludo matutino: extracción de temperatura, fallback sin clima, temperatura == sensación,
+    detección de feriados argentinos
+  - Receptividad: guardar/acumular/limitar entradas, blacklist por 48h, lógica de señal mixta
   - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
   - Reglas del system prompt: pre-routing, anti-hallucination específico a
     mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
   - DISTRESS_LEVEL nunca visible para Marta, criterios de caídas y "soy una carga"
 - Checklist manual E2E en `tests/checklist.md`
-- Git pre-commit hook: los 111 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 132 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -137,10 +165,11 @@ servidor propio. Corre en cualquier Mac con Python.
       del día desde Telegram sin acceder al archivo
 
 ### Media prioridad
-- [ ] **Variedad en la conversación**: hoy Clara repite los mismos temas del perfil
-      (plantas, tangos, familia). Mejoras: instrucción al LLM para variar basándose
-      en el historial de la sesión y la sección `## Aprendizajes`; posibilidad de
-      que el familiar sugiera temas nuevos vía `/editar` o un comando `/temas`
+- [x] **Variedad en la conversación**: resuelto con las 3 estrategias de calidad
+      conversacional (iniciativa proactiva, blacklist de receptividad, matriz de rol)
+- [ ] **Dashboard de engagement**: visualizar el ranking de temas por score,
+      evolución de receptividad y métricas de engagement desde el bot familiar
+      o una interfaz web liviana. Los datos ya se acumulan en `stats.json`.
 - [ ] **Historial persistente**: hoy el historial de conversación se pierde
       al reiniciar el bot. Guardarlo en disco para mantener continuidad entre sesiones
 - [ ] **Métricas de aislamiento**: cronjob que evalúe la frecuencia de mensajes
@@ -171,5 +200,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (111 tests) |
+| Tests | pytest 9.0 (132 tests) |
 | Runtime | Python 3.14, macOS |

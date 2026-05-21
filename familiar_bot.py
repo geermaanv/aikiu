@@ -9,7 +9,6 @@ import logging
 import os
 import re
 import tempfile
-import unicodedata
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -21,10 +20,12 @@ from telegram.ext import (
 )
 from core.tts import sintetizar
 from core import state as state_mod
+from core.utils import norm, load_json
 
 BASE_DIR         = Path(__file__).parent
 PERFIL_PATH      = BASE_DIR / "perfil.md"
 FAMILIARES_PATH  = BASE_DIR / "familiares.json"
+STATS_PATH       = BASE_DIR / "stats.json"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -38,20 +39,18 @@ FAMILIAR_TOKEN = os.environ.get("FAMILIAR_BOT_TOKEN", "")
 ADULTO_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
-def _cargar_config():
+def _cargar_config() -> dict:
     cfg_path = BASE_DIR / "config.yml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
 
-def _cargar_voz():
-    return _cargar_config().get("voz_tts", "es-AR-ElenaNeural")
+_CONFIG = _cargar_config()
+VOZ_TTS = _CONFIG.get("voz_tts", "es-AR-ElenaNeural")
 
 def _nombre_adulto() -> str:
-    return _cargar_config().get("nombre_adulto_mayor", "Marta")
-
-VOZ_TTS = _cargar_voz()
+    return _CONFIG.get("nombre_adulto_mayor", "Marta")
 
 ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE = range(3)
 
@@ -69,9 +68,7 @@ SECCIONES = [
 # ---------------------------------------------------------------------------
 
 def cargar_familiares() -> list[dict]:
-    if FAMILIARES_PATH.exists():
-        return json.loads(FAMILIARES_PATH.read_text(encoding="utf-8"))
-    return []
+    return load_json(FAMILIARES_PATH, default=[])
 
 def guardar_familiares(familiares: list[dict]):
     FAMILIARES_PATH.write_text(
@@ -144,26 +141,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"(ej: /nombre Germán)."
         if not nombre_reg else ""
     )
+    menu = (
+        f"/mensaje — enviarle un mensaje a {adulto} (texto o voz)\n"
+        f"/nombre — registrar cómo te conoce {adulto}\n"
+        "/perfil — ver el perfil actual\n"
+        "/editar — editar una sección del perfil\n"
+        "/stats — actividad de los últimos días\n"
+        f"/aprendizajes — lo que Clara aprendió sobre {adulto}\n"
+        "/suscriptores — ver quién recibe alertas\n"
+        "/ayuda — ver esta ayuda"
+    )
     if nuevo:
         log.info(f"Nuevo suscriptor: {chat_id} ({nombre_tg})")
         await update.message.reply_text(
-            f"Hola {nombre_tg}, quedaste registrado para recibir alertas de Aikiu.{aviso_nombre}\n\n"
-            f"/mensaje — enviarle un mensaje a {adulto} (texto o voz)\n"
-            f"/nombre — registrar cómo te conoce {adulto}\n"
-            "/perfil — ver el perfil actual\n"
-            "/editar — editar una sección del perfil\n"
-            "/suscriptores — ver quién recibe alertas\n"
-            "/ayuda — ver esta ayuda"
+            f"Hola {nombre_tg}, quedaste registrado para recibir alertas de Aikiu.{aviso_nombre}\n\n{menu}"
         )
     else:
         await update.message.reply_text(
-            f"Hola {nombre_tg}, ya estabas registrado.{aviso_nombre}\n\n"
-            f"/mensaje — enviarle un mensaje a {adulto} (texto o voz)\n"
-            f"/nombre — registrar cómo te conoce {adulto}\n"
-            "/perfil — ver el perfil actual\n"
-            "/editar — editar una sección del perfil\n"
-            "/suscriptores — ver quién recibe alertas\n"
-            "/ayuda — ver esta ayuda"
+            f"Hola {nombre_tg}, ya estabas registrado.{aviso_nombre}\n\n{menu}"
         )
 
 async def cmd_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -203,8 +198,10 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Comandos disponibles:*\n\n"
         f"/mensaje — enviarle un mensaje a {adulto} (texto o nota de voz)\n"
         f"/nombre — registrar cómo te conoce {adulto}\n"
-        "/perfil — muestra el perfil completo\n"
-        "/editar — edita una sección del perfil\n"
+        "/perfil — ver el perfil completo\n"
+        "/editar — editar una sección del perfil\n"
+        "/stats — actividad de los últimos días\n"
+        f"/aprendizajes — lo que Clara aprendió sobre {adulto}\n"
         "/suscriptores — lista de familiares registrados\n"
         "/cancelar — cancela la operación en curso",
         parse_mode="Markdown"
@@ -235,6 +232,68 @@ async def cmd_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(perfil), 4000):
         await update.message.reply_text(f"```\n{perfil[i:i+4000]}\n```", parse_mode="Markdown")
 
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_suscriptor(update.effective_chat.id):
+        await update.message.reply_text("Mandá /start para registrarte.")
+        return
+    adulto = _nombre_adulto()
+    if not STATS_PATH.exists():
+        await update.message.reply_text("Todavía no hay estadísticas registradas.")
+        return
+    stats = load_json(STATS_PATH)
+    if not stats:
+        await update.message.reply_text("Error al leer las estadísticas.")
+        return
+
+    # Mostrar los últimos 7 días con datos
+    dias = sorted(stats.keys(), reverse=True)[:7]
+    if not dias:
+        await update.message.reply_text("Sin datos aún.")
+        return
+
+    lineas = [f"📊 *Actividad de {adulto} — últimos días*\n"]
+    for dia in dias:
+        d = stats[dia]
+        mensajes = d.get("mensajes", 0)
+        primero  = d.get("primer_mensaje", "—")
+        ultimo   = d.get("ultimo_mensaje", "—")
+        distress = d.get("distress", {})
+        alertas  = sum(int(distress.get(str(n), 0)) for n in [1, 2, 3])
+        an       = d.get("analisis_nocturno", {})
+        aprendizajes = an.get("aprendizajes_nuevos", "—")
+
+        linea = f"📅 *{dia}*: {mensajes} msg · {primero}–{ultimo}"
+        if alertas:
+            linea += f" · ⚠️ {alertas} alerta(s)"
+        if isinstance(aprendizajes, int) and aprendizajes > 0:
+            linea += f" · 💡 {aprendizajes} aprendizaje(s)"
+        lineas.append(linea)
+
+    await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
+
+
+async def cmd_aprendizajes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not es_suscriptor(update.effective_chat.id):
+        await update.message.reply_text("Mandá /start para registrarte.")
+        return
+    adulto = _nombre_adulto()
+    perfil = leer_perfil()
+
+    aprendizajes = re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil, re.DOTALL)
+    ajustes = re.search(r"## Ajustes sugeridos\n(.*?)(?=\n## |\Z)", perfil, re.DOTALL)
+
+    texto = f"🧠 *Lo que Clara aprendió sobre {adulto}*\n\n"
+    if aprendizajes and aprendizajes.group(1).strip():
+        texto += aprendizajes.group(1).strip()
+    else:
+        texto += "_(sin aprendizajes registrados aún)_"
+
+    if ajustes and ajustes.group(1).strip():
+        texto += f"\n\n💬 *Ajustes sugeridos para la conversación*\n\n{ajustes.group(1).strip()}"
+
+    await update.message.reply_text(texto, parse_mode="Markdown")
+
+
 async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not es_suscriptor(update.effective_chat.id):
         await update.message.reply_text("Mandá /start para registrarte.")
@@ -247,18 +306,14 @@ async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ELIGIENDO
 
-def _norm(s: str) -> str:
-    """Normaliza texto para comparación sin tildes ni mayúsculas."""
-    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").lower().strip()
-
-_SECCIONES_NORM = {_norm(s): s for s in SECCIONES}
+_SECCIONES_NORM = {norm(s): s for s in SECCIONES}
 
 async def elegir_seccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     if texto == "❌ Cancelar":
         await update.message.reply_text("Cancelado.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
-    seccion = _SECCIONES_NORM.get(_norm(texto))
+    seccion = _SECCIONES_NORM.get(norm(texto))
     if not seccion:
         await update.message.reply_text("Elegí una opción de la lista.")
         return ELIGIENDO
@@ -407,11 +462,13 @@ async def main():
         allow_reentry=True,
     )
 
-    app.add_handler(CommandHandler("start",        cmd_start))
-    app.add_handler(CommandHandler("ayuda",        cmd_ayuda))
-    app.add_handler(CommandHandler("nombre",       cmd_nombre))
-    app.add_handler(CommandHandler("perfil",       cmd_perfil))
-    app.add_handler(CommandHandler("suscriptores", cmd_suscriptores))
+    app.add_handler(CommandHandler("start",          cmd_start))
+    app.add_handler(CommandHandler("ayuda",          cmd_ayuda))
+    app.add_handler(CommandHandler("nombre",         cmd_nombre))
+    app.add_handler(CommandHandler("perfil",         cmd_perfil))
+    app.add_handler(CommandHandler("suscriptores",   cmd_suscriptores))
+    app.add_handler(CommandHandler("stats",          cmd_stats))
+    app.add_handler(CommandHandler("aprendizajes",   cmd_aprendizajes))
     app.add_handler(conv_editar)
     app.add_handler(conv_mensaje)
 

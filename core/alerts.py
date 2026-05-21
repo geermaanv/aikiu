@@ -1,18 +1,12 @@
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from telegram import Bot
-import yaml
+from core.utils import nombre_adulto as _nombre_adulto, load_json
 
 FAMILIARES_PATH = Path(__file__).parent.parent / "familiares.json"
-CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
-
-
-def _nombre_adulto() -> str:
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("nombre_adulto_mayor", "Marta")
-    return "Marta"
+log = logging.getLogger("aikiu")
 
 
 def _distress_messages(nombre: str) -> dict[int, str]:
@@ -24,10 +18,7 @@ def _distress_messages(nombre: str) -> dict[int, str]:
 
 
 def cargar_suscriptores() -> list[int]:
-    if FAMILIARES_PATH.exists():
-        familiares = json.loads(FAMILIARES_PATH.read_text(encoding="utf-8"))
-        return [f["chat_id"] for f in familiares]
-    return []
+    return [f["chat_id"] for f in load_json(FAMILIARES_PATH, default=[])]
 
 
 async def notify_inactividad(
@@ -52,8 +43,7 @@ async def notify_inactividad(
                 chat_id=chat_id, text=text, parse_mode="Markdown"
             )
         except Exception as e:
-            from logging import getLogger
-            getLogger("aikiu").warning(f"No se pudo enviar alerta de inactividad a {chat_id}: {e}")
+            log.warning(f"No se pudo enviar alerta de inactividad a {chat_id}: {e}")
 
 
 async def notify_family(
@@ -90,5 +80,4 @@ async def notify_family(
                 parse_mode="Markdown",
             )
         except Exception as e:
-            from logging import getLogger
-            getLogger("aikiu").warning(f"No se pudo enviar alerta a {chat_id}: {e}")
+            log.warning(f"No se pudo enviar alerta a {chat_id}: {e}")
