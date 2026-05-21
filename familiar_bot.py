@@ -19,6 +19,7 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes,
 )
 from core.tts import sintetizar
+from core import state as state_mod
 from core.utils import norm, load_json
 
 BASE_DIR         = Path(__file__).parent
@@ -36,7 +37,6 @@ log = logging.getLogger("aikiu-familiar")
 
 FAMILIAR_TOKEN = os.environ.get("FAMILIAR_BOT_TOKEN", "")
 ADULTO_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-ADULTO_CHAT_ID   = os.environ.get("CHAT_ID", "")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
 def _cargar_config() -> dict:
@@ -351,8 +351,14 @@ async def cmd_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Mandá /start para registrarte.")
         return ConversationHandler.END
     adulto = _nombre_adulto()
-    if not ADULTO_BOT_TOKEN or not ADULTO_CHAT_ID:
-        await update.message.reply_text(f"Error: BOT_TOKEN o CHAT_ID de {adulto} no configurados.")
+    if not ADULTO_BOT_TOKEN:
+        await update.message.reply_text(f"Error: BOT_TOKEN de {adulto} no configurado.")
+        return ConversationHandler.END
+    if state_mod.owner_chat_id() is None:
+        await update.message.reply_text(
+            f"Todavía {adulto} no abrió el bot. Pedile que mande /start al bot principal "
+            f"y volvé a intentarlo."
+        )
         return ConversationHandler.END
     await update.message.reply_text(
         f"Enviá tu mensaje para {adulto} (texto o nota de voz). /cancelar para salir."
@@ -399,6 +405,13 @@ async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT
 
     mensaje_para_adulto = f"{nombre} te manda a decir: {texto}"
 
+    adulto_chat_id = state_mod.owner_chat_id()
+    if adulto_chat_id is None:
+        await update.message.reply_text(
+            f"Todavía {adulto} no abrió el bot. Pedile que mande /start al bot principal."
+        )
+        return ConversationHandler.END
+
     try:
         async with Bot(token=ADULTO_BOT_TOKEN) as adulto_bot:
             if update.message.voice:
@@ -406,9 +419,9 @@ async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT
                     ogg = Path(tmp) / "puente.ogg"
                     await sintetizar(mensaje_para_adulto, ogg, voz=VOZ_TTS)
                     with open(ogg, "rb") as audio:
-                        await adulto_bot.send_voice(chat_id=ADULTO_CHAT_ID, voice=audio)
+                        await adulto_bot.send_voice(chat_id=adulto_chat_id, voice=audio)
             else:
-                await adulto_bot.send_message(chat_id=ADULTO_CHAT_ID, text=mensaje_para_adulto)
+                await adulto_bot.send_message(chat_id=adulto_chat_id, text=mensaje_para_adulto)
         log.info(f"Mensaje de {nombre} entregado a {adulto}: '{texto[:60]}'")
         await update.message.reply_text(f"Listo, le mandé a {adulto}: \"{mensaje_para_adulto}\"")
     except Exception as e:

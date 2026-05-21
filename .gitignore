@@ -1,11 +1,13 @@
 .env
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.log
 logs/
 subscribers.json
 familiares.json
+state.json
 stats.json
 receptividad.json
 .DS_Store

@@ -5,7 +5,7 @@ cd "$DIR"
 # Verificar credenciales principales (solo las obligatorias)
 env_val() { grep "^$1=" "$DIR/.env" 2>/dev/null | cut -d= -f2-; }
 
-for var in BOT_TOKEN CHAT_ID GROQ_API_KEY; do
+for var in BOT_TOKEN GROQ_API_KEY; do
     val=$(env_val "$var")
     if [ -z "$val" ] || echo "$val" | grep -q "PEGA_TU"; then
         echo "  ERROR: Completá $var en .env"
@@ -13,6 +13,14 @@ for var in BOT_TOKEN CHAT_ID GROQ_API_KEY; do
         exit 1
     fi
 done
+
+# El chat_id del adulto se autoregistra en el primer /start (state.json).
+if [ ! -f "$DIR/state.json" ] && [ -z "$(env_val CHAT_ID)" ]; then
+    echo ""
+    echo "  Nota: el adulto todavía no abrió el bot."
+    echo "  Apenas arranque, pedile que mande /start desde su Telegram."
+    echo ""
+fi
 
 echo ""
 echo "  Aikiu iniciando..."
