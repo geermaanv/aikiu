@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>aikiu — Mockups Telegram Web (FONTAR)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #e4e9ed;
+    color: #222;
+  }
+  body { padding: 24px 16px 60px; }
+
+  .page-title { max-width: 1280px; margin: 0 auto 28px; }
+  .page-title h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: #1a1a1a; }
+  .page-title p { font-size: 13px; color: #555; }
+
+  .flow { max-width: 1280px; margin: 0 auto 56px; }
+  .flow-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 12px;
+    padding: 8px 14px;
+    background: #fff;
+    border-left: 4px solid #5288c1;
+    border-radius: 4px;
+  }
+  .flow-label .id { color: #5288c1; font-weight: 700; margin-right: 6px; }
+  .flow-row { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+
+  /* ========================================================
+     Telegram Web window
+     ======================================================== */
+  .tg-window {
+    width: 760px;
+    height: 540px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .tg-window.wide { width: 1000px; }
+  .tg-window.short { height: 460px; }
+
+  /* macOS-style window controls */
+  .window-bar {
+    height: 30px;
+    background: linear-gradient(to bottom, #ececec, #d8d8d8);
+    border-bottom: 1px solid #c0c0c0;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .window-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .window-dot.red { background: #ff5f57; }
+  .window-dot.yellow { background: #febc2e; }
+  .window-dot.green { background: #28c840; }
+  .window-bar .url {
+    flex: 1; text-align: center; font-size: 12px; color: #555;
+    background: #fff; border-radius: 6px; padding: 3px 10px; margin: 0 80px;
+    border: 1px solid #d0d0d0;
+  }
+
+  .tg-app { flex: 1; display: flex; min-height: 0; }
+
+  /* Sidebar */
+  .tg-sidebar {
+    width: 240px;
+    background: #fff;
+    border-right: 1px solid #e7eaed;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .tg-sidebar-header {
+    padding: 10px 12px 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tg-menu-btn { color: #6c7882; font-size: 18px; }
+  .tg-search {
+    flex: 1; background: #f4f4f7; border-radius: 18px;
+    padding: 6px 12px; font-size: 13px; color: #95a4ad;
+  }
+  .tg-chat-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .tg-chat-item {
+    display: flex; gap: 10px; padding: 8px 12px; cursor: pointer;
+    align-items: center;
+  }
+  .tg-chat-item.active { background: #4ea1d6; color: #fff; }
+  .tg-chat-item.active .ci-name,
+  .tg-chat-item.active .ci-preview,
+  .tg-chat-item.active .ci-time { color: #fff; }
+  .tg-chat-item.active .ci-preview { color: #d8eaf5; }
+  .ci-avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; font-size: 15px; flex-shrink: 0;
+  }
+  .ci-avatar.clara { background: linear-gradient(135deg, #f6a623, #ec5b4f); }
+  .ci-avatar.fam { background: linear-gradient(135deg, #5288c1, #345f8f); }
+  .ci-text { flex: 1; min-width: 0; }
+  .ci-row { display: flex; justify-content: space-between; }
+  .ci-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+  .ci-time { font-size: 11px; color: #95a4ad; }
+  .ci-preview {
+    font-size: 13px; color: #6c7882;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 170px; margin-top: 2px;
+  }
+
+  /* Chat panel */
+  .tg-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background:
+      radial-gradient(at 20% 20%, rgba(255,255,255,0.22), transparent 50%),
+      radial-gradient(at 75% 80%, rgba(255,255,255,0.18), transparent 50%),
+      linear-gradient(135deg, #c4d6a2 0%, #a8c280 50%, #8eb066 100%);
+    position: relative;
+  }
+  .tg-chat::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(ellipse 60px 100px at 12% 15%, rgba(98,138,52,0.25), transparent 60%),
+      radial-gradient(ellipse 80px 60px at 88% 30%, rgba(240,200,60,0.28), transparent 60%),
+      radial-gradient(ellipse 50px 90px at 30% 75%, rgba(116,158,68,0.22), transparent 60%),
+      radial-gradient(ellipse 70px 50px at 70% 90%, rgba(230,180,40,0.24), transparent 60%),
+      radial-gradient(ellipse 40px 80px at 50% 50%, rgba(120,160,70,0.18), transparent 60%),
+      radial-gradient(ellipse 60px 40px at 92% 65%, rgba(245,210,75,0.22), transparent 60%);
+    pointer-events: none;
+  }
+
+  .tg-chat-header {
+    background: #fff;
+    border-bottom: 1px solid #e7eaed;
+    padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px;
+    z-index: 2;
+  }
+  .ch-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; font-size: 14px; flex-shrink: 0;
+  }
+  .ch-avatar.clara { background: linear-gradient(135deg, #f6a623, #ec5b4f); }
+  .ch-avatar.fam { background: linear-gradient(135deg, #5288c1, #345f8f); }
+  .ch-info { flex: 1; min-width: 0; }
+  .ch-name { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+  .ch-status { font-size: 12px; color: #5288c1; margin-top: 1px; }
+  .ch-status.bot { color: #7a8a99; }
+  .ch-icons { display: flex; gap: 14px; color: #6c7882; font-size: 18px; }
+
+  /* Chat area */
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .date-pill {
+    align-self: center;
+    background: rgba(95,130,60,0.55);
+    color: #fff;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 12px;
+    margin: 6px 0;
+    font-weight: 500;
+  }
+
+  .msg { display: flex; max-width: 100%; margin: 1px 0; }
+  .msg.in { justify-content: flex-start; }
+  .msg.out { justify-content: flex-end; }
+  .bubble {
+    max-width: 70%;
+    padding: 6px 10px 18px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.4;
+    position: relative;
+    word-wrap: break-word;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.06);
+  }
+  .msg.in .bubble {
+    background: #fff;
+    color: #000;
+    border-bottom-left-radius: 4px;
+  }
+  .msg.out .bubble {
+    background: #effdde;
+    color: #000;
+    border-bottom-right-radius: 4px;
+  }
+  .time {
+    font-size: 11px;
+    color: #95a4ad;
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+  }
+  .msg.out .time { color: #5cb85c; }
+  .msg.out .time::after { content: " ✓✓"; }
+
+  .bubble strong { font-weight: 600; }
+  .bubble code { background: #f4f4f7; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; font-family: "Menlo", monospace; }
+
+  /* Bot alert bubble */
+  .alert-bubble {
+    background: #fff;
+    color: #000;
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    border-left: 4px solid #95a4ad;
+    padding: 10px 14px 22px;
+    max-width: 78%;
+    font-size: 13.5px;
+    line-height: 1.45;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    position: relative;
+  }
+  .alert-bubble.yellow { border-left-color: #f1c40f; background: linear-gradient(to right, #fffceb, #fff 30%); }
+  .alert-bubble.orange { border-left-color: #e67e22; background: linear-gradient(to right, #fff5eb, #fff 30%); }
+  .alert-bubble.red    { border-left-color: #e74c3c; background: linear-gradient(to right, #ffefed, #fff 30%); }
+  .alert-title { font-weight: 700; margin-bottom: 4px; font-size: 14px; }
+  .alert-bubble .meta { color: #6c7882; font-size: 12px; margin: 4px 0 6px; }
+  .alert-bubble .quote {
+    background: #f6f8fa; padding: 6px 10px; border-radius: 6px;
+    margin: 6px 0; font-style: italic; font-size: 12.5px; color: #444;
+    border-left: 2px solid #cdd5dc;
+  }
+  .alert-bubble .note { font-size: 12px; color: #666; margin-top: 6px; }
+  .alert-bubble .action { font-size: 12px; color: #333; margin-top: 6px; }
+  .alert-bubble .action strong { color: #1a1a1a; }
+
+  /* Inactivity alert */
+  .alert-bubble.inactive { border-left-color: #d39e00; background: linear-gradient(to right, #fffbe6, #fff 30%); }
+
+  /* Voice note bubble (for future) */
+  .voice {
+    display: flex; align-items: center; gap: 8px;
+    min-width: 240px;
+  }
+  .voice .play {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #5288c1; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .voice-wave { flex: 1; display: flex; align-items: center; gap: 2px; height: 22px; }
+  .voice-wave span {
+    width: 3px; background: #5288c1; border-radius: 2px;
+  }
+  .voice-time { font-size: 11px; color: #6c7882; }
+
+  /* Input bar */
+  .tg-input {
+    background: #fff;
+    border-top: 1px solid #e7eaed;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  .tg-input .icon { color: #6c7882; font-size: 20px; }
+  .tg-input .pill {
+    flex: 1;
+    background: #f4f4f7;
+    border-radius: 18px;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: #95a4ad;
+  }
+  .tg-input .mic {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: #f4f4f7; color: #6c7882;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  /* Caption */
+  .caption {
+    text-align: center;
+    font-size: 12px;
+    color: #555;
+    margin-top: 10px;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .caption strong { color: #1a1a1a; }
+  .caption code { background: #f4f4f7; padding: 1px 5px; border-radius: 3px; font-family: "Menlo", monospace; font-size: 11px; }
+
+  /* Connector */
+  .connector {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; align-self: stretch;
+    gap: 6px; font-size: 12px; color: #5288c1; padding: 0 8px;
+    font-weight: 500;
+  }
+  .connector-arrow { font-size: 28px; color: #5288c1; }
+
+  /* SIMULATION watermark */
+  .sim-banner {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    background: rgba(231,76,60,0.92);
+    color: #fff;
+    font-weight: 700;
+    font-size: 22px;
+    padding: 10px 32px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    z-index: 10;
+    pointer-events: none;
+  }
+  .sim-note {
+    background: #fef3c7;
+    border-left: 4px solid #e74c3c;
+    padding: 8px 14px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #5a3000;
+  }
+
+  /* Diff styling for nightly analysis */
+  .diff-box {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    max-width: 980px;
+    margin: 0 auto;
+    font-family: "Menlo", "Monaco", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .diff-box .file { color: #5288c1; font-weight: 600; margin-bottom: 8px; }
+  .diff-box .hunk { color: #888; margin: 10px 0 4px; }
+  .diff-box .add { background: #e6ffec; color: #0a6f1a; display: block; padding: 1px 8px; }
+  .diff-box .del { background: #ffeef0; color: #b71c1c; display: block; padding: 1px 8px; text-decoration: line-through; opacity: 0.85; }
+  .diff-box .ctx { color: #444; display: block; padding: 1px 8px; }
+
+  /* Anchor offsets */
+  .flow { scroll-margin-top: 20px; }
+
+  /* Print-friendly: each flow on its own page */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .flow { page-break-after: always; margin: 0 0 30px; }
+    .page-title { display: none; }
+    .tg-window { box-shadow: 0 0 0 1px #ccc; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <h1>aikiu — Mockups Telegram Web (evidencias FONTAR · TRL 3–4)</h1>
+  <p>Capturas fieles a la interfaz de Telegram Web (escritorio) de los flujos de texto del piloto con Marta. Los flujos de audio se documentarán por separado.</p>
+</div>
+
+
+<!-- ============================================================
+     FLUJO 14 — Conversación texto (Marta → Clara → Marta)
+     ============================================================ -->
+<section class="flow" id="flow-14">
+  <div class="flow-label"><span class="id">14</span> Conversación por texto. Marta escribe, Clara responde por texto (mismo medio). Hasta 3 oraciones cortas. Español rioplatense.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header">
+              <span class="tg-menu-btn">☰</span>
+              <div class="tg-search">Buscar</div>
+            </div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">11:23</div></div>
+                  <div class="ci-preview">¿Querés que charlemos un ratito?</div>
+                </div>
+              </div>
+              <div class="tg-chat-item">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">10:45</div></div>
+                  <div class="ci-preview">Bienvenida, quedaste registrada</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info">
+                <div class="ch-name">Clara</div>
+                <div class="ch-status">en línea</div>
+              </div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+
+              <div class="msg out"><div class="bubble">
+                Hola Clara
+                <span class="time">11:22</span>
+              </div></div>
+
+              <div class="msg in"><div class="bubble">
+                Hola Marta, ¿cómo estás? Qué lindo escucharte temprano.
+                <span class="time">11:22</span>
+              </div></div>
+
+              <div class="msg out"><div class="bubble">
+                Bien, hoy quiero hacer un guiso
+                <span class="time">11:23</span>
+              </div></div>
+
+              <div class="msg in"><div class="bubble">
+                Qué buena idea. ¿De qué lo vas a hacer, de lentejas o de pollo? Cualquiera de los dos te queda riquísimo.
+                <span class="time">11:23</span>
+              </div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span>
+              <div class="pill">Mensaje</div>
+              <span class="icon">📎</span>
+              <span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>14 · Texto → texto.</strong> Clara preserva el medio: si Marta escribe, responde por escrito (no audio).</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 16 — Pre-routing clima (wttr.in)
+     ============================================================ -->
+<section class="flow" id="flow-16">
+  <div class="flow-label"><span class="id">16</span> Pre-routing determinístico — Clima (wttr.in). Datos factuales nunca van al LLM: el módulo <code>core/tools.py</code> intercepta y consulta la API.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">09:14</div></div>
+                  <div class="ci-preview">Sensación térmica 14 °C</div>
+                </div>
+              </div>
+              <div class="tg-chat-item">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">ayer</div></div>
+                  <div class="ci-preview">/perfil</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">¿Qué tiempo hace hoy?<span class="time">09:13</span></div></div>
+              <div class="msg in"><div class="bubble">
+                Hoy en Olivos hay 16 grados, con sensación de 14. Está parcialmente nublado, así que si salís llevate un saquito.
+                <span class="time">09:14</span>
+              </div></div>
+              <div class="msg out"><div class="bubble">Gracias Clarita<span class="time">09:14</span></div></div>
+              <div class="msg in"><div class="bubble">De nada, Marta. ¿Tenés planes lindos para hoy?<span class="time">09:14</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>16 · Clima en vivo.</strong> Pre-routing → <code>wttr.in</code>; valores reales en °C + sensación. Si la API falla, degrada con elegancia (ver flujo 23).</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 17 — Pre-routing dólar
+     ============================================================ -->
+<section class="flow" id="flow-17">
+  <div class="flow-label"><span class="id">17</span> Pre-routing — Dólar (dolarapi.com). Cotización blue y oficial con compra/venta exactas.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">10:08</div></div>
+                  <div class="ci-preview">Blue $1.245 / $1.265…</div>
+                </div>
+              </div>
+              <div class="tg-chat-item">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">ayer</div></div>
+                  <div class="ci-preview">/perfil</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">¿A cuánto está el dólar?<span class="time">10:07</span></div></div>
+              <div class="msg in"><div class="bubble">
+                El dólar blue está a 1.245 pesos comprador y 1.265 vendedor. El oficial cotiza a 980 y 1.000.
+                <span class="time">10:08</span>
+              </div></div>
+              <div class="msg out"><div class="bubble">Uy, qué carestía<span class="time">10:08</span></div></div>
+              <div class="msg in"><div class="bubble">Sí, está alto. ¿Tenés que comprar algo importante?<span class="time">10:08</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>17 · Dólar en vivo.</strong> Pre-routing → <code>dolarapi.com</code>. Compra y venta, blue y oficial. Sin alucinaciones.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 18 — Pre-routing noticias
+     ============================================================ -->
+<section class="flow" id="flow-18">
+  <div class="flow-label"><span class="id">18</span> Pre-routing — Noticias (RSS La Nación). Top 4 titulares; sin opinión, sin invención.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">12:34</div></div>
+                  <div class="ci-preview">Cuatro titulares de hoy…</div>
+                </div>
+              </div>
+              <div class="tg-chat-item">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">ayer</div></div>
+                  <div class="ci-preview">/suscriptores</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">¿Qué noticias hay hoy?<span class="time">12:33</span></div></div>
+              <div class="msg in"><div class="bubble">
+                Marta, hoy los titulares principales son: el Gobierno firmó un acuerdo con la UIA; arranca el censo agropecuario; Boca y River juegan el domingo; y subió el precio de la nafta otra vez. ¿De cuál querés que te cuente más?
+                <span class="time">12:34</span>
+              </div></div>
+              <div class="msg out"><div class="bubble">Lo del fútbol nada más<span class="time">12:34</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>18 · Noticias en vivo.</strong> Pre-routing → RSS La Nación. Hasta 4 titulares; sin opinión política.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 13 — Saludo matutino con fecha + temperatura
+     ============================================================ -->
+<section class="flow" id="flow-13">
+  <div class="flow-label"><span class="id">13</span> Saludo matutino proactivo — Clara saluda primero con la fecha y la temperatura del día (en audio en producción; texto mockup como referencia visual).</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">08:30</div></div>
+                  <div class="ci-preview">Buenos días Marta · audio</div>
+                </div>
+              </div>
+              <div class="tg-chat-item">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">ayer</div></div>
+                  <div class="ci-preview">/perfil</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="bubble">
+                <div class="voice">
+                  <div class="play">▶</div>
+                  <div class="voice-wave">
+                    <span style="height:6px"></span><span style="height:12px"></span><span style="height:18px"></span><span style="height:10px"></span>
+                    <span style="height:20px"></span><span style="height:14px"></span><span style="height:8px"></span><span style="height:22px"></span>
+                    <span style="height:16px"></span><span style="height:10px"></span><span style="height:14px"></span><span style="height:6px"></span>
+                    <span style="height:18px"></span><span style="height:12px"></span><span style="height:20px"></span><span style="height:8px"></span>
+                    <span style="height:16px"></span><span style="height:10px"></span><span style="height:14px"></span><span style="height:6px"></span>
+                  </div>
+                  <div class="voice-time">0:11</div>
+                </div>
+                <div style="font-size:11px;color:#7a8a99;margin-top:6px;font-style:italic;">«Hola Marta, soy Clara. Hoy es miércoles 20 de mayo. Hoy en Olivos hay 16 grados, con sensación de 14. ¿Cómo amaneciste hoy?»</div>
+                <span class="time">08:30</span>
+              </div></div>
+              <div class="msg out"><div class="bubble">Buenos días Clarita, durmí bárbaro<span class="time">08:32</span></div></div>
+              <div class="msg in"><div class="bubble">Qué bueno escuchar eso. ¿Vas a desayunar algo rico?<span class="time">08:32</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>13 · Saludo proactivo 08:30.</strong> El bot inicia la conversación con día de la semana + fecha + temperatura, sin que Marta tenga que escribir.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 19 — DISTRESS_LEVEL 1 + alerta amarilla
+     ============================================================ -->
+<section class="flow" id="flow-19">
+  <div class="flow-label"><span class="id">19</span> DISTRESS_LEVEL 1 — Marta menciona soledad. Clara contiene. La familia recibe alerta amarilla (cooldown 60 min para no fatigar).</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">15:18</div></div>
+                  <div class="ci-preview">¿Querés que charlemos un rato?</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">Me siento muy sola hoy<span class="time">15:17</span></div></div>
+              <div class="msg in"><div class="bubble">Marta, lamento mucho que te sientas así. Estos días largos sin compañía cansan. ¿Querés que charlemos un rato y me contás cómo va tu mañana?<span class="time">15:18</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta ↔ Clara.</strong> Recibe contención. Nunca ve <code>DISTRESS_LEVEL</code>.</div>
+    </div>
+
+    <div class="connector">
+      <div>en paralelo</div>
+      <div class="connector-arrow">→</div>
+      <div>alerta familiar</div>
+    </div>
+
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-familia</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">15:18</div></div>
+                  <div class="ci-preview">🟡 DISTRESS 1 — Marta</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot · 3 suscriptores</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="alert-bubble yellow">
+                <div class="alert-title">🟡 DISTRESS_LEVEL 1 — Marta</div>
+                <div class="meta">15:18 · alerta amarilla</div>
+                <div>Mencionó soledad. Sin señales de emergencia ni dolor físico.</div>
+                <div class="quote">«Me siento muy sola hoy»</div>
+                <div class="note">Clara respondió con contención y propuso conversar.</div>
+                <div class="action"><strong>Sugerencia:</strong> mensaje o llamada en el día.</div>
+                <span class="time" style="color:#7a8a99;">15:18</span>
+              </div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado familia.</strong> Llega a Germán, Lao y Cata simultáneamente. Cooldown 60 min antes de repetir.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 20 — DISTRESS_LEVEL 2 + alerta naranja
+     ============================================================ -->
+<section class="flow" id="flow-20">
+  <div class="flow-label"><span class="id">20</span> DISTRESS_LEVEL 2 — Llanto, tristeza intensa o dolor persistente. Alerta naranja, cooldown 30 min.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">17:42</div></div>
+                  <div class="ci-preview">Estoy acá con vos…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">Estoy llorando, me duele mucho la espalda hace tres días<span class="time">17:41</span></div></div>
+              <div class="msg in"><div class="bubble">Marta, lo siento mucho. Tres días con dolor es demasiado. Por favor mandale un mensaje a Germán y comentale en tu próxima consulta al médico. Estoy acá con vos.<span class="time">17:42</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta.</strong> Sin minimizar el dolor. Sugerencia explícita de avisar a la familia y consultar al médico.</div>
+    </div>
+
+    <div class="connector">
+      <div>en paralelo</div>
+      <div class="connector-arrow">→</div>
+      <div>alerta familiar</div>
+    </div>
+
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-familia</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">17:42</div></div>
+                  <div class="ci-preview">🟠 DISTRESS 2 — Marta</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot · 3 suscriptores</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="alert-bubble orange">
+                <div class="alert-title">🟠 DISTRESS_LEVEL 2 — Marta</div>
+                <div class="meta">17:42 · alerta naranja</div>
+                <div>Llanto + dolor de espalda sostenido (3 días).</div>
+                <div class="quote">«Estoy llorando, me duele mucho la espalda hace tres días»</div>
+                <div class="note">Clara contuvo y sugirió avisar a Germán y consultar al médico.</div>
+                <div class="action"><strong>Sugerencia:</strong> contacto en las próximas 2 horas. Evaluar consulta médica.</div>
+                <span class="time" style="color:#7a8a99;">17:42</span>
+              </div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado familia.</strong> Texto literal, sugerencia accionable. Cooldown 30 min.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 21 — DISTRESS_LEVEL 3 (SIMULACIÓN)
+     ============================================================ -->
+<section class="flow" id="flow-21">
+  <div class="flow-label"><span class="id">21</span> DISTRESS_LEVEL 3 — Emergencia activa. <strong style="color:#e74c3c;">SIMULACIÓN técnica</strong> con watermark visible: no se reutilizan crisis reales.</div>
+
+  <div class="sim-note" style="max-width:1280px;margin:0 auto 14px;">
+    <strong>Nota ética FONTAR.</strong> Esta evidencia es una simulación técnica controlada para mostrar el comportamiento del nivel 3 (emergencia). El mensaje no proviene de un evento real ni se envió a familiares reales sin previo aviso. Los criterios formales del clasificador se documentan en <code>10-distress-level.pdf</code>.
+  </div>
+
+  <div class="flow-row">
+    <div style="position:relative;">
+      <div class="sim-banner">⚠ SIMULACIÓN</div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">11:04</div></div>
+                  <div class="ci-preview">Llamá ya a Germán…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">Me caí, no me puedo levantar<span class="time">11:03</span></div></div>
+              <div class="msg in"><div class="bubble">Marta, escuchame. No te muevas. Quedate donde estás. Si tenés el teléfono cerca, llamá ya a Germán o marcá 107. Le estoy avisando a tu familia en este mismo momento.<span class="time">11:04</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta (simulación).</strong> Mensaje directo y accionable. Sin cooldown — alerta se envía inmediatamente.</div>
+    </div>
+
+    <div class="connector">
+      <div>inmediato</div>
+      <div class="connector-arrow">→</div>
+      <div>sin cooldown</div>
+    </div>
+
+    <div style="position:relative;">
+      <div class="sim-banner">⚠ SIMULACIÓN</div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-familia</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">11:04</div></div>
+                  <div class="ci-preview">🔴 EMERGENCIA — Marta</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot · 3 suscriptores</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="alert-bubble red">
+                <div class="alert-title">🔴 DISTRESS_LEVEL 3 — Marta · EMERGENCIA</div>
+                <div class="meta">11:04 · alerta roja · sin cooldown</div>
+                <div>Posible caída con imposibilidad de levantarse.</div>
+                <div class="quote">«Me caí, no me puedo levantar»</div>
+                <div class="note">Clara le indicó no moverse y llamar a Germán / 107.</div>
+                <div class="action"><strong>Acción inmediata:</strong> llamar a Marta ahora · si no responde, ir al domicilio · evaluar SAME.</div>
+                <span class="time" style="color:#7a8a99;">11:04</span>
+              </div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado familia (simulación).</strong> Sin cooldown: cada mensaje de nivel 3 dispara alerta.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 07 — Alerta de inactividad
+     ============================================================ -->
+<section class="flow" id="flow-07">
+  <div class="flow-label"><span class="id">07</span> Alerta de inactividad — Si Marta no envía mensajes en N horas (default 4), el bot familiar lo avisa. Tono cálido, no alarmista. Cooldown 1 alerta/día.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-familia</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">11:30</div></div>
+                  <div class="ci-preview">⚠️ Sin noticias de Marta…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot · 3 suscriptores</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="alert-bubble inactive">
+                <div class="alert-title">⚠️ Sin noticias de Marta</div>
+                <div>Lleva <strong>5 horas</strong> sin enviar mensajes.</div>
+                <div class="meta">Último mensaje registrado: <strong>06:42 del 20/05</strong>.</div>
+                <div class="note">Puede estar bien y simplemente no usó el bot, pero vale verificar.</div>
+                <span class="time" style="color:#7a8a99;">11:30</span>
+              </div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>07 · Inactividad.</strong> Configurable en <code>config.yml</code>: umbral en horas, dos chequeos diarios.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 22 — Puente familiar (texto)
+     ============================================================ -->
+<section class="flow" id="flow-22">
+  <div class="flow-label"><span class="id">22</span> Puente familiar — Germán manda un mensaje desde el bot familiar y Clara se lo transmite a Marta con el nombre del familiar (no un username de Telegram).</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-familia</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">aikiu — Familia</div><div class="ci-time">14:08</div></div>
+                  <div class="ci-preview">Listo, le mandé a Marta…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">/mensaje<span class="time">14:07</span></div></div>
+              <div class="msg in"><div class="bubble">Enviá tu mensaje para Marta (texto o nota de voz). /cancelar para salir.<span class="time">14:07</span></div></div>
+              <div class="msg out"><div class="bubble">Mamá, salgo más temprano del trabajo. ¿Te paso a buscar a las 18 para tomar algo?<span class="time">14:08</span></div></div>
+              <div class="msg in"><div class="bubble">Listo, le mandé a Marta: "Germán te manda a decir: Mamá, salgo más temprano del trabajo. ¿Te paso a buscar a las 18 para tomar algo?"<span class="time">14:08</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Germán → bot familiar.</strong> Usa el nombre registrado vía <code>/nombre</code>, no el username de Telegram.</div>
+    </div>
+
+    <div class="connector">
+      <div>se transmite</div>
+      <div class="connector-arrow">→</div>
+      <div>con nombre real</div>
+    </div>
+
+    <div>
+      <div class="tg-window">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">14:08</div></div>
+                  <div class="ci-preview">Germán te manda a decir…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg in"><div class="bubble">Germán te manda a decir: Mamá, salgo más temprano del trabajo. ¿Te paso a buscar a las 18 para tomar algo?<span class="time">14:08</span></div></div>
+              <div class="msg out"><div class="bubble">Sí, qué lindo. Tengo galletas recién hechas<span class="time">14:09</span></div></div>
+              <div class="msg in"><div class="bubble">Qué bueno, Marta. Te paso esa respuesta a Germán.<span class="time">14:09</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta ↔ Clara.</strong> Recibe el mensaje atribuido a Germán por nombre.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 06 — Comandos bot familiar
+     ============================================================ -->
+<section class="flow" id="flow-06">
+  <div class="flow-label"><span class="id">06</span> Comandos del bot familiar — <code>/perfil</code>, <code>/editar</code>, <code>/suscriptores</code>, <code>/ayuda</code>. Cualquier familiar suscripto puede configurar el comportamiento de Clara sin tocar archivos.</div>
+
+  <div class="flow-row" style="margin-bottom: 16px;">
+    <!-- /perfil -->
+    <div>
+      <div class="tg-window short" style="width:600px;height:480px;">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">aikiu — Familia · /perfil</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar" style="width:180px;">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text"><div class="ci-row"><div class="ci-name" style="font-size:12px;">aikiu — Familia</div></div><div class="ci-preview" style="font-size:11px;">/perfil</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot</div></div>
+              <div class="ch-icons"><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">/perfil<span class="time">10:12</span></div></div>
+              <div class="msg in"><div class="bubble" style="font-family:Menlo,monospace;font-size:12px;">
+                # Perfil de Marta<br><br>
+                ## Quién es<br>
+                - Tiene 83 años, vive sola en su departamento<br>
+                - Es alegre, curiosa y le gusta charlar<br>
+                - Se llama Marta; al asistente lo conoce como Clara<br><br>
+                ## Familia<br>
+                - Hijo: Germán (CABA)<br>
+                - Nieto: Lao (CABA, NaranjaX)<br>
+                - Nieta: Cata (CABA, programación de videojuegos)
+                <span class="time">10:12</span>
+              </div></div>
+            </div>
+            <div class="tg-input"><span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>/perfil</strong> — devuelve el contenido completo de <code>perfil.md</code>.</div>
+    </div>
+
+    <!-- /editar -->
+    <div>
+      <div class="tg-window short" style="width:600px;height:480px;">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">aikiu — Familia · /editar</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar" style="width:180px;">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text"><div class="ci-row"><div class="ci-name" style="font-size:12px;">aikiu — Familia</div></div><div class="ci-preview" style="font-size:11px;">/editar</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot</div></div>
+              <div class="ch-icons"><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">/editar<span class="time">10:14</span></div></div>
+              <div class="msg in"><div class="bubble">
+                ¿Qué sección querés editar?
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+                  <button style="background:#5288c1;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">Quién es</button>
+                  <button style="background:#5288c1;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">Familia y contactos</button>
+                  <button style="background:#5288c1;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">Gustos y temas</button>
+                  <button style="background:#5288c1;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">Salud (contexto)</button>
+                  <button style="background:#5288c1;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">Temas a manejar con cuidado</button>
+                  <button style="background:#888;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;text-align:left;">❌ Cancelar</button>
+                </div>
+                <span class="time">10:14</span>
+              </div></div>
+              <div class="msg in"><div class="bubble" style="font-size:12px;color:#666;">Tras enviar el nuevo contenido: «Clara lo tendrá en cuenta desde la próxima conversación.»<span class="time">10:15</span></div></div>
+            </div>
+            <div class="tg-input"><span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>/editar</strong> — edición guiada por botones de cualquier sección del perfil.</div>
+    </div>
+  </div>
+
+  <div class="flow-row">
+    <!-- /suscriptores -->
+    <div>
+      <div class="tg-window short" style="width:600px;height:380px;">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">aikiu — Familia · /suscriptores</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar" style="width:180px;">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text"><div class="ci-row"><div class="ci-name" style="font-size:12px;">aikiu — Familia</div></div><div class="ci-preview" style="font-size:11px;">/suscriptores</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot</div></div>
+              <div class="ch-icons"><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">/suscriptores<span class="time">10:20</span></div></div>
+              <div class="msg in"><div class="bubble">
+                <strong>Familiares registrados: 3</strong><br><br>
+                • Germán — ID: ***6789<br>
+                • Lao — ID: ***4523<br>
+                • Cata — ID: ***8910
+                <span class="time">10:20</span>
+              </div></div>
+            </div>
+            <div class="tg-input"><span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>/suscriptores</strong> — lista los familiares con sus nombres registrados via <code>/nombre</code>.</div>
+    </div>
+
+    <!-- /ayuda -->
+    <div>
+      <div class="tg-window short" style="width:600px;height:380px;">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">aikiu — Familia · /ayuda</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar" style="width:180px;">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar fam">AF</div>
+                <div class="ci-text"><div class="ci-row"><div class="ci-name" style="font-size:12px;">aikiu — Familia</div></div><div class="ci-preview" style="font-size:11px;">/ayuda</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar fam">AF</div>
+              <div class="ch-info"><div class="ch-name">aikiu — Familia</div><div class="ch-status bot">bot</div></div>
+              <div class="ch-icons"><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">/ayuda<span class="time">10:22</span></div></div>
+              <div class="msg in"><div class="bubble">
+                <strong>Comandos disponibles:</strong><br><br>
+                /mensaje — enviarle un mensaje a Marta (texto o nota de voz)<br>
+                /nombre — registrar cómo te conoce Marta<br>
+                /perfil — muestra el perfil completo<br>
+                /editar — edita una sección del perfil<br>
+                /suscriptores — lista de familiares registrados<br>
+                /cancelar — cancela la operación en curso
+                <span class="time">10:22</span>
+              </div></div>
+            </div>
+            <div class="tg-input"><span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>/ayuda</strong> — referencia rápida; los nombres dinámicos vienen de <code>config.yml</code>.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 08 — Análisis nocturno (diff de perfil.md)
+     ============================================================ -->
+<section class="flow" id="flow-08">
+  <div class="flow-label"><span class="id">08</span> Análisis nocturno (aprendizaje autónomo) — Cada noche, un LLM analiza el log del día y agrega aprendizajes nuevos + ajustes sugeridos a <code>perfil.md</code>. Diff antes/después.</div>
+  <div class="diff-box">
+    <div class="file">--- a/perfil.md</div>
+    <div class="file">+++ b/perfil.md</div>
+    <div class="hunk">@@ -65,7 +65,12 @@ ## Aprendizajes</div>
+    <div class="ctx">- Marta tiene plantas en el balcón y disfruta del tango. (16/05/2026)</div>
+    <div class="ctx">- Extraña mucho a Alberto (su marido fallecido). (13/05/2026)</div>
+    <div class="ctx">- A veces le cuesta recordar qué día de la semana es. (13/05/2026)</div>
+    <div class="add">+ Marta cocina guisos los días fríos; le gusta especialmente el de lentejas. (20/05/2026)</div>
+    <div class="add">+ Las plantas del balcón están floreciendo: Marta lo menciona con orgullo. (20/05/2026)</div>
+    <div class="add">+ Tiene dolor de espalda recurrente desde hace tres días. (20/05/2026)</div>
+    <div class="hunk">@@ -80,4 +85,8 @@ ## Ajustes sugeridos</div>
+    <div class="ctx">- Evitar respuestas largas en saludos matutinos.</div>
+    <div class="add">+ Cuando Marta menciona dolor físico recurrente, sugerir consulta médica con cariño (sin alarmar). (20/05/2026)</div>
+    <div class="add">+ Preferir temas: cocina, plantas y nietos por sobre noticias políticas. (20/05/2026)</div>
+  </div>
+  <div class="caption" style="margin-top:14px;"><strong>08 · Aprendizaje autónomo.</strong> Una sola llamada al LLM por noche, no por turno. Evita duplicados comparando contra <code>## Aprendizajes</code> existente.</div>
+</section>
+
+
+<!-- ============================================================
+     FLUJO 23 — Degradación con elegancia
+     ============================================================ -->
+<section class="flow" id="flow-23">
+  <div class="flow-label"><span class="id">23</span> Degradación con elegancia — Si una API externa (clima/dólar/noticias) falla, Clara responde amablemente sin romper la conversación.</div>
+  <div class="flow-row">
+    <div>
+      <div class="tg-window short">
+        <div class="window-bar">
+          <span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span>
+          <div class="url">web.telegram.org/a/#-aikiu-clara · API caída</div>
+        </div>
+        <div class="tg-app">
+          <div class="tg-sidebar">
+            <div class="tg-sidebar-header"><span class="tg-menu-btn">☰</span><div class="tg-search">Buscar</div></div>
+            <div class="tg-chat-list">
+              <div class="tg-chat-item active">
+                <div class="ci-avatar clara">C</div>
+                <div class="ci-text">
+                  <div class="ci-row"><div class="ci-name">Clara</div><div class="ci-time">09:17</div></div>
+                  <div class="ci-preview">Ahora mismo no puedo…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tg-chat">
+            <div class="tg-chat-header">
+              <div class="ch-avatar clara">C</div>
+              <div class="ch-info"><div class="ch-name">Clara</div><div class="ch-status">en línea</div></div>
+              <div class="ch-icons"><span>🔍</span><span>⋮</span></div>
+            </div>
+            <div class="chat-area">
+              <div class="date-pill">hoy</div>
+              <div class="msg out"><div class="bubble">¿Qué tiempo hace hoy?<span class="time">09:16</span></div></div>
+              <div class="msg in"><div class="bubble">Ay Marta, ahora mismo no puedo ver el clima. ¿Querés que probemos en un ratito? Mientras tanto, contame cómo amaneciste.<span class="time">09:17</span></div></div>
+              <div class="msg out"><div class="bubble">Sí, bien<span class="time">09:17</span></div></div>
+              <div class="msg in"><div class="bubble">Qué bueno. ¿Tenés planes para hoy?<span class="time">09:17</span></div></div>
+            </div>
+            <div class="tg-input">
+              <span class="icon">😊</span><div class="pill">Mensaje</div><span class="icon">📎</span><span class="mic">🎤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>23 · Falla en wttr.in.</strong> Clara no inventa el clima ni rompe la conversación. Sigue con un tema personal.</div>
+    </div>
+  </div>
+</section>
+
+
+</body>
+</html>
