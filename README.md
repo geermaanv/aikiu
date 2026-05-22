@@ -588,6 +588,7 @@ aikiu/
 │   ├── heartbeat.py        # Heartbeat por rol y por instancia
 │   └── usage.py            # Tracking de tokens y latencias de Groq
 ├── tests/                  # tests unitarios + checklist E2E manual
+├── .cursor/rules/          # Reglas para el agente de Cursor (convenciones del repo)
 ├── config.yml              # Config no sensible (nombres, voz, horarios, recordatorios)
 ├── perfil.md               # Perfil del adulto mayor en lenguaje natural
 ├── requirements.txt        # Dependencias Python
