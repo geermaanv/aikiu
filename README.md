@@ -57,10 +57,11 @@ Construir un acompañante de IA **abierto, gratuito y respetuoso**, que:
 15. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
 16. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
 17. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
-18. [Tests](#tests)
-19. [Seguridad y privacidad](#seguridad-y-privacidad)
-20. [Roadmap](#roadmap)
-21. [Licencia](#licencia)
+18. [Andromarta — humanoide sintético para testing](#andromarta--humanoide-sintético-para-testing)
+19. [Tests](#tests)
+20. [Seguridad y privacidad](#seguridad-y-privacidad)
+21. [Roadmap](#roadmap)
+22. [Licencia](#licencia)
 
 ---
 
@@ -73,6 +74,8 @@ Aikiu está compuesto por **tres bots de Telegram** que trabajan en conjunto:
 | **Bot principal (`aikiu.py`)** | El adulto mayor | Recibe voz/texto, responde con voz/texto, detecta angustia |
 | **Bot familiar (`familiar_bot.py`)** | Familia y cuidadores | Recibe alertas, edita el perfil, envía mensajes-puente |
 | **Bot admin (`admin_bot.py`)** | Solo el operador | Monitorea salud, uso del LLM y métricas de cada instancia |
+
+Hay además un cliente sintético opcional (`andromarta/bot.py`) que se hace pasar por un adulto mayor para testear Aikiu end-to-end. No es un bot: es un cliente de usuario MTProto. Ver [Andromarta](#andromarta--humanoide-sintético-para-testing).
 
 El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien. El bot admin es opcional: si configurás `ADMIN_BOT_TOKEN`, te da `/health`, `/llm` y `/metricas` vía Telegram.
 
@@ -576,6 +579,7 @@ aikiu/
 ├── aikiu.py                # Bot principal: STT + LLM + TTS + scheduler
 ├── familiar_bot.py         # Bot familiar: alertas, edición de perfil, mensajes-puente
 ├── admin_bot.py            # Bot admin (opcional): /health, /llm, /metricas, /logs
+├── andromarta/             # Cliente sintético opcional, autocontenido (ver sección Andromarta)
 ├── configurar.py           # Wizard interactivo para generar perfil.md
 ├── core/
 │   ├── distress.py         # Parsing del DISTRESS_LEVEL y lógica de cooldowns
@@ -875,6 +879,81 @@ Gestionados por **APScheduler** dentro del loop async del bot:
 - **Checks de inactividad** (`verificar_inactividad`): dos veces por día por defecto.
 
 Todos se inicializan en `programar_recordatorios()` al arrancar el bot.
+
+---
+
+## Andromarta — humanoide sintético para testing
+
+**Andromarta** es un agente que se hace pasar por una adulta mayor y chatea con Aikiu como si fuera una persona real. Sirve para probar el comportamiento de Clara (la asistente) sin depender de la disponibilidad de Marta, y para hacer regresión de cambios en el system prompt, en la detección de distress, o en los flujos de voz/texto.
+
+### ¿Por qué no es un bot?
+
+Telegram **no permite que dos bots conversen entre sí**. Andromarta se loguea como una **cuenta de usuario real** vía MTProto/Telethon (con un número de teléfono propio y su `api_id`/`api_hash` de [my.telegram.org](https://my.telegram.org)). Desde la perspectiva de Aikiu, Andromarta es un usuario humano más.
+
+Para **observar** la conversación: abrí Telegram con la misma cuenta en el celular sintético o en Telegram Desktop. Vas a ver todo en tiempo real.
+
+### Arquitectura
+
+```
+andromarta/                  # paquete autocontenido (no se mezcla con el resto del repo)
+├── bot.py                   # cliente Telethon + handlers + ritmo humano (entry point)
+├── persona.py               # system prompt + perfil base (lee persona.md)
+├── estado.py                # ánimo, energía, síntomas, eventos del día (regenera diario)
+├── memoria.py               # historial conversacional (persistido en JSON)
+├── scheduler.py             # loop de iniciativa (Andromarta arranca conversación sola)
+├── generador.py             # arma el prompt y llama a Groq
+├── persona.md               # perfil sintético editable, separado del perfil.md real
+├── .env                     # credenciales propias de Andromarta (gitignored)
+├── .env.example             # plantilla del .env de Andromarta
+└── data/                    # runtime (todo gitignored)
+    ├── estado.json          # estado del día actual
+    ├── memoria.json         # historial de los últimos turnos
+    └── andromarta.session   # sesión MTProto de Telethon (= la cuenta de Telegram)
+```
+
+### Setup
+
+> **Si no sos técnico**, hay una guía paso a paso desde cero (sin jerga) en [`andromarta/COMO_USAR.md`](./andromarta/COMO_USAR.md). El resto de esta sección es la versión resumida para alguien con experiencia.
+
+Andromarta tiene su propio `.env` (en `andromarta/.env`), separado del `.env` raíz que usa Aikiu. Eso la mantiene autocontenida: si te llevás la carpeta a otra máquina, anda sola con sus propias credenciales.
+
+1. **Conseguí un número** para la cuenta sintética (SIM física, eSIM o algún servicio de números virtuales que reciba SMS de Telegram).
+2. **Pedí credenciales** en [my.telegram.org](https://my.telegram.org) → "API development tools" → te dan `api_id` (int) y `api_hash` (string). **No es el token del bot**: es para cliente de usuario.
+3. **Copiá la plantilla y completala**:
+   ```bash
+   cp andromarta/.env.example andromarta/.env
+   # editá andromarta/.env con tus valores
+   ```
+   Las variables son `ANDROMARTA_*` + `GROQ_API_KEY` (la misma de Aikiu, duplicada acá a propósito).
+4. **Importante**: apuntá `ANDROMARTA_AIKIU_USERNAME` a un bot Aikiu de **prueba**, no al del adulto real. La primera vez que Andromarta mande `/start`, ese bot la registra como "dueña" (TOFU) — si lo apuntás al bot del adulto real, lo rompés.
+5. Instalá las dependencias (compartidas con Aikiu, no hay requirements aparte):
+   ```bash
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+### Arrancar
+
+```bash
+python andromarta/bot.py
+```
+
+La primera vez Telethon te va a pedir el código SMS que Telegram envía al número configurado, y luego una contraseña de dos factores si la tenés activada. Después guarda la sesión en `andromarta/data/andromarta.session` (gitignored) y ya no te pide nada más.
+
+### Comportamiento
+
+- **Responde a Clara**: cada mensaje que llega de `@<ANDROMARTA_AIKIU_USERNAME>` dispara una generación con Groq usando persona + estado + historial.
+- **Voz o texto**: por defecto 40% de las respuestas son nota de voz (configurable con `ANDROMARTA_VOZ_PROB`). Si Clara manda voz, Andromarta tiende a responder en voz.
+- **Ritmo humano**: pausas de "lectura", indicador de "escribiendo..." o "grabando voz...", tipeo lento (~3 char/seg con ruido).
+- **Iniciativa**: cada 15 min un loop evalúa si arranca conversación sola. La probabilidad depende de la franja horaria y de cuánto hace que Clara no escribe.
+- **Estado diario**: ánimo (1-10), energía, síntomas activos y eventos del día se regeneran cada amanecer (con sesgo al estado de ayer). El system prompt lee ese estado para que las respuestas reflejen el momento.
+- **Memoria persistente**: `andromarta/data/memoria.json` conserva los últimos 40 turnos. Borrá el archivo para empezar de cero.
+
+### Limitaciones y notas de seguridad
+
+- El archivo `*.session` **es** la cuenta de Telegram. Mantenelo seguro (ya está en `.gitignore`).
+- Los "userbots" (cuentas automatizadas) están en zona gris en los TOS de Telegram. Para uso personal de testing no hay problema mientras no se haga spam o broadcast.
+- Lo ideal es usar una **SIM aparte**. Si no tenés otra, podés usar tu número personal con algunos recaudos (no chatear manualmente con el bot test mientras corre Andromarta, etc.) — está detallado en [`andromarta/COMO_USAR.md`](./andromarta/COMO_USAR.md#si-vas-a-usar-tu-propio-número).
 
 ---
 

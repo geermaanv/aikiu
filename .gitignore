@@ -16,3 +16,9 @@ usage.*.json
 heartbeat-*.json
 .DS_Store
 
+# Andromarta (humanoide sintético) — todo el runtime vive en andromarta/data/
+andromarta/data/*
+!andromarta/data/.gitkeep
+*.session
+*.session-journal
+
