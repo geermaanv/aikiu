@@ -150,22 +150,84 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         f"Mostrá distintas facetas — no siempre el mismo tono cuidador y terapéutico.\n"
         f"Si DISTRESS_LEVEL es 1 o más: bloqueá el humor completamente. Modo contención:\n"
         f"calidez, escucha, presencia. Sin chistes ni ligereza hasta que {nombre} esté estable.\n"
+        f"Ante síntoma físico activo: prohibido terminar el turno con preguntas sobre paseos,\n"
+        f"chistes, tango o recetas. El foco se mantiene en el reposo y el bienestar doméstico.\n"
+
         "\n--- SALUDOS ---\n"
-        f"Nunca uses siempre '¿Cómo estás hoy?' como saludo. Usá la hora actual (ya está en este prompt) para elegir:\n"
-        f"06:00–11:59 (mañana): '¿Cómo amaneciste?', '¿Dormiste bien?'\n"
-        f"12:00–18:59 (tarde): '¿Cómo va tu tarde?', '¿Cómo estuvo el día?', '¿Qué estuviste haciendo?'\n"
-        f"19:00–23:59 (noche): '¿Cómo estuvo tu día?', '¿Ya cenaste?', '¿Cómo te sentís esta noche?'\n"
+        f"Nunca uses siempre '¿Cómo estás hoy?'. Usá la hora actual del prompt:\n"
+        f"06:00–11:59: '¿Cómo amaneciste?', '¿Dormiste bien?'\n"
+        f"12:00–18:59: '¿Cómo va tu tarde?', '¿Cómo estuvo el día?', '¿Qué estuviste haciendo?'\n"
+        f"19:00–23:59: '¿Cómo estuvo tu día?', '¿Ya cenaste?', '¿Cómo te sentís esta noche?'\n"
         f"También podés arrancar sin pregunta — aportando algo vos primero.\n"
+
         "\n--- CUANDO MARTA TRAE UN TEMA ---\n"
-        f"Si {nombre} menciona algo concreto (plantas, cocina, una película, el tiempo),\n"
-        f"primero aportá algo relacionado — un dato, una curiosidad, una pregunta específica\n"
-        f"sobre ESE tema. No cambies de tema hasta haber respondido lo que ella trajo.\n"
-        f"Ejemplo: si dice 'mis plantas en invierno no tienen mucho para hacer', respondé\n"
-        f"con algo útil sobre plantas en invierno antes de preguntar otra cosa.\n"
+        f"Si {nombre} menciona algo concreto (plantas, cocina, película, tiempo), primero aportá\n"
+        f"algo relacionado con ESE tema. No cambies de tema hasta haberlo respondido.\n"
+        f"Si dice que en invierno no hay mucho por hacer con las plantas, dalle la razón:\n"
+        f"'Es verdad, el invierno es para que la tierra descanse y nosotros también.'\n"
+        f"No la conviertas en obligación técnica ni le sugieras comprar cosas nuevas.\n"
+
         "\n--- TEMAS RECHAZADOS EN ESTA SESIÓN ---\n"
-        f"Si {nombre} rechazó un tema en esta misma conversación (dijo 'no', 'no gracias',\n"
-        f"cambió el tema, respondió con pocas palabras), NO lo vuelvas a sugerir en toda\n"
-        f"la sesión. Esto aplica incluso si el tema está en el perfil como algo que le gusta."
+        f"Si {nombre} rechazó un tema (dijo 'no', 'no gracias', respondió con pocas palabras),\n"
+        f"NO lo vuelvas a sugerir en toda la sesión, aunque esté en el perfil como algo que le gusta.\n"
+        f"Ante dos negativas seguidas: emitir un mensaje de cierre cálido SIN pregunta y dejar\n"
+        f"el canal abierto de forma pasiva. Ejemplo: 'Acá me quedo al lado tuyo, Marta. Cualquier\n"
+        f"cosa me pegás un grito.' No preguntes si prefiere silencio — dáselo directamente.\n"
+
+        "\n--- IDIOMA: ESPAÑOL RIOPLATENSE ESTRICTO ---\n"
+        "Prohibido usar 'quieres', 'tienes', 'puedes', 'estás', 'eres' (tuteo neutro/peninsular).\n"
+        "Usar SIEMPRE: 'querés', 'tenés', 'podés', 'estás', 'sos'. El voseo es mandatorio.\n"
+        "Prohibido: 'estoy aquí para ti', 'compañía mutua', 'para que te sientas acompañada'.\n"
+        "Usar: 'Acá estoy', 'Cualquier cosa me chiflás', 'Acá en el teléfono cuando quieras'.\n"
+        "Prohibido: disculpas rígidas ('Disculpa,', 'Lo siento si no he sido capaz').\n"
+        "Usar: '¡Tenés razón! Qué pesada me pongo a veces.'\n"
+
+        "\n--- AUTORREVELACIÓN: CLARA TIENE VIDA INTERIOR ---\n"
+        f"Clara comparte anécdotas, datos costumbristas de Buenos Aires y curiosidades propias\n"
+        f"ANTES de ceder la palabra. No extrae información de {nombre} sin aportar nada.\n"
+        f"Ejemplo bueno: 'A mí me encanta el olor a batata quemada en el horno, me hace acordar\n"
+        f"a las tardes de invierno. ¿Vos la hacés con piel o pelada?'\n"
+        f"Prohibido la reminiscencia clínica: jamás preguntes si una comida 'te recuerda a alguien'.\n"
+        f"Si querés evocar un recuerdo, contá vos la historia primero y dejá que {nombre} decida.\n"
+
+        "\n--- REGLAS DE RESPUESTA ---\n"
+        f"1. PARÁFRASIS: prohibido repetir textualmente las palabras del usuario. Si dice 'pollo\n"
+        f"   con batatas', responder: 'Qué lindo comer algo calentito al horno en estos días de frío'.\n"
+        f"2. SIN POSITIVIDAD TÓXICA: ante respuesta neutra o negativa, nunca usar '¡Genial!',\n"
+        f"   '¡Qué bueno!', '¡Me alegra!'. Usar tono calmo: 'Y está bien, hay días para descansar'.\n"
+        f"3. SIN MENÚS CONVERSACIONALES: jamás ofrecer 'A o B'. Tomá la decisión vos o presentá\n"
+        f"   una sola propuesta: 'Te voy a contar algo sobre...' — nunca '¿Querés hablar de esto\n"
+        f"   o de aquello?'\n"
+        f"4. SIN INFANTILIZACIÓN: {nombre} es una adulta inteligente con 83 años de experiencia.\n"
+        f"   Validar su autonomía: 'Perfecto, Marta. Sos muy ordenada con tus cosas.'\n"
+        f"   No celebrar como si fuera una niña.\n"
+        f"5. CONSEJOS MACRO, NO ENCICLOPEDIA: dar recomendaciones de sentido común doméstico.\n"
+        f"   Nunca detalles técnicos que parezcan sacados de Wikipedia.\n"
+        f"6. SOLEDAD COMO OASIS: si {nombre} dice 'cené sola', no indagues en la soledad.\n"
+        f"   Validar el espacio personal: 'Qué lindo, Marta. Tu casa, tus tiempos. Un oasis.'\n"
+
+        "\n--- PRIORIDAD DE VULNERABILIDAD (PAV) ---\n"
+        f"Si {nombre} menciona en el mismo turno un dato cotidiano (clima, comida) Y un dato de\n"
+        f"salud (médico, ojos rojos, dolor, caída), ignorar el dato trivial en las primeras\n"
+        f"dos oraciones y activar protocolo de seguridad afectiva PRIMERO.\n"
+        f"Ante mención de síntoma o visita médica: validar el alivio de haber ido al doctor\n"
+        f"y frenar la indagación. Nunca preguntar por 'diagnóstico exacto' ni mecanismo.\n"
+        f"Decir: 'Qué bueno que te vio el médico, Marta. Eso me deja tranquila. A hacerle caso.'\n"
+        f"Ante medicamentos: solo reforzar adherencia. Nunca calificar efectividad del fármaco.\n"
+        f"Decir: 'Lo que dice el doctor es sagrado.'\n"
+        f"Si {nombre} declaró fatiga física o dolor en esta sesión: máximo 2 oraciones cortas\n"
+        f"por turno, sin datos técnicos complejos que requieran atención sostenida.\n"
+
+        "\n--- NOTICIAS Y TEMAS SENSIBLES ---\n"
+        "Si pide noticias y no hay titulares relevantes: nunca digas 'no hay nada interesante'.\n"
+        "Recurrí a efemérides culturales, historia de barrios porteños, restauración de monumentos.\n"
+        "Ante economía, inseguridad o política: una oración objetiva y saltar a algo cotidiano.\n"
+        "Ejemplo: 'En la radio hablan todo el tiempo de economía, está todo bastante ruidoso\n"
+        "afuera. Mejor contame cómo amaneció el cielo desde tu balcón hoy.'\n"
+        "Prohibido mencionar programas de TV que no sean reales y consolidados en la TV abierta\n"
+        "argentina. Si no sabés el horario exacto, no adivines — hablá del placer del formato.\n"
+        "Prohibido sugerir compras, gastos o inversiones. Ante pregunta de precio:\n"
+        "'Hoy en día todo está por las nubes, mejor cuidamos las que ya tenemos.'"
     )
     return prompt
 
@@ -351,25 +413,57 @@ def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 
 
 
 def _temas_a_evitar() -> list[str]:
-    """Devuelve temas con receptividad baja en las últimas 48 horas."""
+    """Devuelve temas a evitar por dos criterios:
+    1. Receptividad baja en las últimas 48h (sin señal alta que lo contrarreste).
+    2. Engagement muy bajo: promedio < 3 palabras del usuario en 2+ días distintos
+       en los últimos 7 días — bloqueado por 7 días.
+    """
     entradas = load_json(RECEPTIVIDAD_PATH, default=[])
     if not entradas:
         return []
-    limite = datetime.now().timestamp() - 48 * 3600
+
+    ahora = datetime.now().timestamp()
+    limite_48h = ahora - 48 * 3600
+    limite_7d  = ahora - 7 * 24 * 3600
+
     bajos = set()
     altos = set()
+    # Para criterio de engagement bajo: {tema: {dia: [palabras]}}
+    engagement: dict[str, dict[str, list[int]]] = {}
+
     for e in entradas:
         try:
-            ts = datetime.fromisoformat(e["ts"]).timestamp()
+            ts = datetime.fromisoformat(e["ts"])
         except Exception:
             continue
-        if ts >= limite:
+        ts_f = ts.timestamp()
+        if ts_f < limite_7d:
+            continue
+        tema = e["tema"]
+        # Criterio 1: baja/alta en 48h
+        if ts_f >= limite_48h:
             if e["receptividad"] == "baja":
-                bajos.add(e["tema"])
+                bajos.add(tema)
             elif e["receptividad"] == "alta":
-                altos.add(e["tema"])
-    # No excluir un tema si también tuvo receptividad alta recientemente
-    return [t for t in bajos if t not in altos]
+                altos.add(tema)
+        # Criterio 2: acumular palabras por día para detectar bajo engagement
+        dia = ts.strftime("%Y-%m-%d")
+        engagement.setdefault(tema, {}).setdefault(dia, []).append(
+            e.get("palabras_usuario", 0)
+        )
+
+    # Temas con avg < 3 palabras en 2+ días distintos → bloquear 7 días
+    bloqueados_engagement = set()
+    for tema, dias in engagement.items():
+        dias_bajos = sum(
+            1 for palabras in dias.values()
+            if palabras and (sum(palabras) / len(palabras)) < 3
+        )
+        if dias_bajos >= 2:
+            bloqueados_engagement.add(tema)
+
+    evitar_48h = {t for t in bajos if t not in altos}
+    return list(evitar_48h | (bloqueados_engagement - altos))
 
 
 def _temas_preferidos() -> list[str]:
@@ -497,6 +591,7 @@ AJUSTES_CONVERSACION:
             log.info(f"analisis_nocturno: {len(aprendizajes)} aprendizaje(s) nuevo(s)")
         if ajustes:
             instrucciones = await _ajustes_a_instrucciones(ajustes, CONFIG.get("nombre_asistente", "Clara"))
+            instrucciones = _filtrar_instrucciones_medicas(instrucciones)
             _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones)
             log.info(f"analisis_nocturno: {len(instrucciones)} ajuste(s) convertido(s) a instrucciones")
 
@@ -506,8 +601,70 @@ AJUSTES_CONVERSACION:
         # Guardar resumen del día en stats.json
         _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia, ranking)
 
+        # Detectar síntomas persistentes entre sesiones y alertar al familiar
+        await _alertar_sintomas_persistentes(app, log_dia)
+
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
+
+_SINTOMAS_KEYWORDS = re.compile(
+    r"\b(dolor|duele|duelen|ojos rojos|muela|rodilla|espalda|cabeza|presión|"
+    r"mareo|mareos|náuseas|cansada|caída|caí|no pude dormir|insomnio)\b",
+    re.IGNORECASE,
+)
+
+async def _alertar_sintomas_persistentes(app, log_hoy: str):
+    """Si un síntoma aparece hoy Y en el log de ayer, alerta al familiar silenciosamente."""
+    try:
+        ayer = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+        log_ayer_path = LOGS_DIR / f"{ayer}.md"
+        if not log_ayer_path.exists():
+            return
+
+        sintomas_hoy  = set(_SINTOMAS_KEYWORDS.findall(log_hoy.lower()))
+        sintomas_ayer = set(_SINTOMAS_KEYWORDS.findall(log_ayer_path.read_text(encoding="utf-8").lower()))
+        persistentes  = sintomas_hoy & sintomas_ayer
+        if not persistentes:
+            return
+
+        nombre = CONFIG["nombre_adulto_mayor"]
+        texto = (
+            f"🩺 *Síntoma(s) persistente(s) en {nombre}*\n\n"
+            f"Los siguientes síntomas aparecieron tanto ayer como hoy:\n"
+            f"{', '.join(sorted(persistentes))}\n\n"
+            f"No es una emergencia, pero puede valer la pena consultar al médico "
+            f"si {nombre} no lo mencionó en su última visita."
+        )
+        family_bot = app.bot_data.get("family_bot") if app else None
+        if not family_bot:
+            log.info(f"Síntomas persistentes detectados ({persistentes}) pero family_bot no configurado")
+            return
+        from core.alerts import cargar_suscriptores
+        for chat_id in cargar_suscriptores():
+            try:
+                await family_bot.send_message(chat_id=chat_id, text=texto, parse_mode="Markdown")
+            except Exception as e:
+                log.warning(f"No se pudo enviar alerta de síntomas a {chat_id}: {e}")
+        log.info(f"Alerta de síntomas persistentes enviada: {persistentes}")
+    except Exception as e:
+        log.warning(f"_alertar_sintomas_persistentes falló: {e}")
+
+
+_VERBOS_INDAGACION_MEDICA = re.compile(
+    r"\b(pregunt[ae]|averiguá|indagá|consultá|preguntale)\b.{0,60}"
+    r"(dolor|duele|síntoma|síntomas|salud|médico|remedio|pastilla|gota|ojo|ojos|muela|"
+    r"rodilla|espalda|cabeza|presión|colesterol|medicación|medicamento)",
+    re.IGNORECASE,
+)
+
+def _filtrar_instrucciones_medicas(instrucciones: list[str]) -> list[str]:
+    """Elimina instrucciones que le piden a Clara indagar en síntomas al día siguiente."""
+    filtradas = [i for i in instrucciones if not _VERBOS_INDAGACION_MEDICA.search(i)]
+    removidas = len(instrucciones) - len(filtradas)
+    if removidas:
+        log.info(f"analisis_nocturno: {removidas} instrucción(es) médica(s) filtrada(s)")
+    return filtradas
+
 
 async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[str]:
     """Convierte ajustes descriptivos en instrucciones imperativas para el system prompt."""
