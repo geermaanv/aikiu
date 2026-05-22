@@ -8,7 +8,11 @@ logs/
 subscribers.json
 familiares.json
 state.json
+admin_state.json
 stats.json
 receptividad.json
+usage.json
+usage.*.json
+heartbeat-*.json
 .DS_Store
 

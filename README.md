@@ -52,27 +52,29 @@ Construir un acompañante de IA **abierto, gratuito y respetuoso**, que:
 10. [Configuración](#configuración)
 11. [Uso](#uso)
 12. [Comandos del bot familiar](#comandos-del-bot-familiar)
-13. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
-14. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
-15. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
-16. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
-17. [Tests](#tests)
-18. [Seguridad y privacidad](#seguridad-y-privacidad)
-19. [Roadmap](#roadmap)
-20. [Licencia](#licencia)
+13. [Comandos del bot admin](#comandos-del-bot-admin)
+14. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
+15. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
+16. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
+17. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
+18. [Tests](#tests)
+19. [Seguridad y privacidad](#seguridad-y-privacidad)
+20. [Roadmap](#roadmap)
+21. [Licencia](#licencia)
 
 ---
 
 ## Cómo funciona
 
-Aikiu está compuesto por **dos bots de Telegram** que trabajan en conjunto:
+Aikiu está compuesto por **tres bots de Telegram** que trabajan en conjunto:
 
 | Bot | Para quién | Propósito |
 |---|---|---|
 | **Bot principal (`aikiu.py`)** | El adulto mayor | Recibe voz/texto, responde con voz/texto, detecta angustia |
 | **Bot familiar (`familiar_bot.py`)** | Familia y cuidadores | Recibe alertas, edita el perfil, envía mensajes-puente |
+| **Bot admin (`admin_bot.py`)** | Solo el operador | Monitorea salud, uso del LLM y métricas de cada instancia |
 
-El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien.
+El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien. El bot admin es opcional: si configurás `ADMIN_BOT_TOKEN`, te da `/health`, `/llm` y `/metricas` vía Telegram.
 
 ---
 
@@ -573,13 +575,19 @@ Cada bot tiene:
 aikiu/
 ├── aikiu.py                # Bot principal: STT + LLM + TTS + scheduler
 ├── familiar_bot.py         # Bot familiar: alertas, edición de perfil, mensajes-puente
+├── admin_bot.py            # Bot admin (opcional): /health, /llm, /metricas, /logs
 ├── configurar.py           # Wizard interactivo para generar perfil.md
 ├── core/
 │   ├── distress.py         # Parsing del DISTRESS_LEVEL y lógica de cooldowns
 │   ├── alerts.py           # Envío de alertas (distress + inactividad) a familiares
 │   ├── tools.py            # Consultas externas: clima, dólar, noticias
-│   └── tts.py              # Síntesis de voz con edge-tts + conversión a Opus
-├── tests/                  # 111 tests unitarios + checklist E2E manual
+│   ├── tts.py              # Síntesis de voz con edge-tts + conversión a Opus
+│   ├── state.py            # TOFU del adulto mayor (state.json)
+│   ├── admin_state.py      # TOFU del admin (admin_state.json)
+│   ├── instance.py         # Abstracción de instancia (single + multi-tenant)
+│   ├── heartbeat.py        # Heartbeat por rol y por instancia
+│   └── usage.py            # Tracking de tokens y latencias de Groq
+├── tests/                  # tests unitarios + checklist E2E manual
 ├── config.yml              # Config no sensible (nombres, voz, horarios, recordatorios)
 ├── perfil.md               # Perfil del adulto mayor en lenguaje natural
 ├── requirements.txt        # Dependencias Python
@@ -650,6 +658,15 @@ GROQ_API_KEY=...              # console.groq.com
 # Opcional pero recomendado: bot familiar
 FAMILIAR_BOT_TOKEN=...        # Segundo bot (BotFather)
 FAMILIAR_CHAT_ID=...          # chat_id de un familiar de fallback
+
+# Opcional: bot admin (solo vos) — habilita /health, /llm, /metricas
+ADMIN_BOT_TOKEN=...           # Tercer bot (BotFather)
+# El primer chat que mande /start queda registrado como admin único (TOFU).
+GROQ_DAILY_TOKEN_LIMIT=500000 # Para el aviso de cuota en /llm (default 500k/día)
+
+# Opcional: multi-tenant (preparado para varios adultos en una misma máquina)
+# AIKIU_INSTANCE_ID=default
+# AIKIU_REGISTRY=/var/aikiu/instances
 ```
 
 ### 2. Configuración no sensible (`config.yml`)
@@ -740,6 +757,26 @@ No hay menús ni comandos: es conversación pura.
 | `/cancelar` | Cancela la operación en curso. |
 
 Todas las alertas (angustia, inactividad) llegan a **todos** los suscriptores.
+
+---
+
+## Comandos del bot admin
+
+Opcional. Se activa si `ADMIN_BOT_TOKEN` está configurado en `.env`. El primer chat que mande `/start` queda registrado como admin único (TOFU, mismo patrón que el bot principal) en `admin_state.json`. Cualquier otro chat es rechazado silenciosamente.
+
+| Comando | Descripción |
+|---|---|
+| `/start` | Registra al admin único (TOFU) y muestra el menú. |
+| `/health` | Estado de cada bot por instancia (semáforo verde/amarillo/rojo según heartbeat) + ping `get_me()` a la API de Telegram. |
+| `/llm` | Tokens consumidos en 24h / 7d / 30d, desglosados por modelo, con latencia p50/p95 y aviso si te acercás al `GROQ_DAILY_TOKEN_LIMIT`. |
+| `/metricas` | Adultos activos hoy/7d, familiares suscritos por instancia, mensajes/día, alertas por nivel, aprendizajes nuevos, top temas. |
+| `/instancias` | Lista de instancias detectadas (`AIKIU_REGISTRY` o única). |
+| `/logs [instancia] [N]` | Últimas N líneas de `aikiu.log` (default 30). |
+| `/ayuda` | Menú. |
+
+Multi-tenant: sin `AIKIU_REGISTRY` el admin monitorea la única instancia que vive en el repo. Si seteás `AIKIU_REGISTRY=/var/aikiu/instances`, cada deploy queda en `<registry>/<AIKIU_INSTANCE_ID>/` y el admin los descubre solo.
+
+Para resetear el admin (por ejemplo si alguien lo secuestró antes que vos): `python -c "from core.admin_state import reset_admin; reset_admin()"`.
 
 ---
 

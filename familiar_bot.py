@@ -20,6 +20,8 @@ from telegram.ext import (
 )
 from core.tts import sintetizar
 from core import state as state_mod
+from core import heartbeat as hb_mod
+from core import usage as usage_mod
 from core.utils import norm, load_json
 
 BASE_DIR         = Path(__file__).parent
@@ -383,13 +385,15 @@ async def recibir_mensaje_familiar(update: Update, context: ContextTypes.DEFAULT
                 ogg = Path(tmp) / "familiar.ogg"
                 archivo = await update.message.voice.get_file()
                 await archivo.download_to_drive(ogg)
-                with open(ogg, "rb") as f:
-                    result = await groq.audio.transcriptions.create(
-                        file=(ogg.name, f, "audio/ogg"),
-                        model="whisper-large-v3",
-                        language="es",
-                        response_format="text",
-                    )
+                bytes_audio = ogg.stat().st_size if ogg.exists() else 0
+                async with usage_mod.timed_stt("whisper-large-v3", bytes_audio):
+                    with open(ogg, "rb") as f:
+                        result = await groq.audio.transcriptions.create(
+                            file=(ogg.name, f, "audio/ogg"),
+                            model="whisper-large-v3",
+                            language="es",
+                            response_format="text",
+                        )
             texto = result.strip() if isinstance(result, str) else result.text.strip()
             log.info(f"Transcripción de familiar: '{texto}'")
         except Exception as e:
@@ -477,6 +481,7 @@ async def main():
         await app.initialize()
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
+        hb_mod.iniciar_heartbeat("familiar")
         try:
             await asyncio.Event().wait()
         finally:

@@ -25,6 +25,8 @@ from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
 from core import state as state_mod
+from core import heartbeat as hb_mod
+from core import usage as usage_mod
 from core.utils import (
     norm, load_json, nombre_adulto, read_section,
     fecha_hora_es, fecha_en_espanol,
@@ -84,13 +86,15 @@ def create_background_task(coro):
 # ---------------------------------------------------------------------------
 
 async def transcribir(ogg_path: Path) -> str:
-    with open(ogg_path, "rb") as f:
-        result = await groq.audio.transcriptions.create(
-            file=(ogg_path.name, f, "audio/ogg"),
-            model="whisper-large-v3",
-            language="es",
-            response_format="text",
-        )
+    bytes_audio = ogg_path.stat().st_size if ogg_path.exists() else 0
+    async with usage_mod.timed_stt("whisper-large-v3", bytes_audio):
+        with open(ogg_path, "rb") as f:
+            result = await groq.audio.transcriptions.create(
+                file=(ogg_path.name, f, "audio/ogg"),
+                model="whisper-large-v3",
+                language="es",
+                response_format="text",
+            )
     texto = result.strip() if isinstance(result, str) else result.text.strip()
     log.info(f"STT: '{texto}'")
     return texto
@@ -297,12 +301,14 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
 
     messages.append({"role": "user", "content": texto_usuario})
 
-    response = await groq.chat.completions.create(
-        model=modelo,
-        messages=messages,
-        max_tokens=300,
-        temperature=0.7,
-    )
+    async with usage_mod.timed_chat(modelo) as t:
+        response = await groq.chat.completions.create(
+            model=modelo,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+        )
+        t.set_usage(response.usage)
 
     respuesta = response.choices[0].message.content.strip()
     log.info(f"LLM raw: '{respuesta}'")
@@ -375,13 +381,16 @@ async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
         f"  baja = {nombre} cortó el tema, respondió con pocas palabras, rechazó la sugerencia\n"
         f"  neutra = intercambio normal sin señal clara)"
     )
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
-        r = await groq.chat.completions.create(
-            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=30,
-            temperature=0.1,
-        )
+        async with usage_mod.timed_chat(modelo) as t:
+            r = await groq.chat.completions.create(
+                model=modelo,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=30,
+                temperature=0.1,
+            )
+            t.set_usage(r.usage)
         texto = r.choices[0].message.content.strip()
         tema = receptividad = None
         for linea in texto.splitlines():
@@ -573,13 +582,16 @@ APRENDIZAJES_NUEVOS:
 AJUSTES_CONVERSACION:
 (patrones problemáticos observados hoy: respuestas cortadas, preguntas innecesarias al final cuando ya respondiste, temas que {nombre} evitó o cambió, confusiones. Sugerí ajustes accionables. Máximo 3 líneas con "- ". Si la conversación estuvo bien: "ninguno")"""
 
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
-        r = await groq.chat.completions.create(
-            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
-            temperature=0.2,
-        )
+        async with usage_mod.timed_chat(modelo) as t:
+            r = await groq.chat.completions.create(
+                model=modelo,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.2,
+            )
+            t.set_usage(r.usage)
         respuesta = r.choices[0].message.content.strip()
         log.info(f"analisis_nocturno respuesta LLM:\n{respuesta}")
 
@@ -676,13 +688,16 @@ async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[s
         f"un asistente de voz. Sin explicaciones, solo la instrucción. "
         f"Una línea por ítem, empezando con '- '. Observaciones:\n{lista}"
     )
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
-        r = await groq.chat.completions.create(
-            model=CONFIG.get("modelo_llm", "llama-3.3-70b-versatile"),
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.1,
-        )
+        async with usage_mod.timed_chat(modelo) as t:
+            r = await groq.chat.completions.create(
+                model=modelo,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.1,
+            )
+            t.set_usage(r.usage)
         resultado = r.choices[0].message.content.strip()
         instrucciones = [l.strip() for l in resultado.splitlines() if l.strip().startswith("-")]
         return instrucciones if instrucciones else ajustes
@@ -1003,6 +1018,7 @@ async def main():
         # post_init equivalente — en el patrón async-with, PTB no llama post_init automáticamente
         programar_recordatorios(scheduler, app)
         scheduler.start()
+        hb_mod.iniciar_heartbeat("aikiu")
 
         familiar_token = os.environ.get("FAMILIAR_BOT_TOKEN", "").strip()
         log.info(f"FAMILIAR_BOT_TOKEN: {'presente (' + str(len(familiar_token)) + ' chars)' if familiar_token else 'no encontrado'}")

@@ -40,6 +40,14 @@ if [ -n "$familiar_token" ] && ! echo "$familiar_token" | grep -q "PEGA_TU"; the
     echo "  Bot familiar activo."
 fi
 
+# Bot admin (opcional — configurar ADMIN_BOT_TOKEN en .env)
+admin_token=$(env_val "ADMIN_BOT_TOKEN")
+if [ -n "$admin_token" ] && ! echo "$admin_token" | grep -q "PEGA_TU"; then
+    "$DIR/venv/bin/python" admin_bot.py &
+    PIDS="$PIDS $!"
+    echo "  Bot admin activo."
+fi
+
 cleanup() { kill $PIDS 2>/dev/null; }
 trap cleanup SIGINT SIGTERM
 
