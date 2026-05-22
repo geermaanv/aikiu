@@ -331,6 +331,85 @@ def _percentil(valores: list[float], p: float) -> float:
     return s[f] + (s[c] - s[f]) * (k - f)
 
 
+def _clasificar_error(msg: str) -> str:
+    """Mapea el string del error a una etiqueta corta y legible para el admin.
+    El orden de los checks importa: lo más específico primero."""
+    m = (msg or "").lower()
+    if "ratelimiterror" in m or "rate limit" in m or "429" in m:
+        return "rate limit (429)"
+    if "timeout" in m:
+        return "timeout"
+    if "401" in m or "unauthorized" in m or "invalid api key" in m:
+        return "auth (401)"
+    if "503" in m or "service unavailable" in m:
+        return "server (503)"
+    if "500" in m or "internal" in m:
+        return "server (500)"
+    if "connection" in m:
+        return "conexión"
+    return "otro"
+
+
+def resumen_simple(dir_instancia: Path, dias: int = 1) -> dict:
+    """
+    Resumen separado por tipo de operación (chat / stt) y con errores
+    clasificados, pensado para que /llm lo presente sin hacer cuentas.
+
+    Estructura:
+        {
+          "rango_dias": 1,
+          "chat": {
+            "ok": int, "error": int, "total": int,
+            "tokens_total": int, "tokens_in": int, "tokens_out": int,
+            "latencias_ms": [int, ...],   # solo de llamadas ok
+            "errores_por_tipo": {"rate limit (429)": 8, ...},
+          },
+          "stt": {
+            "ok": int, "error": int, "total": int,
+            "latencias_ms": [int, ...],
+            "bytes_audio": int,
+            "errores_por_tipo": {...},
+          }
+        }
+    """
+    desde = datetime.now() - timedelta(days=dias)
+    entradas = cargar_rango(dir_instancia, desde)
+
+    chat = {
+        "ok": 0, "error": 0,
+        "tokens_total": 0, "tokens_in": 0, "tokens_out": 0,
+        "latencias_ms": [], "errores_por_tipo": {},
+    }
+    stt = {
+        "ok": 0, "error": 0,
+        "latencias_ms": [], "bytes_audio": 0,
+        "errores_por_tipo": {},
+    }
+
+    for e in entradas:
+        op = e.get("op")
+        if op == "chat":
+            chat["ok"] += 1
+            chat["tokens_in"] += int(e.get("prompt_tokens", 0))
+            chat["tokens_out"] += int(e.get("completion_tokens", 0))
+            chat["tokens_total"] += int(e.get("total_tokens", 0))
+            chat["latencias_ms"].append(int(e.get("latencia_ms", 0)))
+        elif op == "stt":
+            stt["ok"] += 1
+            stt["latencias_ms"].append(int(e.get("latencia_ms", 0)))
+            stt["bytes_audio"] += int(e.get("bytes_audio", 0))
+        elif op == "error":
+            subop = e.get("subop") or "chat"
+            tipo = _clasificar_error(e.get("error", ""))
+            destino = chat if subop == "chat" else stt
+            destino["error"] += 1
+            destino["errores_por_tipo"][tipo] = destino["errores_por_tipo"].get(tipo, 0) + 1
+
+    chat["total"] = chat["ok"] + chat["error"]
+    stt["total"] = stt["ok"] + stt["error"]
+    return {"rango_dias": dias, "chat": chat, "stt": stt}
+
+
 def resumir(dir_instancia: Path, dias: int = 7) -> dict:
     """
     Devuelve un resumen para reportar al admin:

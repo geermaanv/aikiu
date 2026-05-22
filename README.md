@@ -769,7 +769,7 @@ Opcional. Se activa si `ADMIN_BOT_TOKEN` está configurado en `.env`. El primer 
 |---|---|
 | `/start` | Registra al admin único (TOFU) y muestra el menú. |
 | `/health` | Estado de cada bot por instancia (semáforo verde/amarillo/rojo según heartbeat) + ping `get_me()` a la API de Telegram. |
-| `/llm` | Tokens consumidos en 24h / 7d / 30d, desglosados por modelo, con latencia p50/p95 y aviso si te acercás al `GROQ_DAILY_TOKEN_LIMIT`. |
+| `/llm` | Consumo de Groq: tabla por período (hoy / 7d / 30d) con llamadas totales, OK, tokens y errores con porcentaje. Separa LLM de Whisper, clasifica los errores (rate limit / timeout / auth / etc.) y avisa si te acercás al `GROQ_DAILY_TOKEN_LIMIT`. |
 | `/metricas` | Adultos activos hoy/7d, familiares suscritos por instancia, mensajes/día, alertas por nivel, aprendizajes nuevos, top temas. |
 | `/instancias` | Lista de instancias detectadas (`AIKIU_REGISTRY` o única). |
 | `/logs [instancia] [N]` | Últimas N líneas de `aikiu.log` (default 30). |

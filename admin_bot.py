@@ -395,19 +395,25 @@ def _alias(modelo: str) -> str:
     return _ALIAS_MODELO.get(modelo, modelo)
 
 
-def _semaforo_limite(tokens_hoy: int) -> tuple[str, str, int]:
-    """Devuelve (emoji, descripción corta, porcentaje) del límite diario.
-    Si LIMITE_TOKENS_DIA <= 0, devuelve un estado neutro sin cálculo."""
+def _semaforo_limite(tokens_hoy: int) -> tuple[str, str, str]:
+    """Devuelve (emoji, descripción corta, porcentaje como string).
+    El porcentaje se muestra como '<1%' cuando hay consumo positivo pero
+    redondea a 0; así no parece que no se usó nada."""
     if LIMITE_TOKENS_DIA <= 0:
-        return ("⚪", "sin límite configurado", 0)
-    pct = int((tokens_hoy / LIMITE_TOKENS_DIA) * 100)
-    if pct >= 90:
-        return ("🔴", "casi en el tope diario", pct)
-    if pct >= 70:
-        return ("🟡", "consumo alto", pct)
-    if pct >= 30:
-        return ("🟢", "consumo normal", pct)
-    return ("🟢", "consumo bajo", pct)
+        return ("⚪", "sin límite configurado", "—")
+    ratio = tokens_hoy / LIMITE_TOKENS_DIA
+    pct_int = int(ratio * 100)
+    if 0 < ratio < 0.01:
+        pct_str = "<1%"
+    else:
+        pct_str = f"{pct_int}%"
+    if pct_int >= 90:
+        return ("🔴", "casi en el tope diario", pct_str)
+    if pct_int >= 70:
+        return ("🟡", "consumo alto", pct_str)
+    if pct_int >= 30:
+        return ("🟢", "consumo normal", pct_str)
+    return ("🟢", "consumo bajo", pct_str)
 
 
 def _formato_tokens(n: int) -> str:
@@ -422,40 +428,46 @@ def _formato_tokens(n: int) -> str:
     return str(n)
 
 
-def _resumen_periodo(r: dict, label: str) -> list[str]:
-    """Bloque por período (Hoy / 7d / 30d) con el detalle por modelo."""
-    llamadas = r["total_llamadas"]
-    errores = r["errores"]
-    total_tok = sum(m["total_tokens"] for m in r["por_modelo"].values())
+def _plural(n: int, singular: str, plural: str) -> str:
+    """Helper para evitar el feo 'error(es)'. Devuelve solo la palabra, no el número."""
+    return singular if n == 1 else plural
 
-    if llamadas == 0 and errores == 0:
-        return [f"_{label}_: sin actividad"]
 
-    cabecera = (
-        f"_{label}_  ·  *{llamadas}* llamadas  ·  *{_formato_tokens(total_tok)}* tokens"
-    )
-    if errores:
-        cabecera += f"  ·  ⚠️ {errores} error(es)"
-    lineas = [cabecera]
+def _formato_latencia(ms: int) -> str:
+    """812 → '812ms', 1110 → '1,1s'. Más legible para latencias de red."""
+    if ms >= 1000:
+        return f"{ms / 1000:.1f}s".replace(".", ",")
+    return f"{ms}ms"
 
-    for modelo, m in sorted(r["por_modelo"].items()):
-        nombre_modelo = _alias(modelo)
-        # Si los tokens vienen en 0 (Groq cambió formato o llamada sin usage),
-        # mostramos solo lo medible y un aviso amable.
-        if m["total_tokens"] == 0:
-            lineas.append(
-                f"    · {nombre_modelo} — {m['llamadas']} llamadas "
-                f"(sin métrica de tokens)"
-            )
-        else:
-            lineas.append(
-                f"    · {nombre_modelo} — {m['llamadas']} llamadas, "
-                f"{_formato_tokens(m['total_tokens'])} tokens "
-                f"(in {_formato_tokens(m['prompt_tokens'])} / "
-                f"out {_formato_tokens(m['completion_tokens'])}), "
-                f"latencia ~{m['latencia_p50_ms']}ms"
-            )
-    return lineas
+
+def _latencia_p50(lats: list[int]) -> str:
+    """Latencia representativa. Con pocos samples no es estadística, lo anotamos."""
+    if not lats:
+        return "—"
+    s = sorted(lats)
+    k = (len(s) - 1) * 0.5
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    p50 = s[f] if f == c else int(s[f] + (s[c] - s[f]) * (k - f))
+    base = _formato_latencia(p50)
+    if len(lats) < 5:
+        return f"{base} (n={len(lats)})"
+    return base
+
+
+def _fila_periodo(label: str, chat: dict) -> str:
+    """Una fila de la tabla por período, formateada para alinearse en monoespaciado."""
+    total = chat["total"]
+    ok = chat["ok"]
+    err = chat["error"]
+    tok = _formato_tokens(chat["tokens_total"])
+    if total == 0:
+        ok_str = "—"
+        err_str = "—"
+    else:
+        ok_str = str(ok)
+        err_str = f"{err} ({round(err / total * 100)}%)" if err else "0"
+    return f"{label:<8} {total:>4}    {ok_str:>5}    {tok:>6}    {err_str:>9}"
 
 
 async def cmd_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -470,49 +482,85 @@ async def cmd_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nombre = nombre_adulto_de(d)
         id_inst = id_de(d)
 
-        r_hoy   = usage_mod.resumir(d, dias=1)
-        r_7d    = usage_mod.resumir(d, dias=7)
-        r_30d   = usage_mod.resumir(d, dias=30)
+        s_hoy = usage_mod.resumen_simple(d, dias=1)
+        s_7d  = usage_mod.resumen_simple(d, dias=7)
+        s_30d = usage_mod.resumen_simple(d, dias=30)
 
-        tokens_hoy = sum(m["total_tokens"] for m in r_hoy["por_modelo"].values())
-        llamadas_hoy = r_hoy["total_llamadas"]
-        errores_hoy = r_hoy["errores"]
+        chat_hoy = s_hoy["chat"]
+        stt_hoy  = s_hoy["stt"]
+        tokens_hoy = chat_hoy["tokens_total"]
 
         emoji, descr, pct = _semaforo_limite(tokens_hoy)
 
         lineas.append(f"\n*Instancia `{id_inst}` — {nombre}*")
 
-        # Headline: el estado de hoy de un vistazo
+        # Headline: estado del límite diario de un vistazo
         if LIMITE_TOKENS_DIA > 0:
             lineas.append(
-                f"\n{emoji} *Hoy:* {_formato_tokens(tokens_hoy)} de "
-                f"{_formato_tokens(LIMITE_TOKENS_DIA)} tokens "
-                f"(*{pct}%* — _{descr}_)"
+                f"\n{emoji} {_formato_tokens(tokens_hoy)} de "
+                f"{_formato_tokens(LIMITE_TOKENS_DIA)} tokens hoy "
+                f"({pct} del límite — _{descr}_)"
             )
         else:
-            lineas.append(f"\n{emoji} *Hoy:* {_formato_tokens(tokens_hoy)} tokens")
+            lineas.append(f"\n{emoji} {_formato_tokens(tokens_hoy)} tokens hoy")
 
-        if llamadas_hoy == 0 and errores_hoy == 0:
+        # Si todo está en cero, evitar tablas y aviso amable.
+        sin_actividad = (
+            chat_hoy["total"] == 0 and stt_hoy["total"] == 0 and
+            s_7d["chat"]["total"] == 0 and s_30d["chat"]["total"] == 0
+        )
+        if sin_actividad:
             lineas.append(
-                "_Sin actividad hoy todavía. Cuando el bot hable con el adulto"
-                " o haga el análisis nocturno van a aparecer datos acá._"
+                "_Sin actividad todavía. Cuando el bot hable con el adulto"
+                " o procese audios van a aparecer datos acá._"
             )
             continue
 
-        # Detalle por período
-        lineas.append("")
-        lineas.extend(_resumen_periodo(r_hoy, "Hoy (24h)"))
-        lineas.append("")
-        lineas.extend(_resumen_periodo(r_7d, "Últimos 7 días"))
-        lineas.append("")
-        lineas.extend(_resumen_periodo(r_30d, "Últimos 30 días"))
+        # Tabla por período (chat). Bloque monoespaciado para que las
+        # columnas se alineen en Telegram.
+        lineas.append("\n*Conversación (LLM)*")
+        lineas.append(
+            "```\n"
+            f"Período   Total      OK   Tokens   Errores\n"
+            f"{_fila_periodo('Hoy',    s_hoy['chat'])}\n"
+            f"{_fila_periodo('7 días', s_7d['chat'])}\n"
+            f"{_fila_periodo('30 días', s_30d['chat'])}\n"
+            "```"
+        )
 
-        # Si hubo errores hoy, darles un poco de visibilidad
-        if errores_hoy:
-            pct_err = errores_hoy / max(llamadas_hoy + errores_hoy, 1) * 100
+        # Detalle de hoy (tokens in/out + latencia con n explícito)
+        if chat_hoy["ok"]:
             lineas.append(
-                f"\n⚠️ *Errores hoy:* {errores_hoy} ({pct_err:.0f}% de las llamadas). "
-                f"Mirá /logs para ver qué pasó."
+                f"_Hoy:_ in {_formato_tokens(chat_hoy['tokens_in'])} · "
+                f"out {_formato_tokens(chat_hoy['tokens_out'])} · "
+                f"latencia {_latencia_p50(chat_hoy['latencias_ms'])}"
+            )
+
+        # STT siempre visible (aunque sea para decir que no hubo audios)
+        lineas.append("\n*Transcripción (Whisper)*")
+        if stt_hoy["total"] == 0 and s_7d["stt"]["total"] == 0:
+            lineas.append("_sin audios procesados en la última semana_")
+        else:
+            lat = _latencia_p50(stt_hoy["latencias_ms"]) if stt_hoy["ok"] else "—"
+            audio_mb = stt_hoy["bytes_audio"] / (1024 * 1024) if stt_hoy["bytes_audio"] else 0
+            audio_str = f" · {audio_mb:.1f} MB".replace(".", ",") if audio_mb else ""
+            err_stt = f" · ⚠ {stt_hoy['error']} {_plural(stt_hoy['error'], 'error', 'errores')}" if stt_hoy["error"] else ""
+            lineas.append(
+                f"_Hoy:_ {stt_hoy['ok']} {_plural(stt_hoy['ok'], 'transcripción', 'transcripciones')}"
+                f" · latencia {lat}{audio_str}{err_stt}"
+            )
+
+        # Errores: desglose por tipo si hubo
+        if chat_hoy["error"]:
+            tipos = sorted(
+                chat_hoy["errores_por_tipo"].items(),
+                key=lambda kv: kv[1], reverse=True,
+            )
+            pct_err = round(chat_hoy["error"] / chat_hoy["total"] * 100)
+            desglose = ", ".join(f"{n} {t}" for t, n in tipos)
+            lineas.append(
+                f"\n⚠️ *{chat_hoy['error']} de {chat_hoy['total']} llamadas fallaron hoy* "
+                f"({pct_err}%): {desglose}.\nUsá /logs err para ver detalles."
             )
 
     await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
