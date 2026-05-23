@@ -122,23 +122,27 @@ servidor propio. Corre en cualquier Mac con Python.
   contención hasta que Marta esté estable.
 
 ### Tests y calidad
-- **132 unit tests** con pytest cubriendo:
-  - `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde
-  - `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema,
-    límite de 4 titulares, manejo de errores HTTP en las tres herramientas
-  - `core/alerts.py` + `aikiu.verificar_inactividad`: umbral, cooldown diario,
-    baseline, config activa/inactiva, mensaje al familiar (horas, timestamp, tono)
-  - `aikiu.analisis_nocturno`: parsing de secciones, aprendizajes nuevos vs. existentes,
-    ajustes de conversación, fallo de LLM sin romper
-  - Saludo matutino: extracción de temperatura, fallback sin clima, temperatura == sensación,
-    detección de feriados argentinos
-  - Receptividad: guardar/acumular/limitar entradas, blacklist por 48h, lógica de señal mixta
-  - Lógica de perfil: lectura/escritura de secciones, gestión de suscriptores
-  - Reglas del system prompt: pre-routing, anti-hallucination específico a
-    mensajes de familiares, criterios de distress con nivel 0 para saludos/preguntas
-  - DISTRESS_LEVEL nunca visible para Marta, criterios de caídas y "soy una carga"
+- **714 tests** con pytest, **97% de cobertura global** (unit + integración E2E):
+  - `core/distress.py`, `core/tools.py`, `core/alerts.py`, `core/heartbeat.py`,
+    `core/state.py`, `core/usage.py`, `core/tts.py`, `core/llm_limits.py`,
+    `core/instance.py`, `core/utils.py` — 93–100% por módulo
+  - `aikiu.py` (99%): `cargar_config`, `transcribir`, `generar_respuesta`,
+    `analisis_nocturno`, ranking de temas, filtros médicos, alertas de síntomas
+    persistentes, recordatorios, `main()` end-to-end
+  - `andromarta/` (87–100%): persona, memoria, estado, ciclo, scheduler, generador
+    y bot — incluye validación de config y ciclo completo de conversación
+  - `admin/bot.py` (94%) + `admin/state.py` (99%): handlers (/start, /ayuda,
+    /admins, /quitar_admin, /health, /llm, /metricas, /logs, /instancias),
+    helpers de formateo, gestión multi-admin con env override
+  - `familiar_bot.py` (99%): suscripción, edición de perfil por secciones,
+    puente de mensajes texto/voz con transcripción Whisper
+  - `configurar.py` (99%): wizard interactivo completo
+  - **Integración E2E** (`tests/test_integration_e2e.py`): 8 flujos punta a punta
+    atravesando varios módulos (TOFU + alerta, ciclo Andromarta, puente familiar,
+    /llm agregado, análisis nocturno con perfil real, /health, edición de perfil)
+- Receptividad, distress, system prompt y reglas anti-hallucination siguen cubiertos
 - Checklist manual E2E en `tests/checklist.md`
-- Git pre-commit hook: los 132 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 714 tests corren automáticamente antes de cada commit
 
 ### Seguridad
 - Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
@@ -200,5 +204,5 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (132 tests) |
+| Tests | pytest 9.0 (714 tests, 97% cobertura) |
 | Runtime | Python 3.14, macOS |

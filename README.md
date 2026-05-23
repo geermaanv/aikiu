@@ -512,7 +512,7 @@ sequenceDiagram
 | Persistencia | Suscriptores | `familiares.json` | `[{chat_id, nombre}]`, escrito atómicamente con `write_text` |
 | Persistencia | Conversaciones | `logs/YYYY-MM-DD.md` | Append per turno con timestamp `HH:MM` |
 | Persistencia | Logs del bot | `aikiu.log` | `logging.FileHandler` + stdout |
-| Tests | Suite | `pytest` (111 tests unitarios) | Cobertura: distress, alertas, tools, análisis nocturno, saludo, perfil, reglas del system prompt |
+| Tests | Suite | `pytest` (714 tests, 97% cobertura) | Unit + integración E2E: distress, alertas, tools, análisis nocturno, andromarta, admin/familiar bot, configurar, perfil, system prompt |
 | Despliegue | Orquestación | `bash start.sh` | Lanza ambos procesos Python en paralelo, `trap SIGINT/SIGTERM` para shutdown limpio |
 | Seguridad | Autorización | Chat ID hardcodeado en `.env` | Bot principal rechaza cualquier `chat_id` distinto a `CHAT_ID` |
 
@@ -1071,15 +1071,15 @@ source venv/bin/activate
 pytest
 ```
 
-**111 tests unitarios** cubren:
+**714 tests** con **97% de cobertura global** (unit + integración E2E) cubren:
 
-- `core/distress.py`: parsing del LLM, cooldowns por nivel, casos borde.
-- `core/tools.py`: dispatcher, parsing RSS (CDATA + fallback), filtro por tema, manejo de errores HTTP.
-- `core/alerts.py` + `verificar_inactividad`: umbral, cooldown diario, baseline, mensaje a familiares.
-- `aikiu.analisis_nocturno`: parsing de secciones, deduplicación de aprendizajes, fallo del LLM sin romper.
-- Saludo matutino: extracción de temperatura, fallback sin clima.
-- Lógica de perfil: lectura/escritura de secciones, suscriptores.
-- Reglas del system prompt: pre-routing, anti-alucinación de mensajes de familiares, criterios de distress.
+- `core/`: distress (parsing + cooldowns), tools (RSS, clima, dólar), alerts, heartbeat, state, usage, tts, llm_limits.
+- `aikiu.py`: `cargar_config`, `transcribir`, `generar_respuesta`, `analisis_nocturno`, ranking de temas, filtros médicos, alertas de síntomas persistentes, recordatorios, `main()`.
+- `andromarta/`: persona, memoria, estado, ciclo, scheduler, generador, bot (handlers + validación de config) — **100% en los módulos puros**.
+- `admin/bot.py` y `admin/state.py`: helpers (sparkline, latencia, formateo), handlers (/start, /ayuda, /admins, /health, /llm, /metricas, /logs, /instancias), gestión de admins con env override.
+- `familiar_bot.py`: suscripción, edición de perfil, puente de mensajes texto/voz, transcripción Whisper.
+- `configurar.py`: wizard interactivo completo + generación de `perfil.md`.
+- **Integración E2E** (`tests/test_integration_e2e.py`): TOFU + mensaje + alerta familiar, ciclo completo de Andromarta, puente familiar→adulto, /llm con datos agregados, análisis nocturno con perfil real, /health leyendo heartbeats, conversación de edición de perfil, distress 0 sin alerta.
 
 Hay también un **checklist E2E manual** en [`tests/checklist.md`](./tests/checklist.md).
 
