@@ -2,7 +2,7 @@
 
 **Estado**: borrador de trabajo
 **Convocatoria**: Proyectos Innovadores Start Up de Base Tecnológica TRL 3-4
-**Última edición**: 2026-05-16
+**Última edición**: 2026-05-20
 
 ---
 
@@ -16,8 +16,10 @@
 - **CUIT**: 20218342222.
 - **Responsable legal**: Germán Osvaldo Villamarín.
 - **Correo de contacto**: germanv@gmail.com.
-- **Presupuesto solicitado**: 80.000 USD.
-- **Plazo de ejecución**: 12 meses.
+- **Presupuesto total del proyecto**: 97.500 USD.
+- **ANR solicitado al FONTAR (80%)**: 78.000 USD.
+- **Contraparte del equipo beneficiario (20%)**: 19.500 USD — aportados en especie por los tres miembros del equipo: Germán Villamarín, Ariel Brizi y Nicolás Gonzalez (horas de trabajo e infraestructura existente).
+- **Plazo de ejecución**: 15 meses.
 
 ### Objetivo General
 
@@ -121,12 +123,12 @@ No cuenta con propiedad intelectual registrada ni en trámite.
 
 ## 7. Participación e Inversión Privada Recibida
 
-- **Grado de Atracción de Capital**: etapa de bootstrapping (autofinanciado). Inversión privada aportada íntegramente por el fundador, destinada al MVP, validación con usuarios reales e infraestructura inicial.
-- **Involucramiento Estratégico**: equipo senior en tecnología, narrativa de marca e ingeniería aporta expertise y horas como capital semilla operativo.
+- **Grado de Atracción de Capital**: etapa de bootstrapping (autofinanciado). Inversión privada aportada por los tres miembros del equipo fundador — Germán Villamarín, Ariel Brizi y Nicolás Gonzalez — destinada al MVP, validación con usuarios reales e infraestructura inicial.
+- **Involucramiento Estratégico**: equipo senior en tecnología e ingeniería aporta expertise, horas y equipamiento como capital semilla operativo. El mismo equipo constituye la contraparte del 20% (USD 19.500) en el esquema de cofinanciamiento FONTAR.
 - **Interés de Terceros**: conversaciones preliminares con instituciones de salud y especialistas en gerontología para validar el modelo de Sponsors que sostendrá la gratuidad.
 
 **Síntesis (campo "grado de atracción de capital privado")**:
-A la fecha, el proyecto se ha financiado mediante bootstrapping del fundador, logrando alcanzar un TRL 4 operativo. Existe un fuerte involucramiento estratégico de un equipo multidisciplinario senior en áreas de tecnología y narrativa, y se han iniciado conversaciones con instituciones del sector salud para la validación masiva, lo que constituye la base para futuras rondas de capital semilla.
+A la fecha, el proyecto se ha financiado mediante bootstrapping de los tres co-fundadores (Germán Villamarín, Ariel Brizi y Nicolás Gonzalez), logrando alcanzar un TRL 4 operativo. El equipo multidisciplinario senior aporta expertise en IA, infraestructura cloud y dirección tecnológica, y asume el cofinanciamiento del 20% del proyecto en especie. Se han iniciado conversaciones con instituciones del sector salud para la validación masiva, lo que constituye la base para futuras rondas de capital semilla.
 
 ---
 
@@ -139,13 +141,16 @@ A la fecha, el proyecto se ha financiado mediante bootstrapping del fundador, lo
 - **Donaciones y Aportes**: fondos recurrentes de individuos o fundaciones.
 - **Servicios de Valor Agregado**: suscripciones para familias con reportes analíticos avanzados o integraciones con dispositivos de salud.
 
-### Estructura de Costos
+### Estructura de Costos y Cofinanciamiento
 
-- **Honorarios del equipo fundador (≈45%)**: dedicación part-time de los tres miembros core (CTO, IA/LLM y Cloud/SRE) durante 12 meses para diseño, desarrollo, validación y dirección.
-- **Servicios técnicos externos (≈20%)**: auditoría de privacidad (Ley 25.326), asesoría gerontológica para validación con usuarios, UX/UI para el panel familiar, asesoría legal para sponsors e IP.
-- **APIs, cloud y desarrollo asistido por IA (≈15%)**: Groq (STT + LLM), ElevenLabs (TTS), hosting serverless, observabilidad y licencias de herramientas de desarrollo asistido por IA (Claude Code) que actúan como multiplicador de productividad y eliminan la necesidad de contratar un equipo de desarrollo dedicado.
-- **Validación con familias piloto (≈10%)**: reclutamiento, compensación e instrumentación de la cohorte de 10 familias.
-- **Seguridad y comunicación institucional (≈10%)**: pen-testing, materiales de captación de sponsors, participación en eventos del sector salud y bienes de consumo de laboratorio.
+El presupuesto total del proyecto es de **USD 97.500**, financiado bajo el esquema 80/20 previsto en el Art. 19° de las Bases: **USD 78.000 aportados por el FONTAR** (ANR) y **USD 19.500 aportados en especie por los tres miembros del equipo** — Germán Villamarín, Ariel Brizi y Nicolás Gonzalez — como contraparte obligatoria.
+
+- **Honorarios del equipo fundador (≈46%)**: dedicación part-time de los tres miembros core (CTO, IA/LLM y Cloud/SRE) durante 15 meses para diseño, desarrollo, validación y dirección. Financiado por el ANR FONTAR.
+- **Servicios técnicos externos (≈18%)**: auditoría de privacidad (Ley 25.326), asesoría gerontológica para validación con usuarios, UX/UI para el panel familiar, asesoría legal para sponsors e IP. Financiado por el ANR FONTAR.
+- **APIs, cloud y desarrollo asistido por IA (≈15%)**: Groq (STT + LLM), ElevenLabs (TTS), hosting serverless, observabilidad y licencias de herramientas de desarrollo asistido por IA (Claude Code) que actúan como multiplicador de productividad y eliminan la necesidad de contratar un equipo de desarrollo dedicado. Financiado por el ANR FONTAR.
+- **Validación con familias piloto (≈10%)**: reclutamiento, compensación (4 meses por familia) e instrumentación de la cohorte de 10 familias. Financiado por el ANR FONTAR.
+- **Seguridad y comunicación institucional (≈10%)**: pen-testing, materiales de captación de sponsors, participación en eventos del sector salud y bienes de consumo de laboratorio. Financiado por el ANR FONTAR.
+- **Contraparte del equipo (20% = USD 19.500)**: aportada en especie por Germán Villamarín, Ariel Brizi y Nicolás Gonzalez, en forma de horas adicionales de trabajo e infraestructura de desarrollo existente (equipamiento, entorno piloto activo, licencias previas).
 
 ---
 
@@ -299,7 +304,7 @@ CV completos (<2 páginas cada uno) y perfiles de LinkedIn en `Equipo/`.
 
 ### Dedicación al proyecto
 
-El equipo core está conformado por los tres miembros descriptos arriba, con la siguiente dedicación part-time durante los 12 meses del proyecto:
+El equipo core está conformado por los tres miembros descriptos arriba, con la siguiente dedicación part-time durante los 15 meses del proyecto:
 
 - **Germán Villamarin (CTO / Dirección técnica y de producto, arquitectura crítica)**: 20 h/semana.
 - **Ariel Brizi (IA/LLM — algoritmo DISTRESS_LEVEL, RAG, integración de APIs de inferencia)**: 20 h/semana.
@@ -312,8 +317,8 @@ No se contempla la contratación de un equipo de desarrollo dedicado. La capacid
 El proyecto se divide en tres fases secuenciales:
 
 - **Fase 1 (meses 1–3)**: diseño de arquitectura Privacy-by-Design y capas de ofuscación de datos para seguridad del usuario.
-- **Fase 2 (meses 4–8)**: entrenamiento y fine-tuning del modelo de detección de angustia, y validación de métricas de bienestar con la cohorte piloto.
-- **Fase 3 (meses 9–12)**: integración técnica B2B, pruebas de carga y escalado de la infraestructura para despliegue masivo.
+- **Fase 2 (meses 4–9)**: entrenamiento y fine-tuning del modelo de detección de angustia, y validación de métricas de bienestar con la cohorte piloto durante 4 meses sostenidos.
+- **Fase 3 (meses 10–15)**: integración técnica B2B, pruebas de carga y escalado de la infraestructura para despliegue masivo.
 
 ### Justificación Técnica
 
@@ -326,7 +331,7 @@ El proyecto se divide en tres fases secuenciales:
 
 ## 15. Plan de Trabajo (Anexo I)
 
-**Duración total**: 12 meses. **TRL objetivo al cierre**: 6.
+**Duración total**: 15 meses. **TRL objetivo al cierre**: 6.
 
 ### 15.1 Etapa 1 — Privacy-by-Design (meses 1 a 3)
 
@@ -338,17 +343,17 @@ El proyecto se divide en tres fases secuenciales:
 
 **Dedicación**: Germán 20 h/sem; Ariel 20 h/sem; Nicolás 20 h/sem.
 
-### 15.2 Etapa 2 — DISTRESS_LEVEL v2 y validación con 10 familias (meses 4 a 8)
+### 15.2 Etapa 2 — DISTRESS_LEVEL v2 y validación con 10 familias (meses 4 a 9)
 
 **Actividades**: curado del dataset conversacional anonimizado; fine-tuning del clasificador DISTRESS_LEVEL 0–3; reducción de falsos positivos mediante confirmación de "segundo paso"; reclutamiento y validación con cohorte de 10 familias piloto; entrevistas semiestructuradas con familiares supervisores.
 
 **Entregables**: modelo entrenado con métricas de precisión/recall por nivel; reporte de validación con 10 familias; panel inicial de métricas de bienestar para uso interno; **convenio de cooperación técnica firmado con un Centro de Jubilados o institución gerontológica de CABA** que avale el protocolo de validación y aporte cohorte adicional de usuarios.
 
-**Hito de validación**: F1 ≥0.80 en niveles 2 y 3 del clasificador; tasa de falsos positivos ≤10%; las 10 familias mantienen uso sostenido durante al menos 3 meses; convenio institucional firmado y operativo.
+**Hito de validación**: F1 ≥0.80 en niveles 2 y 3 del clasificador; tasa de falsos positivos ≤10%; las 10 familias mantienen uso sostenido durante al menos 4 meses; convenio institucional firmado y operativo.
 
 **Dedicación**: Germán 20 h/sem; Ariel 20 h/sem; Nicolás 20 h/sem.
 
-### 15.3 Etapa 3 — Escalado e Integración B2B (meses 9 a 12)
+### 15.3 Etapa 3 — Escalado e Integración B2B (meses 10 a 15)
 
 **Actividades**: pruebas de carga sobre infraestructura serverless; integración con webhooks de prestadores institucionales; migración opcional a modelo open-source local (Llama-3.1 o Phi-3) como fallback; desarrollo del panel web para cuidadores; documentación de la API; captación comercial de al menos un sponsor institucional.
 
@@ -360,25 +365,55 @@ El proyecto se divide en tres fases secuenciales:
 
 ### 15.4 Cronograma resumen
 
-La Etapa 1 ocupa los meses 1 a 3, la Etapa 2 los meses 4 a 8 (con superposición de actividades de reclutamiento de familias desde el mes 3) y la Etapa 3 los meses 9 a 12. La validación con la usuaria piloto actual (Marta) se mantiene de forma continua durante los 12 meses, como banco de pruebas estable para todas las iteraciones.
+La Etapa 1 ocupa los meses 1 a 3, la Etapa 2 los meses 4 a 9 (con superposición de actividades de reclutamiento de familias desde el mes 4) y la Etapa 3 los meses 10 a 15. La validación con la usuaria piloto actual (Marta) se mantiene de forma continua durante los 15 meses, como banco de pruebas estable para todas las iteraciones. El plazo extendido a 15 meses permite ampliar la compensación de las familias piloto a 4 meses de validación sostenida (vs. 3 meses originales) y fortalecer las actividades comerciales e institucionales de la Etapa 3.
 
-> **TODO**: volcar este plan en "01. Anexos - Tablas Plan de Trabajo.xlsx" usando el formato oficial del Anexo I.
+### 15.5 Indicadores de Seguimiento y Monitoreo
+
+**Indicadores de productos intermedios (por etapa):**
+
+- **E1 — Mes 3**: módulo `core/privacy.py` implementado y auditado. Indicadores: cobertura de tests automatizados ≥85% sobre el módulo; cero datos PII salientes verificados en muestra de 100 conversaciones reales; informe de auditoría externa emitido.
+- **E2 — Mes 6**: clasificador DISTRESS_LEVEL v2 entrenado. Indicadores: F1 ≥0.80 en niveles 2 y 3; tasa de falsos positivos ≤10%; dataset curado con ≥500 conversaciones etiquetadas; convenio institucional con Centro de Jubilados o institución gerontológica firmado.
+- **E2 — Mes 9**: validación con cohorte piloto completada. Indicadores: 10 familias con uso sostenido ≥4 meses; tasa de retención de usuarios ≥70%; reporte de validación con métricas de uso y satisfacción entregado; panel interno de métricas operativo.
+- **E3 — Mes 12**: infraestructura de escalado validada. Indicadores: sistema sostiene 1.000 usuarios concurrentes con latencia p95 <3 segundos; API documentada en OpenAPI 3.0 publicada; panel web v1 para cuidadores funcional.
+- **E3 — Mes 15**: integración comercial e institucional alcanzada. Indicadores: al menos 1 carta de intención firmada por institución de salud; asesoría legal de IP completada.
+
+**Indicadores de producto final (cierre del proyecto — TRL 6):**
+
+- Tests automatizados: 111 → **250** (pytest, cobertura integral del sistema).
+- Usuarios activos diarios: 1 → **≥10** (cohorte piloto validada).
+- Familias supervisoras activas: 1 → **10** (cohorte E2).
+- Latencia p95 de respuesta de voz: **<3 segundos** con 1.000 usuarios concurrentes.
+- Clasificador DISTRESS_LEVEL: **F1 ≥0.80** en niveles críticos (2 y 3).
+- Datos PII salientes hacia APIs externas: **0** (verificado por auditoría).
+- Convenios institucionales: **≥1** firmado y operativo.
+- Cartas de intención B2B: **≥1** de institución de salud.
+- Aprendizajes nuevos incorporados por el análisis nocturno: **≥3 por semana** por usuario activo en promedio.
+
+**Indicadores continuos (meses 1–15):**
+
+- Informes técnicos de avance presentados vía TAD: **≥3** durante la ejecución.
+- Rendición de gastos: **≥70%** del desembolso anterior antes de cada nuevo desembolso (Art. 43° de las Bases).
+- Disponibilidad del sistema piloto: **≥99%** uptime mensual medido por herramienta de observabilidad.
 
 ---
 
-## 16. Presupuesto Detallado (USD 80.000)
+## 16. Presupuesto Detallado (USD 97.500)
 
-El presupuesto se distribuye en cinco rubros principales. La distribución busca un equilibrio entre dedicación interna del equipo fundador y contratación de servicios técnicos externos, evitando concentrar el aporte FONTAR en honorarios propios.
+El presupuesto se distribuye en cinco rubros principales. La extensión del plazo a 15 meses (vs. 12 meses originales) incrementa el costo total de USD 80.000 a USD 97.500, con el delta concentrado principalmente en honorarios del equipo (3 meses adicionales × 3 personas × USD 1.000/mes = USD 9.000) y en el mayor alcance de los rubros de APIs, validación de familias y servicios técnicos externos en consonancia con el plazo extendido.
 
-**Honorarios del equipo fundador — 36.000 USD (45%)**. Dedicación part-time de los tres miembros core durante 12 meses, financiando esfuerzo nuevo dedicado al proyecto que hoy no está remunerado (el equipo se encuentra en etapa de bootstrapping). Distribución estimada: Germán Villamarin 12.000 USD (1.000/mes), Ariel Brizi 12.000 USD (1.000/mes) y Nicolás Gonzalez 12.000 USD (1.000/mes). Estos montos respetan la cap de honorarios habitual de los aportes ANR FONTAR.
+**Honorarios del equipo fundador — 45.000 USD (46,2%)**. Dedicación part-time de los tres miembros core durante 15 meses, financiando esfuerzo nuevo dedicado al proyecto que hoy no está remunerado (el equipo se encuentra en etapa de bootstrapping). Distribución: Germán Villamarin 15.000 USD (1.000/mes × 15), Ariel Brizi 15.000 USD (1.000/mes × 15) y Nicolás Gonzalez 15.000 USD (1.000/mes × 15). Estos montos respetan la cap de honorarios habitual de los aportes ANR FONTAR.
 
-**Servicios técnicos externos — 16.000 USD (20%)**. Contratación puntual de capacidades que el equipo core no posee de manera directa: auditoría externa de privacidad y cumplimiento de Ley 25.326 (4.000 USD); asesoría gerontológica para diseño del protocolo de validación con familias (3.000 USD); diseño UX/UI y desarrollo del panel web familiar por contractor externo (3.000 USD); pen-testing de los bots de Telegram (2.500 USD); asesoría legal para contratos con sponsors y política de propiedad intelectual (2.000 USD); investigación con usuarios y entrevistas semiestructuradas (1.500 USD).
+**Servicios técnicos externos — 18.000 USD (18,5%)**. Contratación puntual de capacidades que el equipo core no posee de manera directa: auditoría externa de privacidad y cumplimiento de Ley 25.326 (4.000 USD); asesoría gerontológica para diseño del protocolo de validación con familias (3.000 USD, extendida a 6 meses por el mayor plazo); diseño UX/UI y desarrollo del panel web familiar por contractor externo (4.000 USD, mayor alcance); pen-testing de los bots de Telegram (3.000 USD, auditoría más completa); asesoría legal para contratos con sponsors y política de propiedad intelectual (2.000 USD); investigación con usuarios y entrevistas semiestructuradas (2.000 USD, mayor volumen por plazo extendido). Total ≤ 20% del ANR, conforme Art. 21°c de las Bases.
 
-**APIs, cloud y desarrollo asistido por IA — 12.000 USD (15%)**. Groq para STT (Whisper-large-v3) y LLM (Llama-3.3-70b) (4.000 USD); ElevenLabs para TTS premium en español (2.000 USD); **licencias y consumo de Claude Code para desarrollo asistido por IA** (4.000 USD; aproximadamente 100–110 USD/mes por cada uno de los tres miembros del equipo durante 12 meses — este rubro reemplaza la contratación de un equipo de ingeniería dedicado); hosting serverless y CDN (1.000 USD); observabilidad y monitoring (1.000 USD).
+**APIs, cloud y desarrollo asistido por IA — 15.000 USD (15,4%)**. Groq para STT (Whisper-large-v3) y LLM (Llama-3.3-70b) (5.000 USD, 15 meses); ElevenLabs para TTS premium en español (2.500 USD, 15 meses); **licencias y consumo de Claude Code para desarrollo asistido por IA** (5.000 USD; aproximadamente 110 USD/mes por cada uno de los tres miembros del equipo durante 15 meses — este rubro reemplaza la contratación de un equipo de ingeniería dedicado); hosting serverless y CDN (1.500 USD, 15 meses); observabilidad y monitoring (1.000 USD, 15 meses).
 
-**Validación con familias piloto — 8.000 USD (10%)**. Reclutamiento de las 10 familias piloto (1.000 USD); compensación por participación durante los meses de validación (3.000 USD); instrumentación, tooling y herramientas de medición (2.000 USD); cohortes de entrevistas semiestructuradas y procesamiento cualitativo (2.000 USD).
+**Validación con familias piloto — 10.000 USD (10,3%)**. Reclutamiento de las 10 familias piloto (1.000 USD); compensación por participación durante 4 meses de validación sostenida (4.000 USD — 1 mes adicional respecto al plan original, habilitado por el plazo extendido); instrumentación, tooling y herramientas de medición (2.500 USD); cohortes de entrevistas semiestructuradas y procesamiento cualitativo (2.500 USD, mayor volumen).
 
-**Seguridad institucional y comunicación — 8.000 USD (10%)**. Materiales de captación de sponsors y desarrollo del pitch institucional (2.500 USD); participación en eventos del sector salud y redes de gerontología (2.000 USD); herramientas de seguridad complementarias y revisión periódica de vulnerabilidades (1.500 USD); bienes de consumo de laboratorio: smartphones de prueba, conectividad y dispositivos para escenarios de validación (2.000 USD).
+**Seguridad institucional y comunicación — 9.500 USD (9,7%)**. Materiales de captación de sponsors y desarrollo del pitch institucional (2.500 USD); participación en eventos del sector salud y redes de gerontología (3.000 USD — más eventos en 15 meses); herramientas de seguridad complementarias y revisión periódica de vulnerabilidades (1.500 USD); bienes de consumo de laboratorio: smartphones de prueba, conectividad y dispositivos para escenarios de validación (2.500 USD).
+
+**Esquema de cofinanciamiento (Art. 19° y 44° de las Bases)**:
+- **ANR FONTAR (80%)**: USD 78.000 — aportados por la Agencia I+D+i.
+- **Contraparte del equipo beneficiario (20%)**: USD 19.500 — aportados en especie por los tres miembros del equipo: **Germán Villamarín**, **Ariel Brizi** y **Nicolás Gonzalez**. El aporte en especie se compone de: (a) horas de trabajo adicionales sobre las contempladas en el rubro de honorarios financiado por el ANR, equivalentes en tiempo de preparación, coordinación y gestión del proyecto; y (b) infraestructura de desarrollo existente (equipamiento, licencias previas, entorno de producción piloto activo). Los tres co-fundadores asumen solidariamente este compromiso de contraparte como inversión en el desarrollo del proyecto.
 
 > **TODO**: alinear estos rubros con la nomenclatura oficial FONTAR (Anexo I — Tablas Plan de Trabajo) y volcar el detalle al Excel del anexo.
 
@@ -387,7 +422,7 @@ El presupuesto se distribuye en cinco rubros principales. La distribución busca
 ## 17. Resultados e Impacto Esperados
 
 - **Tecnológico**: validación de una infraestructura de cuidado basada en IA con costos marginales cercanos a cero, módulo Privacy-by-Design auditado y clasificador DISTRESS_LEVEL con F1 ≥0.80 en niveles críticos. Cierre del proyecto en TRL 6.
-- **Social**: reducción del estrés del cuidador, mejora de autonomía y compañía diaria del adulto mayor. 10 familias piloto con uso sostenido ≥3 meses.
+- **Social**: reducción del estrés del cuidador, mejora de autonomía y compañía diaria del adulto mayor. 10 familias piloto con uso sostenido ≥4 meses.
 - **Económico**: modelo de sostenibilidad B2B2C validado mediante al menos una carta de intención de institución de salud; eliminación de la barrera económica para la familia.
 - **Indicadores cuantitativos a alcanzar**:
   - Usuarios activos diarios: 10 → 100.
@@ -446,8 +481,7 @@ Esta sección reúne los archivos que se entregarán como anexos de evidencia. M
 - *Análisis nocturno*: diff del archivo `perfil.md` antes y después de la ejecución del análisis nocturno, mostrando aprendizajes nuevos y ajustes sugeridos, archivo `evidencias/08-analisis-nocturno-diff.md`.
 - *Diagrama de arquitectura*: bloques del sistema con STT, LLM, TTS, scheduler, capa de privacy y bot familiar, archivo `evidencias/09-arquitectura.png`.
 - *Documento técnico del algoritmo DISTRESS_LEVEL*: explicación de la escala 0–3, prompt utilizado y ejemplos de clasificación, archivo `evidencias/10-distress-level.pdf`.
-- *Informe de validación piloto*: bitácora de uso de la usuaria piloto (Marta) durante el período de validación, archivo `evidencias/11-validacion-piloto.pdf`.
-- *Carta de la usuaria piloto*: testimonio firmado autorizando el uso del caso, archivo `evidencias/12-carta-usuaria.pdf`.
+- *Informe de validación piloto*: bitácora de uso de la usuaria piloto durante el período de validación, archivo `evidencias/11-validacion-piloto.pdf`.
 
 ### 19.2 Organización propuesta
 
@@ -469,8 +503,7 @@ investors/Fondos/2026.05 - Fontar/
     ├── 08-analisis-nocturno-diff.md
     ├── 09-arquitectura.png
     ├── 10-distress-level.pdf
-    ├── 11-validacion-piloto.pdf
-    └── 12-carta-usuaria.pdf
+    └── 11-validacion-piloto.pdf
 ```
 
 ### 19.3 Criterios de inclusión
@@ -486,8 +519,7 @@ investors/Fondos/2026.05 - Fontar/
 - [ ] Definir "Institución Beneficiaria".
 - [ ] Validar conteo final del perfil del líder ≤700 caracteres en el formato definitivo del formulario.
 - [ ] Revisar contra "04. Anexo IV - Matriz Evaluación Start Up 3-4.pdf" para validar criterios de puntaje.
-- [ ] Volcar el plan de trabajo detallado en "01. Anexos - Tablas Plan de Trabajo.xlsx".
-- [ ] Alinear los rubros del presupuesto con la nomenclatura oficial FONTAR.
+- [x] Volcar el plan de trabajo detallado en "01. Anexos - Tablas Plan de Trabajo.xlsx" — **completado** (15 meses, USD 97.500, 3 desembolsos).
+- [x] Alinear los rubros del presupuesto con la nomenclatura oficial FONTAR — **completado** en el xlsx.
 - [ ] Crear carpeta `evidencias/` y generar los ítems pendientes (ver §19.1).
-- [ ] Obtener carta firmada de la usuaria piloto autorizando el uso del caso.
 - [ ] Decidir si se solicita protección de IP (hoy: No) y registrar política.

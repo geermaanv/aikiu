@@ -15,6 +15,10 @@ usage.json
 usage.*.json
 heartbeat-*.json
 .DS_Store
+simulador/logs/
+simulador/scores.jsonl
+simulador/perfil_simulacion.md
+simulador/perfil_sim_backup_*.md
 
 # Andromarta (humanoide sintético) — todo el runtime vive en andromarta/data/
 andromarta/data/*

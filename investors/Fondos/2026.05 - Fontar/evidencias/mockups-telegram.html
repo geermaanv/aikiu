@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>aikiu — Mockups Telegram (3 flujos)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f7; color: #222; }
+  body { padding: 32px 16px; }
+
+  .page-title { max-width: 980px; margin: 0 auto 32px; }
+  .page-title h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .page-title p { font-size: 13px; color: #666; }
+
+  .flow { max-width: 980px; margin: 0 auto 48px; }
+  .flow-label { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 12px; padding: 6px 10px; background: #fff; border-left: 3px solid #5288c1; border-radius: 4px; display: inline-block; }
+  .flow-row { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+
+  /* Phone frame */
+  .phone {
+    width: 380px;
+    background: #000;
+    border-radius: 36px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    flex-shrink: 0;
+  }
+  .phone-inner {
+    background: #fff;
+    border-radius: 28px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 720px;
+  }
+
+  /* Status bar */
+  .status-bar {
+    height: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 22px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #000;
+    background: #fff;
+  }
+  .status-icons { display: flex; gap: 5px; align-items: center; font-size: 12px; }
+
+  /* Telegram header */
+  .tg-header {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tg-back { color: #5288c1; font-size: 22px; line-height: 1; width: 18px; }
+  .tg-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 15px; flex-shrink: 0; }
+  .tg-avatar.clara { background: linear-gradient(135deg, #f6a623, #ec5b4f); }
+  .tg-avatar.bot-fam { background: linear-gradient(135deg, #5288c1, #4076a6); }
+  .tg-avatar.juan { background: linear-gradient(135deg, #67c060, #43a047); }
+  .tg-name-block { flex: 1; min-width: 0; }
+  .tg-name { font-size: 15px; font-weight: 600; color: #000; }
+  .tg-status { font-size: 12px; color: #7a8a99; margin-top: 1px; }
+  .tg-actions { font-size: 18px; color: #5288c1; }
+
+  /* Chat area */
+  .chat-area {
+    flex: 1;
+    background: #e6ebf0;
+    background-image:
+      radial-gradient(at 20% 30%, rgba(255,255,255,0.5) 0%, transparent 50%),
+      radial-gradient(at 80% 70%, rgba(255,255,255,0.4) 0%, transparent 50%);
+    padding: 12px 10px 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* Date pill */
+  .date-pill {
+    align-self: center;
+    background: rgba(0,0,0,0.12);
+    color: #fff;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin: 8px 0;
+    font-weight: 500;
+  }
+
+  /* Message bubbles */
+  .msg { display: flex; max-width: 100%; }
+  .msg.in { justify-content: flex-start; }
+  .msg.out { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%;
+    padding: 6px 10px 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.35;
+    position: relative;
+    word-wrap: break-word;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+  }
+  .msg.in .bubble { background: #fff; color: #000; border-bottom-left-radius: 4px; }
+  .msg.out .bubble { background: #effdde; color: #000; border-bottom-right-radius: 4px; }
+  .time { font-size: 10px; color: #7a8a99; position: absolute; bottom: 4px; right: 8px; }
+  .msg.out .time { color: #5cb85c; }
+  .msg.out .time::after { content: " ✓✓"; }
+
+  /* Alert bubble (bot familiar) */
+  .alert-bubble {
+    max-width: 90%;
+    padding: 10px 14px 22px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    background: #fff;
+    color: #000;
+    border-left: 4px solid #e74c3c;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    position: relative;
+  }
+  .alert-bubble.yellow { border-left-color: #f1c40f; }
+  .alert-bubble.orange { border-left-color: #e67e22; }
+  .alert-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; }
+  .alert-bubble .meta { color: #666; margin: 4px 0; font-size: 12px; }
+  .alert-bubble .quote { background: #f6f8fa; padding: 6px 8px; border-radius: 6px; margin: 6px 0; font-style: italic; font-size: 12px; color: #333; }
+
+  /* Input bar */
+  .tg-input {
+    background: #fff;
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tg-input .pill {
+    flex: 1;
+    background: #f4f4f7;
+    border-radius: 18px;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: #999;
+  }
+  .tg-input .icon { color: #5288c1; font-size: 20px; }
+
+  /* Caption below phone */
+  .caption {
+    text-align: center;
+    font-size: 12px;
+    color: #555;
+    margin-top: 10px;
+    max-width: 380px;
+  }
+  .caption strong { color: #222; }
+
+  /* Connector between two phones (visual hint) */
+  .connector {
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 6px;
+    font-size: 11px; color: #888;
+    align-self: center;
+  }
+  .connector-arrow { font-size: 22px; color: #5288c1; }
+
+  @media (max-width: 900px) {
+    .flow-row { flex-direction: column; align-items: center; }
+    .connector { transform: rotate(90deg); margin: -20px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <h1>aikiu — Evidencia de flujos en Telegram</h1>
+  <p>Mockups fieles a la interfaz de Telegram para captura por Chrome extension. Tres flujos clave en texto: pre-routing determinístico, detección de angustia con alerta familiar, y puente familiar bidireccional.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- FLOW 1: Pre-routing determinístico (clima + dólar)             -->
+<!-- ============================================================ -->
+<section class="flow" id="flow-1">
+  <div class="flow-label">Flujo 1 — Pre-routing determinístico (clima + dólar). Demuestra anti-alucinaciones: los datos factuales van a APIs oficiales (wttr.in, dolarapi.com), no a la generación del LLM.</div>
+  <div class="flow-row">
+    <div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="status-bar">
+            <span>8:43</span>
+            <span class="status-icons">5G ●●● 87%</span>
+          </div>
+          <div class="tg-header">
+            <div class="tg-back">‹</div>
+            <div class="tg-avatar clara">C</div>
+            <div class="tg-name-block">
+              <div class="tg-name">Clara</div>
+              <div class="tg-status">en línea</div>
+            </div>
+            <div class="tg-actions">⋮</div>
+          </div>
+          <div class="chat-area">
+            <div class="date-pill">hoy</div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Hola Clara, ¿qué tal el día?
+                <span class="time">8:42</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Buen día, Marta. Hoy en Olivos hay 14 °C, parcialmente nublado. Una mañana fresca pero linda para tomar algo caliente. ¿Cómo amaneciste?
+                <span class="time">8:42</span>
+              </div>
+            </div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Bien, gracias. ¿A cuánto está el dólar hoy?
+                <span class="time">8:43</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                El dólar blue está a $1.245 comprador y $1.265 vendedor. El oficial cotiza a $980 y $1.000.
+                <span class="time">8:43</span>
+              </div>
+            </div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Gracias. Hoy vienen los chicos a almorzar.
+                <span class="time">8:44</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Qué lindo plan. ¿Vas a cocinar vos o piden algo?
+                <span class="time">8:44</span>
+              </div>
+            </div>
+          </div>
+          <div class="tg-input">
+            <span class="icon">😊</span>
+            <div class="pill">Mensaje</div>
+            <span class="icon">📎</span>
+            <span class="icon">🎤</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Marta ↔ Clara.</strong> Las consultas factuales (clima, dólar) se resuelven con datos en vivo de APIs oficiales gracias al pre-routing del módulo <code>core/tools.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- FLOW 2: Detección de angustia + alerta a la familia            -->
+<!-- ============================================================ -->
+<section class="flow" id="flow-2">
+  <div class="flow-label">Flujo 2 — Detección de angustia DISTRESS_LEVEL 2 + alerta automática al bot familiar. Marta nunca ve el nivel; recibe contención. La familia recibe la señal estructurada.</div>
+  <div class="flow-row">
+
+    <!-- Chat Marta ↔ Clara -->
+    <div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="status-bar">
+            <span>15:23</span>
+            <span class="status-icons">5G ●●● 76%</span>
+          </div>
+          <div class="tg-header">
+            <div class="tg-back">‹</div>
+            <div class="tg-avatar clara">C</div>
+            <div class="tg-name-block">
+              <div class="tg-name">Clara</div>
+              <div class="tg-status">en línea</div>
+            </div>
+            <div class="tg-actions">⋮</div>
+          </div>
+          <div class="chat-area">
+            <div class="date-pill">hoy</div>
+
+            <div class="msg out">
+              <div class="bubble">
+                No sé Clara, me siento muy sola hoy. Hace tres días que no veo a nadie.
+                <span class="time">15:22</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Marta, lamento mucho que te sientas así. Es difícil cuando los días se hacen largos sin compañía. ¿Hay algo en particular que te tiene triste hoy?
+                <span class="time">15:22</span>
+              </div>
+            </div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Es que con esto del frío no salgo, y los chicos están todos ocupados con el trabajo.
+                <span class="time">15:23</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Te entiendo. ¿Querés que charlemos un rato? Contame qué tenés ganas de hacer mañana, algo que te haga ilusión.
+                <span class="time">15:23</span>
+              </div>
+            </div>
+          </div>
+          <div class="tg-input">
+            <span class="icon">😊</span>
+            <div class="pill">Mensaje</div>
+            <span class="icon">📎</span>
+            <span class="icon">🎤</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta ↔ Clara.</strong> Solo recibe contención y compañía. El nivel de angustia nunca es visible para ella.</div>
+    </div>
+
+    <!-- Connector -->
+    <div class="connector">
+      <div>en paralelo</div>
+      <div class="connector-arrow">→</div>
+      <div>alerta automática</div>
+    </div>
+
+    <!-- Chat Bot Familiar -->
+    <div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="status-bar">
+            <span>15:23</span>
+            <span class="status-icons">5G ●●● 92%</span>
+          </div>
+          <div class="tg-header">
+            <div class="tg-back">‹</div>
+            <div class="tg-avatar bot-fam">F</div>
+            <div class="tg-name-block">
+              <div class="tg-name">aikiu — Familia</div>
+              <div class="tg-status">bot · 3 suscriptores</div>
+            </div>
+            <div class="tg-actions">⋮</div>
+          </div>
+          <div class="chat-area">
+            <div class="date-pill">hoy</div>
+
+            <div class="msg in">
+              <div class="alert-bubble orange">
+                <div class="alert-title">⚠️ Alerta naranja — DISTRESS_LEVEL 2</div>
+                <div class="meta">Marta · 15:23</div>
+                <div>Expresó tristeza y soledad sostenida. Mencionó tres días sin contacto presencial.</div>
+                <div class="quote">«No sé Clara, me siento muy sola hoy. Hace tres días que no veo a nadie.»</div>
+                <div style="font-size:11px;color:#666;margin-top:4px;">Clara respondió con contención emocional y propuso conversar sobre planes para mañana.</div>
+                <div style="font-size:11px;color:#444;margin-top:6px;"><strong>Sugerencia:</strong> considerar llamarla o visitarla en el día.</div>
+                <span class="time" style="color:#7a8a99;">15:23</span>
+              </div>
+            </div>
+
+          </div>
+          <div class="tg-input">
+            <span class="icon">😊</span>
+            <div class="pill">Mensaje</div>
+            <span class="icon">📎</span>
+            <span class="icon">🎤</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado familia (bot compartido).</strong> Alerta estructurada con hora, fragmento literal y sugerencia de acción. Llega a todos los suscriptores.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- FLOW 3: Puente familiar bidireccional                          -->
+<!-- ============================================================ -->
+<section class="flow" id="flow-3">
+  <div class="flow-label">Flujo 3 — Puente familiar bidireccional. Un familiar envía un mensaje al bot familiar y Clara se lo transmite a Marta con el nombre del familiar. Marta responde y Clara devuelve la respuesta al canal familiar.</div>
+  <div class="flow-row">
+
+    <!-- Chat Juan ↔ Bot Familiar -->
+    <div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="status-bar">
+            <span>16:06</span>
+            <span class="status-icons">5G ●●● 64%</span>
+          </div>
+          <div class="tg-header">
+            <div class="tg-back">‹</div>
+            <div class="tg-avatar bot-fam">F</div>
+            <div class="tg-name-block">
+              <div class="tg-name">aikiu — Familia</div>
+              <div class="tg-status">bot</div>
+            </div>
+            <div class="tg-actions">⋮</div>
+          </div>
+          <div class="chat-area">
+            <div class="date-pill">hoy</div>
+
+            <div class="msg out">
+              <div class="bubble">
+                /mensaje
+                <span class="time">16:05</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Escribí el mensaje que querés que Clara le transmita a Marta:
+                <span class="time">16:05</span>
+              </div>
+            </div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Mamá, hoy salgo más temprano del trabajo, paso a verte a las 18. ¿Te traigo algo del kiosko?
+                <span class="time">16:06</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Listo, se lo paso a Marta de tu parte. Te aviso cuando lo lea y si responde.
+                <span class="time">16:06</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                💬 Respuesta de Marta (16:07):<br>
+                «Ay qué bueno. Decile que sí, que me traiga el pan de la panadería de la esquina.»
+                <span class="time">16:07</span>
+              </div>
+            </div>
+
+          </div>
+          <div class="tg-input">
+            <span class="icon">😊</span>
+            <div class="pill">Mensaje</div>
+            <span class="icon">📎</span>
+            <span class="icon">🎤</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Juan (hijo) ↔ bot familiar.</strong> Manda el mensaje con el comando <code>/mensaje</code> y recibe confirmación + respuesta de Marta.</div>
+    </div>
+
+    <!-- Connector -->
+    <div class="connector">
+      <div>se transmite</div>
+      <div class="connector-arrow">→</div>
+      <div>preservando nombre</div>
+    </div>
+
+    <!-- Chat Marta ↔ Clara -->
+    <div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="status-bar">
+            <span>16:07</span>
+            <span class="status-icons">5G ●●● 76%</span>
+          </div>
+          <div class="tg-header">
+            <div class="tg-back">‹</div>
+            <div class="tg-avatar clara">C</div>
+            <div class="tg-name-block">
+              <div class="tg-name">Clara</div>
+              <div class="tg-status">en línea</div>
+            </div>
+            <div class="tg-actions">⋮</div>
+          </div>
+          <div class="chat-area">
+            <div class="date-pill">hoy</div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Marta, te mandó un mensaje Juan:<br><br>
+                «Mamá, hoy salgo más temprano del trabajo, paso a verte a las 18. ¿Te traigo algo del kiosko?»
+                <span class="time">16:06</span>
+              </div>
+            </div>
+
+            <div class="msg out">
+              <div class="bubble">
+                Ay qué bueno. Decile que sí, que me traiga el pan de la panadería de la esquina.
+                <span class="time">16:07</span>
+              </div>
+            </div>
+
+            <div class="msg in">
+              <div class="bubble">
+                Listo, le paso el mensaje a Juan.
+                <span class="time">16:07</span>
+              </div>
+            </div>
+
+          </div>
+          <div class="tg-input">
+            <span class="icon">😊</span>
+            <div class="pill">Mensaje</div>
+            <span class="icon">📎</span>
+            <span class="icon">🎤</span>
+          </div>
+        </div>
+      </div>
+      <div class="caption"><strong>Lado Marta ↔ Clara.</strong> Recibe el mensaje atribuido a Juan (no a un número desconocido). Su respuesta vuelve al canal familiar.</div>
+    </div>
+
+  </div>
+</section>
+
+</body>
+</html>
