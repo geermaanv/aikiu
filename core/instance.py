@@ -9,7 +9,7 @@ El default mantiene compatibilidad total con la instalación actual:
 - AIKIU_INSTANCE_ID por defecto "default"
 - AIKIU_REGISTRY por defecto no seteado → instance_dir() = BASE_DIR
 
-Esto permite que admin_bot.py, heartbeat y usage funcionen igual en
+Esto permite que admin/bot.py, heartbeat y usage funcionen igual en
 single-tenant y multi-tenant sin tocar el resto del código.
 """
 

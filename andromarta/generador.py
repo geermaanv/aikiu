@@ -37,6 +37,7 @@ async def responder(
     historial: list[dict],
     nombre_clara: str,
     mensaje_de_clara: str | None = None,
+    despedida: bool = False,
 ) -> str:
     """
     Genera el próximo turno de Andromarta.
@@ -45,6 +46,10 @@ async def responder(
     Si viene None, asume que Andromarta arranca conversación espontáneamente
     (iniciativa) y le pasa al LLM una instrucción extra para que produzca un
     mensaje de apertura natural.
+
+    Si `despedida=True`, le pide al LLM que el mensaje sea un cierre amable
+    de la conversación (la usa el bot cuando el ciclo está por llegar al tope
+    de turnos). El cierre debe ser natural, sin sonar a despedida formal.
     """
     estado = estado_mod.cargar_estado()
     perfil = leer_perfil()
@@ -72,6 +77,28 @@ async def responder(
             ),
         })
 
+    if despedida:
+        # Va DESPUÉS del mensaje de Clara (o de la instrucción de iniciativa)
+        # para que pese más a la hora de generar la respuesta.
+        messages.append({
+            "role": "system",
+            "content": (
+                "Esta es la ÚLTIMA respuesta tuya en este rato de charla: ya "
+                "venís hablando hace un buen tiempo y querés cerrar para volver "
+                "a tus cosas. Despedite de forma natural y breve (1 o 2 oraciones), "
+                "como una persona mayor que dice 'bueno mi vida, te dejo que "
+                "tengo que poner la pava' o 'me voy a recostar un ratito, "
+                "hablamos más tarde'. Variá la excusa según tu estado de hoy "
+                "(cansancio, una visita, ir al kiosco, la novela en la tele, "
+                "atender el teléfono). No suenes formal ni hagas resumen del "
+                "rato que hablaron. NO digas 'chau' tipo despedida final ni "
+                "des a entender que no van a hablar más; es solo un 'te dejo "
+                "por ahora'. Después de este mensaje, vos NO vas a responder "
+                f"nada más hasta que se te ocurra a vos volver a escribirle a "
+                f"{nombre_clara}."
+            ),
+        })
+
     response = await groq.chat.completions.create(
         model=modelo,
         messages=messages,
@@ -80,5 +107,5 @@ async def responder(
     )
     raw = response.choices[0].message.content.strip()
     limpio = _limpiar_artefactos(raw)
-    log.info(f"Andromarta dice: '{limpio}'")
+    log.info(f"Andromarta dice{' [despedida]' if despedida else ''}: '{limpio}'")
     return limpio

@@ -11,12 +11,17 @@ monitoreo y métricas vía comandos:
     /logs       últimas N líneas del log de una instancia
     /ayuda      este menú
 
-TOFU sobre admin_state.json: el primer /start queda registrado como admin
-único. Cualquier otro chat es rechazado silenciosamente.
+TOFU sobre admin/admin_state.json: el primer /start queda registrado como
+admin único. Cualquier otro chat es rechazado silenciosamente.
 
 Soporta multi-tenant a futuro vía AIKIU_REGISTRY: con la env var seteada,
 descubre todas las instancias bajo ese directorio. Sin la env var, opera
 sobre la instancia única que vive en BASE_DIR (la instalación actual).
+
+Todo lo propio del bot admin vive en admin/: este módulo (admin/bot.py),
+el código de estado (admin/state.py), el JSON TOFU (admin/admin_state.json)
+y su heartbeat (admin/heartbeat-admin.json). El resto del repo no depende
+de admin/.
 """
 
 from __future__ import annotations
@@ -24,16 +29,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+ADMIN_DIR = Path(__file__).resolve().parent
+REPO_ROOT = ADMIN_DIR.parent
+# Cuando se ejecuta como `python admin/bot.py`, Python agrega `admin/` al
+# sys.path pero no la raíz del repo. Insertamos la raíz para que `core.*` y
+# el paquete `admin` se resuelvan correctamente. Lo mismo hace andromarta/bot.py.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 from telegram import Bot, BotCommand, Update
 from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from core import admin_state, heartbeat as hb_mod, usage as usage_mod
+from core import heartbeat as hb_mod, llm_limits, usage as usage_mod
 from core.instance import (
     BASE_DIR,
     descubrir_instancias,
@@ -41,6 +55,7 @@ from core.instance import (
     nombre_adulto_de,
 )
 from core.utils import load_json
+from admin import state as admin_state
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -54,10 +69,16 @@ ADMIN_TOKEN       = os.environ.get("ADMIN_BOT_TOKEN", "").strip()
 BOT_TOKEN         = os.environ.get("BOT_TOKEN", "").strip()
 FAMILIAR_TOKEN    = os.environ.get("FAMILIAR_BOT_TOKEN", "").strip()
 
-# Umbral indicativo para alertar al admin si está por reventar el free tier.
-# Groq free hoy ronda ~14.4k tokens/min y ~500k tokens/día por modelo; lo dejo
-# configurable porque la cuota cambia y el admin puede tener tier pago.
-LIMITE_TOKENS_DIA = int(os.environ.get("GROQ_DAILY_TOKEN_LIMIT", "500000"))
+# Override manual del TPD para el aviso de cuota en /llm.
+# Si no está seteado (o no es un entero positivo) el admin usa los límites
+# del catálogo core/llm_limits.py por cada modelo realmente en uso. El
+# override existe para usuarios con tier pago de Groq, que tienen cuotas
+# distintas a las del catálogo gratuito. Ver:
+#     https://console.groq.com/docs/rate-limits
+_raw_limite = os.environ.get("GROQ_DAILY_TOKEN_LIMIT", "").strip()
+LIMITE_TOKENS_DIA_OVERRIDE: Optional[int] = (
+    int(_raw_limite) if _raw_limite.isdigit() and int(_raw_limite) > 0 else None
+)
 
 
 # ---------------------------------------------------------------------------
@@ -159,45 +180,70 @@ MENU = (
     "/metricas — operación: volumen, errores, latencias, archivos\n\n"
     "🗂 *Multi-instancia*\n"
     "/instancias — listar instancias detectadas\n\n"
+    "👥 *Equipo*\n"
+    "/admins — ver los chat_ids con permiso de admin\n"
+    "/quitar\\_admin — quitar a un admin (`/quitar_admin <chat_id>`)\n\n"
     "/ayuda — este menú"
 )
 
 # Lista que Telegram muestra en el botón de menú azul al lado de la caja de texto.
 # Las descripciones tienen que ser cortas (<=256 chars cada una, sin markdown).
 COMANDOS_TELEGRAM = [
-    BotCommand("health",     "Salud de los bots (semaforo + ping Telegram)"),
-    BotCommand("llm",        "Uso del LLM: tokens y latencias"),
-    BotCommand("metricas",   "Operacion: volumen, errores, latencias"),
-    BotCommand("instancias", "Listar instancias detectadas"),
-    BotCommand("logs",       "Ultimas lineas del log (/logs 50)"),
-    BotCommand("ayuda",      "Menu de comandos"),
+    BotCommand("health",       "Salud de los bots (semaforo + ping Telegram)"),
+    BotCommand("llm",          "Uso del LLM: tokens y latencias"),
+    BotCommand("metricas",     "Operacion: volumen, errores, latencias"),
+    BotCommand("instancias",   "Listar instancias detectadas"),
+    BotCommand("logs",         "Ultimas lineas del log (/logs 50)"),
+    BotCommand("admins",       "Ver chat_ids con permiso de admin"),
+    BotCommand("quitar_admin", "Quitar un admin: /quitar_admin <chat_id>"),
+    BotCommand("ayuda",        "Menu de comandos"),
 ]
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestiona el alta de admins en modo cupo abierto.
+
+    Cada /start desde un chat distinto suma un admin nuevo hasta llenar el
+    cupo (ADMIN_MAX_USERS, default 5). Los siguientes /start de chats no
+    registrados se rechazan en silencio. Admins ya registrados ven el menú.
+    """
     chat_id = update.effective_chat.id
     nombre_tg = update.effective_user.first_name or "admin"
 
-    if not admin_state.tiene_admin():
-        if admin_state.registrar_admin(chat_id):
-            log.warning(
-                f"[ADMIN REGISTRADO] chat_id={chat_id} usuario_tg={nombre_tg!r} "
-                f"hora={datetime.now().isoformat(timespec='seconds')}"
-            )
-            instancias = descubrir_instancias()
-            await update.message.reply_text(
-                f"✅ Hola *{nombre_tg}*, quedaste registrado como admin único.\n"
-                f"_Detecté {len(instancias)} instancia(s) bajo monitoreo._\n\n{MENU}",
-                parse_mode="Markdown",
-            )
-            return
-
-    if not _es_admin_autorizado(chat_id):
-        await _rechazar_silencioso(update, "no es admin")
+    if _es_admin_autorizado(chat_id):
+        await update.message.reply_text(
+            f"Hola *{nombre_tg}* 👋\n\n{MENU}",
+            parse_mode="Markdown",
+        )
         return
 
+    if not admin_state.hay_cupo():
+        await _rechazar_silencioso(
+            update,
+            f"cupo lleno ({admin_state.admin_count()}/{admin_state.admins_max()})",
+        )
+        return
+
+    if not admin_state.registrar_admin(chat_id):
+        # No quedó cupo entre el chequeo y el alta (carrera muy improbable),
+        # o env override impide registros: el silencio sigue siendo lo correcto.
+        await _rechazar_silencioso(update, "no se pudo registrar")
+        return
+
+    log.warning(
+        f"[ADMIN REGISTRADO] chat_id={chat_id} usuario_tg={nombre_tg!r} "
+        f"posicion={admin_state.admin_count()}/{admin_state.admins_max()} "
+        f"hora={datetime.now().isoformat(timespec='seconds')}"
+    )
+    instancias = descubrir_instancias()
+    cupo_msg = (
+        "primer admin registrado"
+        if admin_state.admin_count() == 1
+        else f"admin {admin_state.admin_count()} de {admin_state.admins_max()} registrados"
+    )
     await update.message.reply_text(
-        f"Hola *{nombre_tg}* 👋\n\n{MENU}",
+        f"✅ Hola *{nombre_tg}*, {cupo_msg}.\n"
+        f"_Detecté {len(instancias)} instancia(s) bajo monitoreo._\n\n{MENU}",
         parse_mode="Markdown",
     )
 
@@ -207,6 +253,111 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _rechazar_silencioso(update, "no es admin")
         return
     await update.message.reply_text(MENU, parse_mode="Markdown")
+
+
+# ---------------------------------------------------------------------------
+# /admins  +  /quitar_admin
+# ---------------------------------------------------------------------------
+
+async def cmd_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _es_admin_autorizado(update.effective_chat.id):
+        await _rechazar_silencioso(update, "no es admin")
+        return
+
+    admins = admin_state.listar_admins()
+    cupo = admin_state.admins_max()
+    actual = len(admins)
+    env_lock = admins and admins[0].get("source") == "env"
+
+    lineas = [f"*👥 Admins registrados:* {actual}/{cupo}"]
+    if env_lock:
+        lineas.append(
+            "_La lista está fijada por la env var ADMIN_CHAT_IDS — no se "
+            "puede modificar desde el bot. Editá el `.env` y reiniciá._"
+        )
+    elif admin_state.hay_cupo():
+        lineas.append(
+            f"_Queda(n) {cupo - actual} lugar(es). Cualquiera que mande /start "
+            f"al bot va a quedar registrado automáticamente hasta llenar el cupo._"
+        )
+    else:
+        lineas.append("_Cupo lleno: nuevos /start se rechazan en silencio._")
+
+    lineas.append("")
+    quien_soy = update.effective_chat.id
+    for i, a in enumerate(admins, 1):
+        cid = a["chat_id"]
+        marca = " ← _vos_" if int(cid) == int(quien_soy) else ""
+        if a.get("source") == "env":
+            lineas.append(f"{i}. `{cid}` _(desde .env)_{marca}")
+        else:
+            reg = a.get("registered_at") or "—"
+            extra = ""
+            if a.get("added_by"):
+                extra = f" · agregado por `{a['added_by']}`"
+            lineas.append(f"{i}. `{cid}` · registrado {reg}{extra}{marca}")
+
+    if not env_lock and actual > 1:
+        lineas.append(
+            "\n_Para quitar a alguien: `/quitar_admin <chat_id>`._"
+        )
+
+    await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
+
+
+async def cmd_quitar_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _es_admin_autorizado(update.effective_chat.id):
+        await _rechazar_silencioso(update, "no es admin")
+        return
+
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Uso: `/quitar_admin <chat_id>`\n"
+            "Mirá los chat_ids con `/admins`.",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        objetivo = int(args[0])
+    except ValueError:
+        await update.message.reply_text(
+            f"`{args[0]}` no es un chat_id válido (tiene que ser un número).",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not admin_state.es_admin(objetivo):
+        await update.message.reply_text(
+            f"`{objetivo}` no figura como admin. Usá `/admins` para ver la lista.",
+            parse_mode="Markdown",
+        )
+        return
+
+    if admin_state._env_override_ids() is not None:
+        await update.message.reply_text(
+            "La lista de admins está fijada por la env var `ADMIN_CHAT_IDS`. "
+            "Editá el `.env` y reiniciá el bot para cambiarla.",
+            parse_mode="Markdown",
+        )
+        return
+
+    quien = update.effective_chat.id
+    if admin_state.quitar_admin(objetivo):
+        log.warning(
+            f"[ADMIN REMOVIDO] chat_id={objetivo} removido_por={quien} "
+            f"restantes={admin_state.admin_count()}"
+        )
+        msg = f"✅ Saqué a `{objetivo}` de la lista de admins."
+        if int(objetivo) == int(quien):
+            msg += "\n\n_Te quitaste a vos mismo. Si querés volver a entrar y todavía hay cupo, mandá /start de nuevo._"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(
+            f"No pude quitar a `{objetivo}` (¿ya no estaba?).",
+            parse_mode="Markdown",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -383,25 +534,16 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /llm
 # ---------------------------------------------------------------------------
 
-# Alias humanos para que no aparezca "llama-3.3-70b-versatile" crudo en el chat.
-# Si un modelo nuevo no está acá, se usa el nombre tal cual (limpiado).
-_ALIAS_MODELO = {
-    "llama-3.3-70b-versatile": "LLM (conversación)",
-    "whisper-large-v3":        "Whisper (transcripción)",
-}
 
-
-def _alias(modelo: str) -> str:
-    return _ALIAS_MODELO.get(modelo, modelo)
-
-
-def _semaforo_limite(tokens_hoy: int) -> tuple[str, str, str]:
+def _semaforo_limite(tokens_hoy: int, tpd: Optional[int]) -> tuple[str, str, str]:
     """Devuelve (emoji, descripción corta, porcentaje como string).
     El porcentaje se muestra como '<1%' cuando hay consumo positivo pero
-    redondea a 0; así no parece que no se usó nada."""
-    if LIMITE_TOKENS_DIA <= 0:
-        return ("⚪", "sin límite configurado", "—")
-    ratio = tokens_hoy / LIMITE_TOKENS_DIA
+    redondea a 0 (así no parece que no se usó nada).
+    Si tpd es None (modelo no catalogado y sin override), devuelve estado
+    neutro porque no podemos calcular ratio."""
+    if tpd is None or tpd <= 0:
+        return ("⚪", "sin límite catalogado", "—")
+    ratio = tokens_hoy / tpd
     pct_int = int(ratio * 100)
     if 0 < ratio < 0.01:
         pct_str = "<1%"
@@ -414,6 +556,56 @@ def _semaforo_limite(tokens_hoy: int) -> tuple[str, str, str]:
     if pct_int >= 30:
         return ("🟢", "consumo normal", pct_str)
     return ("🟢", "consumo bajo", pct_str)
+
+
+def _tpd_efectivo(modelo: str) -> Optional[int]:
+    """TPD a usar para los avisos: override de env > catálogo > None."""
+    if LIMITE_TOKENS_DIA_OVERRIDE is not None:
+        return LIMITE_TOKENS_DIA_OVERRIDE
+    return llm_limits.tpd(modelo)
+
+
+def _modelos_chat_en_uso(d: Path, dias: int = 30) -> list[str]:
+    """Lista los modelos de chat (no Whisper) que tuvieron llamadas en los
+    últimos N días en esta instancia, ordenados por uso descendente.
+
+    Detectar 'qué LLM se está usando' a partir de los datos reales evita
+    asumir cosas: si alguien cambió `modelo_llm` en config.yml, o si
+    conviven aikiu + andromarta apuntando a modelos distintos, /llm los
+    descubre solos."""
+    resumen = usage_mod.resumir(d, dias=dias)
+    por_modelo = resumen.get("por_modelo", {})
+    chat_models = [
+        (m, info["llamadas"])
+        for m, info in por_modelo.items()
+        if not llm_limits.es_audio(m) and info.get("llamadas", 0) > 0
+    ]
+    chat_models.sort(key=lambda x: x[1], reverse=True)
+    return [m for m, _ in chat_models]
+
+
+def _tokens_modelo(d: Path, modelo: str, dias: int) -> int:
+    """Total de tokens consumidos por un modelo específico en los últimos N días."""
+    resumen = usage_mod.resumir(d, dias=dias)
+    info = resumen.get("por_modelo", {}).get(modelo, {})
+    return int(info.get("total_tokens", 0))
+
+
+def _formato_limites(modelo: str) -> str:
+    """Una línea con los límites free tier del modelo, o '_(no catalogado)_'."""
+    lim = llm_limits.limites(modelo)
+    if not lim:
+        return "_(modelo no catalogado — ver core/llm_limits.py)_"
+    partes = []
+    if lim.get("rpm") is not None:
+        partes.append(f"{lim['rpm']} req/min")
+    if lim.get("tpm") is not None:
+        partes.append(f"{_formato_tokens(lim['tpm'])} tok/min")
+    if lim.get("rpd") is not None:
+        partes.append(f"{_formato_tokens(lim['rpd'])} req/día")
+    if lim.get("tpd") is not None:
+        partes.append(f"{_formato_tokens(lim['tpd'])} tok/día")
+    return " · ".join(partes)
 
 
 def _formato_tokens(n: int) -> str:
@@ -488,21 +680,41 @@ async def cmd_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         chat_hoy = s_hoy["chat"]
         stt_hoy  = s_hoy["stt"]
-        tokens_hoy = chat_hoy["tokens_total"]
-
-        emoji, descr, pct = _semaforo_limite(tokens_hoy)
 
         lineas.append(f"\n*Instancia `{id_inst}` — {nombre}*")
 
-        # Headline: estado del límite diario de un vistazo
-        if LIMITE_TOKENS_DIA > 0:
-            lineas.append(
-                f"\n{emoji} {_formato_tokens(tokens_hoy)} de "
-                f"{_formato_tokens(LIMITE_TOKENS_DIA)} tokens hoy "
-                f"({pct} del límite — _{descr}_)"
-            )
-        else:
+        # Modelos detectados a partir de los datos reales de los últimos 30
+        # días. Si conviven varios (p.ej. aikiu en un modelo y andromarta en
+        # otro) los mostramos todos. Si no hay datos todavía, igual mostramos
+        # el aviso "sin actividad" abajo.
+        modelos = _modelos_chat_en_uso(d, dias=30)
+
+        # Headline por modelo (estado del TPD)
+        if not modelos:
+            tokens_hoy = chat_hoy["tokens_total"]
+            emoji, descr, pct = _semaforo_limite(tokens_hoy, None)
             lineas.append(f"\n{emoji} {_formato_tokens(tokens_hoy)} tokens hoy")
+        else:
+            for modelo in modelos:
+                tokens_hoy_m = _tokens_modelo(d, modelo, dias=1)
+                tpd_m = _tpd_efectivo(modelo)
+                emoji, descr, pct = _semaforo_limite(tokens_hoy_m, tpd_m)
+                fuente_lim = (
+                    "override .env"
+                    if LIMITE_TOKENS_DIA_OVERRIDE is not None
+                    else "free tier Groq"
+                )
+                if tpd_m is not None:
+                    lineas.append(
+                        f"\n{emoji} `{modelo}` — {_formato_tokens(tokens_hoy_m)} de "
+                        f"{_formato_tokens(tpd_m)} tok hoy ({pct} — _{descr}_, _{fuente_lim}_)"
+                    )
+                else:
+                    lineas.append(
+                        f"\n{emoji} `{modelo}` — {_formato_tokens(tokens_hoy_m)} tok hoy "
+                        f"_({descr})_"
+                    )
+                lineas.append(f"   _Límites:_ {_formato_limites(modelo)}")
 
         # Si todo está en cero, evitar tablas y aviso amable.
         sin_actividad = (
@@ -516,9 +728,9 @@ async def cmd_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             continue
 
-        # Tabla por período (chat). Bloque monoespaciado para que las
-        # columnas se alineen en Telegram.
-        lineas.append("\n*Conversación (LLM)*")
+        # Tabla por período (chat agregado, todos los modelos juntos). Bloque
+        # monoespaciado para que las columnas se alineen en Telegram.
+        lineas.append("\n*Conversación (todos los modelos de chat)*")
         lineas.append(
             "```\n"
             f"Período   Total      OK   Tokens   Errores\n"
@@ -562,6 +774,35 @@ async def cmd_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"\n⚠️ *{chat_hoy['error']} de {chat_hoy['total']} llamadas fallaron hoy* "
                 f"({pct_err}%): {desglose}.\nUsá /logs err para ver detalles."
             )
+
+            # Si la mayoría son rate-limit, el cuello real casi nunca es el
+            # TPD diario sino el TPM por minuto. Mostramos los TPM/RPM
+            # reales de cada modelo en uso para que el admin entienda contra
+            # qué pega. Evita la paradoja de "1% del diario, 83% de errores".
+            rate_limit_hits = chat_hoy["errores_por_tipo"].get("rate limit (429)", 0)
+            if rate_limit_hits and rate_limit_hits / chat_hoy["error"] >= 0.5:
+                # Armamos las pistas modelo a modelo (TPM y RPM del catálogo).
+                pistas = []
+                for modelo in modelos or []:
+                    tpm = llm_limits.tpm(modelo)
+                    rpm_v = llm_limits.rpm(modelo)
+                    if tpm is None and rpm_v is None:
+                        continue
+                    bits = []
+                    if tpm is not None:
+                        bits.append(f"TPM {_formato_tokens(tpm)} tok/min")
+                    if rpm_v is not None:
+                        bits.append(f"RPM {rpm_v} req/min")
+                    pistas.append(f"`{modelo}`: " + ", ".join(bits))
+                cuerpo_pistas = (
+                    "; ".join(pistas) if pistas else "límites del free tier de Groq por minuto"
+                )
+                lineas.append(
+                    f"_Nota: los 429 casi siempre vienen del cuello por minuto, "
+                    f"no del total diario ({cuerpo_pistas}). Pasa cuando hay "
+                    f"varias notas de voz seguidas. El servicio se recupera "
+                    f"solo cuando baja la ráfaga._"
+                )
 
     await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
 
@@ -936,15 +1177,20 @@ async def main():
     app.add_handler(CommandHandler("metricas", cmd_metricas))
     app.add_handler(CommandHandler("instancias", cmd_instancias))
     app.add_handler(CommandHandler("logs", cmd_logs))
+    app.add_handler(CommandHandler("admins", cmd_admins))
+    app.add_handler(CommandHandler("quitar_admin", cmd_quitar_admin))
 
     log.info("Bot admin iniciando...")
+    cupo = admin_state.admins_max()
     if not admin_state.tiene_admin():
         log.warning(
-            "Todavía no hay admin registrado. Apenas el bot esté arriba mandá /start "
-            "desde tu Telegram para quedar bindeado como dueño único."
+            f"Todavía no hay admins registrados (cupo {cupo}). Apenas el bot "
+            f"esté arriba, los integrantes del equipo mandan /start desde su "
+            f"Telegram para sumarse hasta llenar el cupo."
         )
     else:
-        log.info(f"Admin registrado: chat_id={admin_state.admin_chat_id()}")
+        ids = admin_state.admin_chat_ids()
+        log.info(f"Admins registrados: {len(ids)}/{cupo} → {ids}")
 
     async with app:
         await app.initialize()
@@ -957,7 +1203,7 @@ async def main():
             log.warning(f"No pude publicar los comandos en Telegram: {e}")
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
-        hb_mod.iniciar_heartbeat("admin")
+        hb_mod.iniciar_heartbeat("admin", dir_override=ADMIN_DIR)
         try:
             await asyncio.Event().wait()
         finally:

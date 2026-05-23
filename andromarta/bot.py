@@ -48,6 +48,7 @@ from telethon import TelegramClient, events
 from core import heartbeat as hb_mod
 from core import usage as usage_mod
 from core.tts import sintetizar
+from andromarta import ciclo as ciclo_mod
 from andromarta import memoria as memoria_mod
 from andromarta import scheduler as scheduler_mod
 from andromarta.generador import responder
@@ -78,6 +79,18 @@ MODELO           = os.environ.get("ANDROMARTA_MODELO", "llama-3.3-70b-versatile"
 VOZ_TTS          = os.environ.get("ANDROMARTA_VOZ_TTS", "es-AR-ElenaNeural").strip()
 VOZ_PROB         = float(os.environ.get("ANDROMARTA_VOZ_PROB", "0.4"))
 GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
+# Default: SIN ritmo humano (responde sin esperas). Poner "1" para simular
+# pausas de lectura/tipeo como una persona mayor real.
+RITMO_HUMANO     = os.environ.get("ANDROMARTA_RITMO_HUMANO", "0").strip() == "1"
+# Tope de turnos por ciclo de conversación (Clara + Marta combinados). Al llegar
+# al tope, Marta manda un mensaje de despedida y deja de responder hasta que
+# el scheduler de iniciativa dispare un nuevo ciclo.
+try:
+    MAX_TURNOS_CICLO = int(os.environ.get("ANDROMARTA_MAX_TURNOS_CICLO", "15"))
+except ValueError:
+    MAX_TURNOS_CICLO = 15
+if MAX_TURNOS_CICLO < 2:
+    MAX_TURNOS_CICLO = 2  # mínimo razonable: 1 de Clara + 1 de Marta
 
 
 def _validar_config() -> None:
@@ -139,22 +152,34 @@ async def _transcribir(ogg_path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Ritmo humano — pausas y "escribiendo..."
 # ---------------------------------------------------------------------------
+# Por default (RITMO_HUMANO=False) las pausas son no-op: Andromarta responde
+# tan rápido como pueda generar el LLM. Si se activa, simula los tiempos de
+# lectura/tipeo de una persona mayor real.
 
 async def _pausa_lectura(texto: str) -> None:
-    """Tiempo que tarda Marta en 'leer' lo que llegó."""
+    if not RITMO_HUMANO:
+        return
     base = 1.5
     extra = min(8, len(texto) / 25)
     await asyncio.sleep(random.uniform(base, base + extra))
 
 
 async def _pausa_tipeo(texto: str) -> float:
-    """Tiempo que tarda Marta en 'tipear' la respuesta. Devuelve los seg dormidos."""
+    if not RITMO_HUMANO:
+        return 0.0
     base = 2.0
     # Adulto mayor tipea lento: ~3 chars/seg + ruido
     estimado = len(texto) / 3.0
     duracion = max(base, min(20, estimado + random.uniform(-1, 2)))
     await asyncio.sleep(duracion)
     return duracion
+
+
+async def _pausa_grabacion() -> None:
+    """Tiempo simulado de grabar una nota de voz."""
+    if not RITMO_HUMANO:
+        return
+    await asyncio.sleep(random.uniform(2.0, 5.0))
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +195,7 @@ async def _enviar_texto(texto: str) -> None:
 
 async def _enviar_voz(texto: str) -> None:
     async with client.action(aikiu_entity, "voice"):
-        # El "tipeo" para voz es más corto: la voz se graba más rápido que se escribe
-        await asyncio.sleep(random.uniform(2.0, 5.0))
+        await _pausa_grabacion()
         with tempfile.TemporaryDirectory() as tmp:
             ogg = Path(tmp) / "andromarta.ogg"
             await sintetizar(texto, ogg, voz=VOZ_TTS)
@@ -203,6 +227,17 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
     if not msg:
         return
 
+    # Si el ciclo está cerrado, ignoramos en silencio: Marta sigue "en sus cosas"
+    # hasta que el scheduler dispare una nueva iniciativa.
+    estado_ciclo = ciclo_mod.cargar()
+    if ciclo_mod.esta_cerrado(estado_ciclo):
+        log.info(
+            f"Mensaje de Clara ignorado: ciclo cerrado "
+            f"({estado_ciclo.get('turnos', 0)} turnos). "
+            f"Esperando que el scheduler abra un nuevo ciclo."
+        )
+        return
+
     es_voz = bool(msg.voice)
     texto_clara: str | None = None
 
@@ -226,8 +261,14 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
 
     historial = memoria_mod.cargar_historial()
     memoria_mod.agregar_turno(historial, "user", texto_clara)
+    estado_ciclo = ciclo_mod.registrar_turno(estado_ciclo)
 
     await _pausa_lectura(texto_clara)
+
+    # ¿Esta respuesta es la última del ciclo? (despedida)
+    es_despedida = ciclo_mod.proxima_respuesta_es_despedida(
+        estado_ciclo, MAX_TURNOS_CICLO
+    )
 
     try:
         respuesta = await responder(
@@ -236,15 +277,21 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
             historial=historial,
             nombre_clara=NOMBRE_CLARA,
             mensaje_de_clara=texto_clara,
+            despedida=es_despedida,
         )
     except Exception as e:
         log.error(f"Generación de respuesta falló: {e}")
         return
 
     memoria_mod.agregar_turno(historial, "assistant", respuesta)
+    estado_ciclo = ciclo_mod.registrar_turno(estado_ciclo)
+
     # Si Clara mandó voz, hay más chance de que Marta también responda en voz
     prefiere_voz = es_voz or random.random() < VOZ_PROB
     await _enviar_respuesta(respuesta, prefiere_voz=prefiere_voz)
+
+    if es_despedida:
+        ciclo_mod.cerrar(estado_ciclo)
 
 
 # ---------------------------------------------------------------------------
@@ -252,11 +299,16 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
 # ---------------------------------------------------------------------------
 
 async def _disparar_iniciativa() -> None:
-    """Callback del scheduler: genera un mensaje de apertura y lo manda."""
+    """Callback del scheduler: genera un mensaje de apertura y lo manda.
+
+    Abre un ciclo nuevo: el scheduler es el único trigger autorizado para
+    reabrir conversación una vez que el ciclo anterior se cerró.
+    """
     if aikiu_entity is None:
         log.warning("Iniciativa: aikiu_entity no resuelto todavía, salteo")
         return
 
+    estado_ciclo = ciclo_mod.abrir_nuevo()
     historial = memoria_mod.cargar_historial()
     try:
         mensaje = await responder(
@@ -271,6 +323,7 @@ async def _disparar_iniciativa() -> None:
         return
 
     memoria_mod.agregar_turno(historial, "assistant", mensaje)
+    ciclo_mod.registrar_turno(estado_ciclo)
     prefiere_voz = random.random() < VOZ_PROB
     await _enviar_respuesta(mensaje, prefiere_voz=prefiere_voz)
 
@@ -319,7 +372,9 @@ async def run() -> None:
 
     log.info(
         f"Escuchando mensajes de @{AIKIU_USERNAME}. "
-        f"Voz prob={VOZ_PROB}, modelo={MODELO}. Ctrl+C para detener."
+        f"Voz prob={VOZ_PROB}, modelo={MODELO}, "
+        f"ritmo_humano={RITMO_HUMANO}, max_turnos_ciclo={MAX_TURNOS_CICLO}. "
+        f"Ctrl+C para detener."
     )
 
     # Marca el último mensaje "de Clara" como ahora para que el scheduler no

@@ -10,6 +10,11 @@ semáforo: verde/amarillo/rojo/ausente.
 
 Se usa un archivo por rol (heartbeat-aikiu.json, heartbeat-familiar.json)
 para que los dos procesos no se pisen al escribir.
+
+Excepción: el bot admin no es por instancia (corre una sola vez por host),
+así que pasa `dir_override=ADMIN_DIR` a iniciar_heartbeat para que su
+heartbeat viva en admin/heartbeat-admin.json y no se mezcle con los de
+las instancias.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ from typing import Literal, Optional
 
 from core.instance import instance_dir, instance_id
 from core import state as state_mod
-from core import admin_state
+from admin import state as admin_state
 
 log = logging.getLogger("aikiu.heartbeat")
 
@@ -75,8 +80,8 @@ def _snapshot(role: str, started_at: str) -> dict:
     }
 
 
-async def _loop(role: str, intervalo: int, started_at: str) -> None:
-    path = _ruta(instance_dir(), role)
+async def _loop(role: str, intervalo: int, started_at: str, dir_h: Path) -> None:
+    path = _ruta(dir_h, role)
     while True:
         try:
             _escribir_atomico(path, _snapshot(role, started_at))
@@ -88,7 +93,12 @@ async def _loop(role: str, intervalo: int, started_at: str) -> None:
             break
 
 
-def iniciar_heartbeat(role: str, intervalo: int = INTERVALO_DEFAULT) -> asyncio.Task:
+def iniciar_heartbeat(
+    role: str,
+    intervalo: int = INTERVALO_DEFAULT,
+    *,
+    dir_override: Optional[Path] = None,
+) -> asyncio.Task:
     """
     Arranca la task de heartbeat para este proceso.
 
@@ -98,14 +108,19 @@ def iniciar_heartbeat(role: str, intervalo: int = INTERVALO_DEFAULT) -> asyncio.
 
     Escribe un primer snapshot inmediatamente para que el admin lo vea
     sin esperar el primer tick.
+
+    `dir_override` permite escribir el heartbeat en un directorio distinto
+    al de la instancia (lo usa el admin bot para que su heartbeat viva en
+    admin/ y no se mezcle con los bots por instancia).
     """
     started_at = datetime.now().isoformat(timespec="seconds")
+    dir_h = dir_override if dir_override is not None else instance_dir()
     # primer snapshot sincrónico para no tener gap inicial
     try:
-        _escribir_atomico(_ruta(instance_dir(), role), _snapshot(role, started_at))
+        _escribir_atomico(_ruta(dir_h, role), _snapshot(role, started_at))
     except Exception as e:
         log.warning(f"heartbeat({role}): no pude escribir snapshot inicial: {e}")
-    task = asyncio.create_task(_loop(role, intervalo, started_at))
+    task = asyncio.create_task(_loop(role, intervalo, started_at, dir_h))
     log.info(f"heartbeat({role}) iniciado: intervalo={intervalo}s")
     return task
 

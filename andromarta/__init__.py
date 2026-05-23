@@ -9,6 +9,7 @@ Submódulos:
 - persona: perfil base + system prompt
 - estado: ánimo, energía, eventos del día (evoluciona con las horas)
 - memoria: historial de la conversación, persistido en disco
+- ciclo: cuenta turnos del ciclo actual y lo cierra al llegar al tope
 - generador: arma el prompt y llama a Groq para producir el próximo mensaje
 - scheduler: iniciativa proactiva (Andromarta arranca conversaciones sola)
 """

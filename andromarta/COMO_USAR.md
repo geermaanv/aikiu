@@ -123,6 +123,8 @@ ANDROMARTA_NOMBRE_CLARA=Clara
 ANDROMARTA_MODELO=llama-3.3-70b-versatile
 ANDROMARTA_VOZ_TTS=es-AR-ElenaNeural
 ANDROMARTA_VOZ_PROB=0.4
+ANDROMARTA_RITMO_HUMANO=0
+ANDROMARTA_MAX_TURNOS_CICLO=15
 ```
 
 Detalles:
@@ -131,6 +133,8 @@ Detalles:
 - **`ANDROMARTA_PHONE`**: el número del celular sintético, con el `+` y el código de país. Ejemplo: `+5491138271234`.
 - **`ANDROMARTA_AIKIU_USERNAME`**: el username del bot de prueba que creaste, **sin la arroba**.
 - **`ANDROMARTA_VOZ_PROB`**: probabilidad de que Andromarta responda con audio en vez de texto. `0` = solo texto. `1` = solo audio. `0.4` = más o menos 4 de cada 10.
+- **`ANDROMARTA_RITMO_HUMANO`**: `0` (default) hace que Andromarta responda al toque, sin esperas de "lectura" ni de "tipeo". Poné `1` si querés que simule los tiempos de una persona mayor real (pausa antes de leer, tipeo lento, demora antes de grabar la nota de voz).
+- **`ANDROMARTA_MAX_TURNOS_CICLO`**: cuántos mensajes en total (sumando los de Clara y los de Andromarta) puede tener una "conversación" antes de que Andromarta se despida y se calle. Default: `15`. Después de la despedida, queda esperando a que el scheduler decida volver a arrancar otra conversación (ver más abajo).
 
 Guardá el archivo y cerralo.
 
@@ -177,7 +181,96 @@ Para espiar lo que Andromarta y Aikiu se dicen:
 2. Buscá el chat con el bot de prueba.
 3. Vas a ver los mensajes en tiempo real, igual que una conversación normal de WhatsApp: globos de texto, audios, "escribiendo...", todo.
 
-A veces Andromarta arranca la conversación sola (cada 15 minutos hay un sorteo para ver si lo hace). A veces espera que Aikiu le hable primero. Si no pasa nada en mucho rato, mandale un mensaje vos desde el bot (o desde Aikiu) y va a contestar.
+A veces Andromarta arranca la conversación sola, a veces espera que Aikiu le hable primero. Si no pasa nada en mucho rato, mandale un mensaje vos desde el bot (o desde Aikiu) y va a contestar. Más abajo está la sección [Tiempos, esperas y ritmo de conversación](#tiempos-esperas-y-ritmo-de-conversación) que explica exactamente cuándo Andromarta hace qué y cómo cambiarlo a tu gusto.
+
+---
+
+## Tiempos, esperas y ritmo de conversación
+
+Andromarta tiene cuatro tipos de "tiempo" que podés ajustar. Los más comunes se cambian en `andromarta/.env` (con solo abrir el archivo con un editor de texto y guardar). Los menos comunes están en dos archivos de código (`andromarta/scheduler.py` y `andromarta/estado.py`); también se editan con bloc de notas, son solo dos líneas con números.
+
+> **Después de cambiar cualquiera de estos valores, reiniciá Andromarta** (Ctrl + C en la terminal y volvé a lanzarla). El bot los lee al arrancar; no toma los cambios en caliente.
+
+### 1. Velocidad con la que responde a cada mensaje
+
+Controlado por: **`ANDROMARTA_RITMO_HUMANO`** (en `andromarta/.env`). Default: `0`.
+
+| Valor | Qué pasa |
+|---|---|
+| `0` (default) | Sin esperas artificiales. Andromarta contesta lo más rápido que Groq genere el texto (típicamente 1–3 segundos). El indicador "escribiendo…" / "grabando audio…" sigue apareciendo, pero solo el tiempo que tarda el procesamiento real. |
+| `1` | Simula a una persona mayor real. Espera un rato para "leer" el mensaje, después tipea lento como adulto mayor en WhatsApp, y si responde con audio se demora un poco antes de "grabar". |
+
+Cuando `ANDROMARTA_RITMO_HUMANO=1`, las pausas que aplica son:
+
+| Pausa | Cuándo | Cuánto dura |
+|---|---|---|
+| Lectura | Antes de empezar a responder | 1,5 s base + hasta 8 s extra según el largo del mensaje recibido (cuanto más largo, más tarda en "leer") |
+| Tipeo | Mientras "escribe" el texto, antes de mandarlo | Aprox. `largo / 3` segundos (~3 caracteres por segundo, como adulto mayor), con un mínimo de 2 s y un máximo de 20 s |
+| Grabación | Antes de enviar una nota de voz | Entre 2 y 5 s al azar |
+
+Estos números están hardcodeados en `andromarta/bot.py` (funciones `_pausa_lectura`, `_pausa_tipeo`, `_pausa_grabacion`); si querés afinarlos podés editarlos a mano, pero la mayoría de la gente solo necesita el on/off.
+
+### 2. Largo de cada conversación (corte por cantidad de mensajes)
+
+Controlado por: **`ANDROMARTA_MAX_TURNOS_CICLO`** (en `andromarta/.env`). Default: `15`.
+
+Cada "conversación" tiene un tope de mensajes **contando los de Clara y los de Andromarta juntos**. Cuando la respuesta de Andromarta sería la que llega al tope, manda una despedida natural (algo como "bueno mi vida, te dejo que voy a poner la pava, hablamos más tarde") y queda en silencio: si Clara le sigue escribiendo, **no contesta**. La única manera de reabrir es que el sorteo de iniciativa decida arrancar una conversación nueva (ver punto 3).
+
+| Si ponés... | Pasa esto |
+|---|---|
+| `ANDROMARTA_MAX_TURNOS_CICLO=15` (default) | Conversaciones de ~7 idas y vueltas antes del cierre |
+| Más bajo (ej. `8`) | Conversaciones más cortas, Andromarta se despide antes |
+| Más alto (ej. `30`) | Conversaciones más largas |
+| `2` (mínimo permitido) | Andromarta responde un solo mensaje y ya se despide |
+
+El estado del ciclo (si está abierto o cerrado, cuántos turnos lleva) se guarda en `andromarta/data/ciclo.json` para sobrevivir a reinicios. Si querés **forzar la apertura inmediata de un ciclo nuevo** sin esperar al sorteo, borrá ese archivo: la próxima vez que llegue un mensaje, Andromarta lo crea abierto en 0 turnos y vuelve a responder.
+
+### 3. Cuándo arranca Andromarta una conversación sola (iniciativa)
+
+Andromarta corre por dentro un "reloj" que cada cierto rato hace un sorteo: si gana, ella le manda un mensaje a Aikiu por iniciativa propia (y eso abre un ciclo nuevo). Hay tres cosas que controlan ese reloj:
+
+#### a) Cada cuánto se hace el sorteo
+
+Está en `andromarta/scheduler.py`, línea con `INTERVALO_CHECK_SEG = 60 * 15` (= 15 minutos). Para sortear más seguido cambialo a `60 * 5` (cada 5 min), por ejemplo. Para sortear cada media hora, `60 * 30`.
+
+#### b) A partir de cuánto silencio Andromarta se "aburre"
+
+Mismo archivo, línea `SILENCIO_DISPARADOR_SEG = 60 * 60 * 2` (= 2 horas). Si Clara llevaba más de ese tiempo sin escribir, la probabilidad de que Andromarta dispare iniciativa se multiplica por 2,5 (cap en 90%). Bajarlo (ej. `60 * 30` = media hora) la hace más insistente; subirlo, más tranquila.
+
+#### c) Probabilidad base según la hora del día
+
+Está en `andromarta/estado.py`, función `probabilidad_iniciativa`. Los valores actuales son:
+
+| Franja | Hora | Probabilidad en cada sorteo |
+|---|---|---|
+| Mañana | 06:00–11:00 | 35% |
+| Mediodía | 11:00–14:00 | 15% |
+| Tarde | 14:00–18:00 | 25% |
+| Noche | 18:00–22:00 | 20% |
+| Madrugada | 22:00–06:00 | 2% (casi nunca; insomnio esporádico) |
+
+Cada vez que dispara iniciativa en el mismo día, la probabilidad se reduce a la mitad (para no ser cargosa). Si querés que sea más conversadora, subí esos números; si la querés más reservada, bajalos.
+
+#### Ejemplo concreto
+
+Con los defaults: a media tarde (probabilidad 25%) y sin haber disparado todavía hoy, **en promedio Andromarta arranca conversación sola cada ~60 minutos** (porque cada 15 min hay un 25% de chance: 1/0.25 = 4 sorteos = 60 min). Si llevás 2 horas sin escribirle, ese promedio cae a ~25 minutos.
+
+### 4. Cuánto pasa entre que Clara manda voz y Andromarta la transcribe
+
+Esto no es configurable: depende de lo que tarde Groq Whisper en procesar el audio (típicamente 1–3 segundos para audios de hasta 30 s).
+
+### Tabla resumen — todos los tiempos en un vistazo
+
+| Qué controla | Variable / archivo | Default | Dónde se cambia |
+|---|---|---|---|
+| ¿Simula pausas humanas? | `ANDROMARTA_RITMO_HUMANO` | `0` (no) | `andromarta/.env` |
+| Tope de mensajes por conversación | `ANDROMARTA_MAX_TURNOS_CICLO` | `15` | `andromarta/.env` |
+| Cada cuánto sortea iniciativa | `INTERVALO_CHECK_SEG` | 15 min | `andromarta/scheduler.py` |
+| Cuánto silencio activa el "se aburre" | `SILENCIO_DISPARADOR_SEG` | 2 h | `andromarta/scheduler.py` |
+| Probabilidad de iniciativa por franja | función `probabilidad_iniciativa` | 35/15/25/20/2% | `andromarta/estado.py` |
+| Pausa de "lectura" (solo con ritmo humano) | función `_pausa_lectura` | 1,5–9,5 s | `andromarta/bot.py` |
+| Pausa de "tipeo" (solo con ritmo humano) | función `_pausa_tipeo` | 2–20 s | `andromarta/bot.py` |
+| Pausa de "grabación" (solo con ritmo humano) | función `_pausa_grabacion` | 2–5 s | `andromarta/bot.py` |
 
 ---
 

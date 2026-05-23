@@ -73,11 +73,11 @@ Aikiu está compuesto por **tres bots de Telegram** que trabajan en conjunto:
 |---|---|---|
 | **Bot principal (`aikiu.py`)** | El adulto mayor | Recibe voz/texto, responde con voz/texto, detecta angustia |
 | **Bot familiar (`familiar_bot.py`)** | Familia y cuidadores | Recibe alertas, edita el perfil, envía mensajes-puente |
-| **Bot admin (`admin_bot.py`)** | Solo el operador | Monitorea salud, uso del LLM y métricas de cada instancia |
+| **Bot admin (`admin/bot.py`)** | Equipo operador (hasta 5) | Monitorea salud, uso del LLM y métricas de cada instancia |
 
 Hay además un cliente sintético opcional (`andromarta/bot.py`) que se hace pasar por un adulto mayor para testear Aikiu end-to-end. No es un bot: es un cliente de usuario MTProto. Ver [Andromarta](#andromarta--humanoide-sintético-para-testing).
 
-El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien. El bot admin es opcional: si configurás `ADMIN_BOT_TOKEN`, te da `/health`, `/llm` y `/metricas` vía Telegram.
+El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien. El bot admin es opcional: si configurás `ADMIN_BOT_TOKEN`, te da `/health`, `/llm` y `/metricas` vía Telegram, y soporta hasta 5 chat_ids (un equipo operador) por default.
 
 ---
 
@@ -578,7 +578,13 @@ Cada bot tiene:
 aikiu/
 ├── aikiu.py                # Bot principal: STT + LLM + TTS + scheduler
 ├── familiar_bot.py         # Bot familiar: alertas, edición de perfil, mensajes-puente
-├── admin_bot.py            # Bot admin (opcional): /health, /llm, /metricas, /logs
+├── admin/                  # Bot admin (opcional): /health, /llm, /metricas, /logs
+│   ├── bot.py              # Entry point del bot admin
+│   ├── state.py            # Estado multi-admin (hasta 5 chat_ids)
+│   ├── COMO_USAR.md        # Guía paso a paso para activarlo y usarlo desde el celular
+│   ├── admin_state.json    # Lista de admins persistida (gitignored, runtime)
+│   ├── heartbeat-admin.json # Heartbeat del admin bot (gitignored, runtime)
+│   └── admin_stdout.log    # Stdout del admin bot (gitignored, runtime)
 ├── andromarta/             # Cliente sintético opcional, autocontenido (ver sección Andromarta)
 ├── configurar.py           # Wizard interactivo para generar perfil.md
 ├── core/
@@ -587,9 +593,9 @@ aikiu/
 │   ├── tools.py            # Consultas externas: clima, dólar, noticias
 │   ├── tts.py              # Síntesis de voz con edge-tts + conversión a Opus
 │   ├── state.py            # TOFU del adulto mayor (state.json)
-│   ├── admin_state.py      # TOFU del admin (admin_state.json)
 │   ├── instance.py         # Abstracción de instancia (single + multi-tenant)
 │   ├── heartbeat.py        # Heartbeat por rol y por instancia
+│   ├── llm_limits.py       # Catálogo de límites del free tier de Groq por modelo
 │   └── usage.py            # Tracking de tokens y latencias de Groq
 ├── tests/                  # tests unitarios + checklist E2E manual
 ├── .cursor/rules/          # Reglas para el agente de Cursor (convenciones del repo)
@@ -664,10 +670,13 @@ GROQ_API_KEY=...              # console.groq.com
 FAMILIAR_BOT_TOKEN=...        # Segundo bot (BotFather)
 FAMILIAR_CHAT_ID=...          # chat_id de un familiar de fallback
 
-# Opcional: bot admin (solo vos) — habilita /health, /llm, /metricas
+# Opcional: bot admin (vos + equipo, hasta 5) — habilita /health, /llm, /metricas
 ADMIN_BOT_TOKEN=...           # Tercer bot (BotFather)
-# El primer chat que mande /start queda registrado como admin único (TOFU).
-GROQ_DAILY_TOKEN_LIMIT=500000 # Para el aviso de cuota en /llm (default 500k/día)
+# Cada /start desde un chat distinto suma un admin nuevo hasta llenar el cupo
+# (5 por default). Cuando se llena, el resto se rechaza en silencio.
+# ADMIN_CHAT_IDS=111,222,333   # Opcional: fijar la lista por env (deshabilita /start y /quitar_admin).
+# ADMIN_MAX_USERS=5            # Opcional: cambiar el cupo (default 5).
+# GROQ_DAILY_TOKEN_LIMIT=100000 # Override manual del TPD para los avisos del admin (/llm). Si lo dejás sin setear, el admin usa el TPD del free tier de Groq por modelo desde core/llm_limits.py (ej. llama-3.3-70b-versatile = 100k TPD, llama-3.1-8b-instant = 500k TPD). Útil solo si tenés tier pago.
 
 # Opcional: multi-tenant (preparado para varios adultos en una misma máquina)
 # AIKIU_INSTANCE_ID=default
@@ -767,21 +776,27 @@ Todas las alertas (angustia, inactividad) llegan a **todos** los suscriptores.
 
 ## Comandos del bot admin
 
-Opcional. Se activa si `ADMIN_BOT_TOKEN` está configurado en `.env`. El primer chat que mande `/start` queda registrado como admin único (TOFU, mismo patrón que el bot principal) en `admin_state.json`. Cualquier otro chat es rechazado silenciosamente.
+Opcional. Se activa si `ADMIN_BOT_TOKEN` está configurado en `.env`. Cada `/start` desde un chat distinto suma un admin nuevo hasta llenar el cupo (5 por default, configurable con `ADMIN_MAX_USERS`). Cuando el cupo se llena, los `/start` siguientes se rechazan en silencio. Todos los admins son pares: cualquiera puede usar todos los comandos y agregar/quitar a los demás. La lista persiste en `admin/admin_state.json`.
+
+Alternativa segura: si seteás `ADMIN_CHAT_IDS=111,222,333` en `.env`, esa lista fija manda y los comandos de gestión (`/start` para sumar, `/quitar_admin` para sacar) quedan deshabilitados.
+
+Si venís de una instalación anterior al refactor que ponía `admin_state.json` en la raíz del repo, no hace falta moverlo a mano: la primera vez que arranque `admin/bot.py` lo migra automático a `admin/admin_state.json`. Lo mismo pasa con el formato viejo single-admin (`{"admin_chat_id": ...}`) — se lee y se reescribe al formato multi-admin transparentemente.
 
 | Comando | Descripción |
 |---|---|
-| `/start` | Registra al admin único (TOFU) y muestra el menú. |
+| `/start` | Registra al chat como admin si hay cupo (cupo abierto hasta `ADMIN_MAX_USERS`). Si ya sos admin, muestra el menú. |
 | `/health` | Estado de cada bot por instancia (semáforo verde/amarillo/rojo según heartbeat) + ping `get_me()` a la API de Telegram. |
-| `/llm` | Consumo de Groq: tabla por período (hoy / 7d / 30d) con llamadas totales, OK, tokens y errores con porcentaje. Separa LLM de Whisper, clasifica los errores (rate limit / timeout / auth / etc.) y avisa si te acercás al `GROQ_DAILY_TOKEN_LIMIT`. |
+| `/llm` | Consumo de Groq: detecta automáticamente qué modelos de chat tuvieron actividad en los últimos 30 días y muestra el headline por cada uno con sus límites RPM/RPD/TPM/TPD del free tier (catálogo en `core/llm_limits.py`). Tabla por período (hoy / 7d / 30d) con llamadas totales, OK, tokens y errores. Separa LLM de Whisper, clasifica los errores (rate limit / timeout / auth / etc.) y, cuando los 429 dominan, te indica el TPM/RPM exacto contra el que estás pegando. |
 | `/metricas` | Adultos activos hoy/7d, familiares suscritos por instancia, mensajes/día, alertas por nivel, aprendizajes nuevos, top temas. |
 | `/instancias` | Lista de instancias detectadas (`AIKIU_REGISTRY` o única). |
 | `/logs [instancia] [N]` | Últimas N líneas de `aikiu.log` (default 30). |
+| `/admins` | Lista los chat_ids con permiso de admin, cupo usado y fuente (TOFU o `.env`). |
+| `/quitar_admin <chat_id>` | Saca a un admin de la lista. Bloqueado si la lista está fijada por `ADMIN_CHAT_IDS`. |
 | `/ayuda` | Menú. |
 
 Multi-tenant: sin `AIKIU_REGISTRY` el admin monitorea la única instancia que vive en el repo. Si seteás `AIKIU_REGISTRY=/var/aikiu/instances`, cada deploy queda en `<registry>/<AIKIU_INSTANCE_ID>/` y el admin los descubre solo.
 
-Para resetear el admin (por ejemplo si alguien lo secuestró antes que vos): `python -c "from core.admin_state import reset_admin; reset_admin()"`.
+Para borrar todos los admins persistidos (por ejemplo si alguien se metió antes de tu equipo): `python -c "from admin.state import reset_admin; reset_admin()"`. No afecta a la lista fijada por `ADMIN_CHAT_IDS` en `.env`.
 
 ---
 
@@ -896,10 +911,11 @@ Para **observar** la conversación: abrí Telegram con la misma cuenta en el cel
 
 ```
 andromarta/                  # paquete autocontenido (no se mezcla con el resto del repo)
-├── bot.py                   # cliente Telethon + handlers + ritmo humano (entry point)
+├── bot.py                   # cliente Telethon + handlers (entry point)
 ├── persona.py               # system prompt + perfil base (lee persona.md)
 ├── estado.py                # ánimo, energía, síntomas, eventos del día (regenera diario)
 ├── memoria.py               # historial conversacional (persistido en JSON)
+├── ciclo.py                 # cuenta turnos del ciclo y lo cierra al llegar al tope
 ├── scheduler.py             # loop de iniciativa (Andromarta arranca conversación sola)
 ├── generador.py             # arma el prompt y llama a Groq
 ├── persona.md               # perfil sintético editable, separado del perfil.md real
@@ -908,6 +924,7 @@ andromarta/                  # paquete autocontenido (no se mezcla con el resto 
 └── data/                    # runtime (todo gitignored)
     ├── estado.json          # estado del día actual
     ├── memoria.json         # historial de los últimos turnos
+    ├── ciclo.json           # estado del ciclo de conversación (abierto/cerrado, contador)
     └── andromarta.session   # sesión MTProto de Telethon (= la cuenta de Telegram)
 ```
 
@@ -944,10 +961,11 @@ La primera vez Telethon te va a pedir el código SMS que Telegram envía al núm
 
 - **Responde a Clara**: cada mensaje que llega de `@<ANDROMARTA_AIKIU_USERNAME>` dispara una generación con Groq usando persona + estado + historial.
 - **Voz o texto**: por defecto 40% de las respuestas son nota de voz (configurable con `ANDROMARTA_VOZ_PROB`). Si Clara manda voz, Andromarta tiende a responder en voz.
-- **Ritmo humano**: pausas de "lectura", indicador de "escribiendo..." o "grabando voz...", tipeo lento (~3 char/seg con ruido).
-- **Iniciativa**: cada 15 min un loop evalúa si arranca conversación sola. La probabilidad depende de la franja horaria y de cuánto hace que Clara no escribe.
+- **Sin esperas por default** (`ANDROMARTA_RITMO_HUMANO=0`): contesta tan rápido como Groq genere. El indicador "escribiendo…"/"grabando voz…" se sigue mostrando, pero no hay pausas artificiales. Poné `ANDROMARTA_RITMO_HUMANO=1` para simular pausas de lectura, tipeo lento (~3 char/seg) y demora antes de grabar voz, como una persona mayor real.
+- **Ciclo de conversación con tope** (`ANDROMARTA_MAX_TURNOS_CICLO=15` por default): cada conversación dura como máximo 15 turnos en total (Clara + Marta combinados). Cuando se llega al tope, Andromarta manda una despedida natural ("te dejo que pongo la pava") y queda en silencio. La única forma de reabrir es que el scheduler dispare iniciativa.
+- **Iniciativa**: cada 15 min un loop evalúa si arranca conversación sola. La probabilidad depende de la franja horaria y de cuánto hace que Clara no escribe. **Cada disparo abre un ciclo nuevo** y resetea el contador.
 - **Estado diario**: ánimo (1-10), energía, síntomas activos y eventos del día se regeneran cada amanecer (con sesgo al estado de ayer). El system prompt lee ese estado para que las respuestas reflejen el momento.
-- **Memoria persistente**: `andromarta/data/memoria.json` conserva los últimos 40 turnos. Borrá el archivo para empezar de cero.
+- **Memoria persistente**: `andromarta/data/memoria.json` conserva los últimos 40 turnos. `andromarta/data/ciclo.json` guarda si el ciclo está abierto y cuántos turnos lleva. Borrá esos archivos para empezar de cero.
 
 ### Limitaciones y notas de seguridad
 
