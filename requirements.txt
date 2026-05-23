@@ -6,3 +6,8 @@ python-dotenv==1.0.1
 edge-tts>=6.1.9
 httpx>=0.27.0
 telethon>=1.36.0
+# Dependencias del simulador (simulador/simulador.py). El simulador es un
+# tooling de desarrollo (no se usa en producción) pero estaba importando
+# google-genai y openai sin declararlos acá.
+google-genai>=0.3.0
+openai>=1.40.0

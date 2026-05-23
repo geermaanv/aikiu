@@ -6,7 +6,7 @@ Lee la conversación, puntúa, y actualiza perfil_simulacion.md (nunca perfil.md
 import json
 import shutil
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -120,7 +120,7 @@ Evaluá y devolvé exactamente el formato pedido.
     with open(SCORES_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps({
             "iteracion": iteracion,
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
             "scores": scores_raw,
             "total": total,
             "log": log_path.name,

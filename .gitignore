@@ -11,6 +11,7 @@ state.json
 admin_state.json
 stats.json
 receptividad.json
+tematica_activa.json
 usage.json
 usage.*.json
 heartbeat-*.json
