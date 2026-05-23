@@ -58,10 +58,11 @@ Construir un acompañante de IA **abierto, gratuito y respetuoso**, que:
 16. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
 17. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
 18. [Andromarta — humanoide sintético para testing](#andromarta--humanoide-sintético-para-testing)
-19. [Tests](#tests)
-20. [Seguridad y privacidad](#seguridad-y-privacidad)
-21. [Roadmap](#roadmap)
-22. [Licencia](#licencia)
+19. [Simulador de conversación (laboratorio de prompts)](#simulador-de-conversación-laboratorio-de-prompts)
+20. [Tests](#tests)
+21. [Seguridad y privacidad](#seguridad-y-privacidad)
+22. [Roadmap](#roadmap)
+23. [Licencia](#licencia)
 
 ---
 
@@ -76,6 +77,8 @@ Aikiu está compuesto por **tres bots de Telegram** que trabajan en conjunto:
 | **Bot admin (`admin/bot.py`)** | Equipo operador (hasta 5) | Monitorea salud, uso del LLM y métricas de cada instancia |
 
 Hay además un cliente sintético opcional (`andromarta/bot.py`) que se hace pasar por un adulto mayor para testear Aikiu end-to-end. No es un bot: es un cliente de usuario MTProto. Ver [Andromarta](#andromarta--humanoide-sintético-para-testing).
+
+Para iterar el system prompt **sin pasar por Telegram**, existe también un [Simulador de conversación](#simulador-de-conversación-laboratorio-de-prompts) (`simulador/`): dos LLMs conversan entre sí y un tercero puntúa la conversación con criterios gerontológicos, escribiendo los ajustes en un perfil paralelo (`simulador/perfil_simulacion.md`) que **nunca toca** el `perfil.md` de producción.
 
 El adulto mayor solo necesita hablarle al bot principal como si fuese una persona. La familia gestiona el contexto y recibe avisos cuando algo no anda bien. El bot admin es opcional: si configurás `ADMIN_BOT_TOKEN`, te da `/health`, `/llm` y `/metricas` vía Telegram, y soporta hasta 5 chat_ids (un equipo operador) por default.
 
@@ -586,6 +589,15 @@ aikiu/
 │   ├── heartbeat-admin.json # Heartbeat del admin bot (gitignored, runtime)
 │   └── admin_stdout.log    # Stdout del admin bot (gitignored, runtime)
 ├── andromarta/             # Cliente sintético opcional, autocontenido (ver sección Andromarta)
+├── simulador/              # Laboratorio offline de prompts (NO toca perfil.md de producción)
+│   ├── simulador.py        # Agente A (Gemini = adulto mayor) ↔ Agente B (cascada Groq/Gemini/OpenRouter = Clara)
+│   ├── evaluador.py        # Puntúa la conversación (Gemini) y reescribe perfil_simulacion.md si mejora
+│   ├── loop.py             # Orquesta N iteraciones simular → puntuar → ajustar
+│   ├── generar_resumen_pdf.py # Render del PDF resumen de una corrida
+│   ├── personas/<name>.md  # Perfil del adulto mayor simulado (hoy: marta.md)
+│   ├── perfil_simulacion.md   # Perfil paralelo que evoluciona (gitignored, runtime)
+│   ├── logs/               # Conversaciones en JSONL por iteración (gitignored, runtime)
+│   └── scores.jsonl        # Histórico de puntajes por iteración (gitignored, runtime)
 ├── configurar.py           # Wizard interactivo para generar perfil.md
 ├── core/
 │   ├── distress.py         # Parsing del DISTRESS_LEVEL y lógica de cooldowns
@@ -972,6 +984,82 @@ La primera vez Telethon te va a pedir el código SMS que Telegram envía al núm
 - El archivo `*.session` **es** la cuenta de Telegram. Mantenelo seguro (ya está en `.gitignore`).
 - Los "userbots" (cuentas automatizadas) están en zona gris en los TOS de Telegram. Para uso personal de testing no hay problema mientras no se haga spam o broadcast.
 - Lo ideal es usar una **SIM aparte**. Si no tenés otra, podés usar tu número personal con algunos recaudos (no chatear manualmente con el bot test mientras corre Andromarta, etc.) — está detallado en [`andromarta/COMO_USAR.md`](./andromarta/COMO_USAR.md#si-vas-a-usar-tu-propio-número).
+
+---
+
+## Simulador de conversación (laboratorio de prompts)
+
+`simulador/` es un módulo **offline y standalone** para iterar el system prompt de Clara sin pasar por Telegram, sin tocar el `perfil.md` de producción y sin necesidad de un adulto mayor real escuchando. Mientras Andromarta exige Telegram, Telethon y una cuenta de usuario, el simulador corre con un solo `python simulador/loop.py`.
+
+### Cómo funciona
+
+Tres LLMs en cascada:
+
+| Rol | Modelo |
+|---|---|
+| **Agente A — Adulto mayor** | Gemini 2.5 Flash, interpretando una persona definida en `simulador/personas/<nombre>.md`. |
+| **Agente B — Clara (asistente)** | Cascada con fallback automático ante 429/quota: Groq `llama-3.3-70b-versatile` → Gemini 2.5 Flash → OpenRouter (`openai/gpt-oss-120b:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`). Usa el mismo system prompt que Aikiu en producción. |
+| **Evaluador** | Gemini 2.5 Flash, puntúa la conversación con 7 criterios gerontológicos (voseo, ratio preguntas, autorrevelación, respuesta a vulnerabilidad, sin eco, cierre de negativas, tono) y propone un perfil ajustado. |
+
+El loop ejecuta N iteraciones de _simular → puntuar → ajustar_. **El perfil ajustado solo se acepta si el score total supera al anterior**, y se guarda un backup automático antes de pisar cualquier versión previa.
+
+### Aislamiento del perfil de producción
+
+| Archivo | Quién lo toca |
+|---|---|
+| `perfil.md` (producción) | **Nadie del simulador.** Se lee solo una vez para sembrar `perfil_simulacion.md` si todavía no existe. |
+| `simulador/perfil_simulacion.md` | Lo escribe el evaluador cuando mejora el score. Gitignored. |
+| `simulador/perfil_sim_backup_<ts>.md` | Backup automático antes de cada actualización. Gitignored. |
+
+### Setup
+
+Dependencias adicionales que **no están en `requirements.txt`** (instalalas si vas a correr el simulador):
+
+```bash
+source venv/bin/activate
+pip install google-genai openai reportlab
+```
+
+Variables de entorno extra en `.env` (las que ya usa Aikiu siguen sirviendo):
+
+```bash
+GEMINI_API_KEY=...        # obligatoria para Agente A y para el evaluador
+OPENROUTER_API_KEY=...    # opcional, solo si querés que la cascada caiga a OpenRouter
+```
+
+### Uso
+
+```bash
+python simulador/loop.py                 # 3 iteraciones, persona "marta", 10 turnos
+python simulador/loop.py 5               # 5 iteraciones
+python simulador/loop.py 3 marta 8       # 3 iteraciones, persona marta, 8 turnos
+```
+
+Comandos auxiliares:
+
+```bash
+python simulador/simulador.py marta 10   # Una sola conversación, sin evaluar
+python simulador/evaluador.py            # Puntúa el log JSONL más reciente
+python simulador/generar_resumen_pdf.py  # Render del PDF resumen
+```
+
+### Outputs
+
+- `simulador/logs/iter<NN>_<persona>_<YYYYMMDD_HHMMSS>.jsonl` — conversación turno por turno con el backend efectivo.
+- `simulador/scores.jsonl` — un line por iteración con los 7 puntajes y el total.
+- `simulador/perfil_simulacion.md` — versión "mejor hasta ahora" del perfil.
+- `simulador/resumen_simulador_aikiu.pdf` — PDF de presentación de una corrida.
+
+Cuando un experimento converge en un perfil que te gusta, lo aplicás a producción **a mano**, copiando las secciones relevantes de `perfil_simulacion.md` a `perfil.md`. No hay promoción automática a propósito: el simulador es para explorar, no para deployar.
+
+### Cuándo usar simulador vs. Andromarta
+
+| Necesitás… | Usá |
+|---|---|
+| Iterar rápido el system prompt o el perfil, sin Telegram | **Simulador** |
+| Probar el flujo end-to-end real (voz, alertas, scheduler, bot familiar) | **Andromarta** |
+| Comparar variantes de Clara contra el mismo personaje, con score reproducible | **Simulador** |
+| Ver cómo se comporta el bot ante una persona "viva" con iniciativa y ciclos | **Andromarta** |
 
 ---
 
