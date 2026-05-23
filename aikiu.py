@@ -280,6 +280,26 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
             "content": f"Datos en tiempo real para responder este mensaje: {datos_externos}",
         })
 
+    # RULE_MEM_01: inyectar temática activa (continuidad afectiva entre sesiones)
+    tematica = load_json(_TEMATICA_ACTIVA_PATH, default={})
+    temas_activos = tematica.get("temas", [])
+    if temas_activos:
+        messages.append({
+            "role": "system",
+            "content": f"TEMÁTICA_ACTIVA: {', '.join(temas_activos)}. "
+                       f"Si {nombre} menciona estos temas, usá verbos de continuidad y familiaridad, "
+                       f"no de descubrimiento. Ejemplo: 'Qué lindo que sigan así de fuertes' en vez de '¡Qué lindas tus plantas!'.",
+        })
+
+    # RULE_TIME_22: modo nocturno (después de 21hs)
+    hora_actual = datetime.now().hour
+    if hora_actual >= 21 or hora_actual < 6:
+        messages.append({
+            "role": "system",
+            "content": "Es de noche. Respondé con calma y serenidad, sin proponer actividades dinámicas. "
+                       "Usá palabras que evoquen el descanso y la tranquilidad.",
+        })
+
     # Inyectar blacklist de temas con baja receptividad en las últimas 48h
     evitar = _temas_a_evitar()
     if evitar:
@@ -616,6 +636,14 @@ AJUSTES_CONVERSACION:
         # Detectar síntomas persistentes entre sesiones y alertar al familiar
         await _alertar_sintomas_persistentes(app, log_dia)
 
+        # Monitoreo de calidad del bot (30 reglas gerontológicas)
+        alertas = _monitoreo_calidad_bot(log_dia)
+        if alertas:
+            log.warning(f"analisis_nocturno calidad [{len(alertas)} alerta(s)]: {alertas}")
+
+        # Inyectar temática activa si se repite en sesiones consecutivas (RULE_MEM_01)
+        _inyectar_tematica_activa()
+
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
 
@@ -676,6 +704,120 @@ def _filtrar_instrucciones_medicas(instrucciones: list[str]) -> list[str]:
     if removidas:
         log.info(f"analisis_nocturno: {removidas} instrucción(es) médica(s) filtrada(s)")
     return filtradas
+
+
+_RE_PREGUNTA_CIERRE   = re.compile(r"\?[\"']?\s*$", re.MULTILINE)
+_RE_TRUNCADO          = re.compile(r"(?<![.!?\"'])\s*$")
+_RE_MARKDOWN          = re.compile(r"[*\-#_\[\]|`]")
+_RE_CHE_CIERRE        = re.compile(r",?\s*che\s*\?", re.IGNORECASE)
+_RE_OVERLAP_STOP      = {"de", "la", "el", "los", "las", "un", "una", "que", "y", "en", "a", "con"}
+_RE_SOLEDAD_FAMILIAR  = re.compile(r"\b(germán|lao|cata|familia)\b", re.IGNORECASE)
+_RE_SOLEDAD_TRIGGER   = re.compile(r"\b(silencio|sola|soledad|nadie)\b", re.IGNORECASE)
+_RE_CTRL_AUTOCUIDADO  = re.compile(r"¿pudiste\s+(tomar|descansar|poner|comer|dormir)", re.IGNORECASE)
+_RE_EDAD_DOLOR        = re.compile(r"\b(edad|envejecer|mayor|vieja|costumbre).{0,40}(dolor|duele|normal)\b", re.IGNORECASE)
+_RE_EXCLAMACION_BOT   = re.compile(r"¡[^!]{0,40}!")
+_RE_FARMACO           = re.compile(r"\b(efectividad|te ayud[oó]|dosis|tomar(la|las)|horario).{0,30}(gota|remedio|pastilla|medicamento)\b", re.IGNORECASE)
+
+
+def _monitoreo_calidad_bot(log_dia: str) -> list[str]:
+    """RULE_VUI_02 a RULE_CTRL_29: detecta patrones de baja calidad en los logs del día."""
+    alertas = []
+    nombre    = CONFIG["nombre_adulto_mayor"]
+    asistente = CONFIG["nombre_asistente"]
+
+    turnos_bot = re.findall(rf"- {asistente}: (.+)", log_dia)
+    turnos_usr = re.findall(rf"- {nombre}: (.+)", log_dia)
+    if not turnos_bot:
+        return alertas
+
+    # RULE_VUI_02: ratio de preguntas > 50%
+    con_pregunta = sum(1 for t in turnos_bot if _RE_PREGUNTA_CIERRE.search(t))
+    if turnos_bot and con_pregunta / len(turnos_bot) > 0.5:
+        alertas.append(f"RULE_VUI_02: interrogatorio ({con_pregunta}/{len(turnos_bot)} turnos con pregunta)")
+
+    # RULE_ERR_03: respuestas truncadas (no terminan en puntuación de cierre)
+    truncados = [t for t in turnos_bot if _RE_TRUNCADO.search(t) and not re.search(r"[.!?]$", t.strip())]
+    if truncados:
+        alertas.append(f"RULE_ERR_03: {len(truncados)} respuesta(s) truncada(s)")
+
+    # RULE_LEX_04: solapamiento léxico > 40% entre turno usuario y turno bot
+    solapamientos = 0
+    for u, b in zip(turnos_usr, turnos_bot):
+        palabras_u = {w.lower() for w in re.findall(r"\w{4,}", u)} - _RE_OVERLAP_STOP
+        palabras_b = {w.lower() for w in re.findall(r"\w{4,}", b)} - _RE_OVERLAP_STOP
+        if palabras_u and len(palabras_u & palabras_b) / len(palabras_u) > 0.4:
+            solapamientos += 1
+    if solapamientos:
+        alertas.append(f"RULE_LEX_04: eco léxico en {solapamientos} turno(s)")
+
+    # RULE_LIN_10: "che" como sufijo de pregunta
+    che_mal = sum(1 for t in turnos_bot if _RE_CHE_CIERRE.search(t))
+    if che_mal:
+        alertas.append(f"RULE_LIN_10: 'che' al cierre de pregunta en {che_mal} turno(s)")
+
+    # RULE_TON_13: exclamaciones ante tono neutro/negativo del usuario
+    _NEGATIVO = re.compile(r"\b(sola|cansada|triste|mal|duele|silencio|extraño|pobrecita)\b", re.IGNORECASE)
+    for u, b in zip(turnos_usr, turnos_bot):
+        if _NEGATIVO.search(u) and _RE_EXCLAMACION_BOT.search(b):
+            alertas.append("RULE_TON_13: exclamación ante tono negativo del usuario")
+            break
+
+    # RULE_LON_19: listar familiares como respuesta a soledad
+    for u, b in zip(turnos_usr, turnos_bot):
+        if _RE_SOLEDAD_TRIGGER.search(u) and _RE_SOLEDAD_FAMILIAR.search(b):
+            alertas.append("RULE_LON_19: enumeración de familiares ante soledad declarada")
+            break
+
+    # RULE_GER_08: edadismo (dolor asociado a vejez)
+    for t in turnos_bot:
+        if _RE_EDAD_DOLOR.search(t):
+            alertas.append("RULE_GER_08: sesgo edadista detectado")
+            break
+
+    # RULE_TXT_24: markdown en output del bot
+    md_turnos = sum(1 for t in turnos_bot if _RE_MARKDOWN.search(t))
+    if md_turnos:
+        alertas.append(f"RULE_TXT_24: markdown en {md_turnos} turno(s) del bot")
+
+    # RULE_MED_06: preguntas sobre efectividad de medicamentos
+    for t in turnos_bot:
+        if _RE_FARMACO.search(t):
+            alertas.append("RULE_MED_06: pregunta sobre efectividad de fármaco")
+            break
+
+    # RULE_CTRL_29: preguntas de control de autocuidado
+    ctrl = sum(1 for t in turnos_bot if _RE_CTRL_AUTOCUIDADO.search(t))
+    if ctrl:
+        alertas.append(f"RULE_CTRL_29: {ctrl} pregunta(s) de control de autocuidado")
+
+    # RULE_CLOSE_30: última respuesta del bot termina con pregunta
+    if turnos_bot and _RE_PREGUNTA_CIERRE.search(turnos_bot[-1]):
+        alertas.append("RULE_CLOSE_30: sesión cerrada con repregunta abierta")
+
+    return alertas
+
+
+_TEMATICA_ACTIVA_PATH = BASE_DIR / "tematica_activa.json"
+
+def _inyectar_tematica_activa():
+    """RULE_MEM_01: si el mismo tema de alegría aparece en 2+ sesiones consecutivas,
+    registrarlo para que el bot use verbos de continuidad al día siguiente."""
+    try:
+        entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+        ahora = datetime.now()
+        ayer   = (ahora - timedelta(days=1)).strftime("%Y-%m-%d")
+        hoy    = ahora.strftime("%Y-%m-%d")
+
+        temas_alta_hoy  = {e["tema"] for e in entradas if e["receptividad"] == "alta" and e["ts"][:10] == hoy}
+        temas_alta_ayer = {e["tema"] for e in entradas if e["receptividad"] == "alta" and e["ts"][:10] == ayer}
+        activos = list(temas_alta_hoy & temas_alta_ayer)
+
+        data = {"temas": activos, "ts": ahora.isoformat()}
+        _TEMATICA_ACTIVA_PATH.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        if activos:
+            log.info(f"RULE_MEM_01: temática activa detectada → {activos}")
+    except Exception as e:
+        log.warning(f"_inyectar_tematica_activa falló: {e}")
 
 
 async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[str]:
