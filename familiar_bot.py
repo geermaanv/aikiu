@@ -13,7 +13,7 @@ import yaml
 from pathlib import Path
 from dotenv import load_dotenv
 from groq import AsyncGroq
-from telegram import Bot, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Bot, BotCommand, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, CommandHandler, ConversationHandler,
     MessageHandler, filters, ContextTypes,
@@ -55,6 +55,19 @@ def _nombre_adulto() -> str:
     return _CONFIG.get("nombre_adulto_mayor", "Marta")
 
 ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE = range(3)
+
+# Lista que Telegram muestra en el boton de menu azul al lado de la caja de texto.
+# Las descripciones tienen que ser cortas (<=256 chars cada una, sin markdown).
+COMANDOS_TELEGRAM = [
+    BotCommand("mensaje",       "Enviarle un mensaje al adulto (texto o voz)"),
+    BotCommand("nombre",        "Registrar como te conoce el adulto"),
+    BotCommand("perfil",        "Ver el perfil completo"),
+    BotCommand("editar",        "Editar una seccion del perfil"),
+    BotCommand("stats",         "Actividad del adulto en los ultimos dias"),
+    BotCommand("aprendizajes",  "Lo que Clara aprendio del adulto"),
+    BotCommand("suscriptores",  "Familiares registrados para recibir alertas"),
+    BotCommand("ayuda",         "Menu de comandos"),
+]
 
 SECCIONES = [
     "Quién es",
@@ -479,6 +492,13 @@ async def main():
     log.info("Bot familiar iniciando...")
     async with app:
         await app.initialize()
+        # Publica los comandos en Telegram para que aparezcan en el boton de menu
+        # azul (al lado del campo de texto) apenas el familiar abre el chat.
+        try:
+            await app.bot.set_my_commands(COMANDOS_TELEGRAM)
+            log.info(f"Comandos publicados en Telegram: {len(COMANDOS_TELEGRAM)}")
+        except Exception as e:
+            log.warning(f"No pude publicar los comandos en Telegram: {e}")
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
         hb_mod.iniciar_heartbeat("familiar")
