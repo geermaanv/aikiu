@@ -610,6 +610,7 @@ aikiu/
 │   ├── llm_limits.py       # Catálogo de límites del free tier de Groq por modelo
 │   └── usage.py            # Tracking de tokens y latencias de Groq
 ├── tests/                  # tests unitarios + checklist E2E manual
+├── .github/workflows/      # CI: corre pytest en cada PR y push a main
 ├── .cursor/rules/          # Reglas para el agente de Cursor (convenciones del repo)
 ├── config.yml              # Config no sensible (nombres, voz, horarios, recordatorios)
 ├── perfil.md               # Perfil del adulto mayor en lenguaje natural
@@ -1083,6 +1084,10 @@ pytest
 Hay también un **checklist E2E manual** en [`tests/checklist.md`](./tests/checklist.md).
 
 Se recomienda configurar un git pre-commit hook para correr los tests antes de cada commit.
+
+### CI (GitHub Actions)
+
+El workflow [`.github/workflows/tests.yml`](./.github/workflows/tests.yml) corre `pytest` en cada **pull request** contra `main` y en cada **push directo a `main`** (Ubuntu, Python 3.11). Si querés que el merge quede bloqueado hasta que pase, marcá el check `pytest (Python 3.11)` como **required status check** en la branch protection de `main` (Settings → Branches → main).
 
 ---
 
