@@ -28,3 +28,6 @@ andromarta/data/*
 *.session
 *.session-journal
 
+# Multi-tenant: datos por hogar (un directorio por adulto registrado)
+instances/
+

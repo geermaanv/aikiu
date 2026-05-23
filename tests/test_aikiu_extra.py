@@ -180,13 +180,16 @@ def test_registrar_log_appende_si_existe(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_chat_id_autorizado_true():
+    # En multi-tenant, todo chat_id puede operar (cada uno tiene su hogar).
     state_mod.registrar_owner(42)
     assert aikiu.chat_id_autorizado(42) is True
 
 
-def test_chat_id_autorizado_false():
+def test_chat_id_autorizado_acepta_cualquier_chat_id_en_multi_tenant():
+    """Antes era TOFU global y rechazaba el segundo chat. Ahora cada chat
+    crea su propio hogar, así que siempre se autoriza."""
     state_mod.registrar_owner(42)
-    assert aikiu.chat_id_autorizado(99) is False
+    assert aikiu.chat_id_autorizado(99) is True
 
 
 def test_owner_chat_id_o_warn_sin_owner():
@@ -221,27 +224,71 @@ def _fake_context():
     return ctx
 
 
-def test_cmd_start_primer_owner_se_registra():
+def test_cmd_start_crea_hogar_y_responde():
+    """En multi-tenant, cada /start crea un hogar para el chat_id que lo manda."""
+    from core import hogar as hogar_mod
     update = _fake_update(chat_id=42)
     ctx = _fake_context()
     with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
         run(aikiu.cmd_start(update, ctx))
-    assert state_mod.owner_chat_id() == 42
+    assert hogar_mod.existe_hogar(42)
     ctx.bot.send_message.assert_awaited_once()
 
 
-def test_cmd_start_no_owner_rechaza():
-    """Si ya hay owner y vino otro chat_id, no responde."""
-    state_mod.registrar_owner(42)
-    update = _fake_update(chat_id=999)
-    ctx = _fake_context()
+def test_cmd_start_segundo_chat_id_tambien_crea_su_hogar():
+    """Un segundo chat_id distinto no se rechaza: crea su propio hogar."""
+    from core import hogar as hogar_mod
+    update1 = _fake_update(chat_id=42)
+    update2 = _fake_update(chat_id=999)
+    ctx1 = _fake_context()
+    ctx2 = _fake_context()
     with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
-        run(aikiu.cmd_start(update, ctx))
-    ctx.bot.send_message.assert_not_awaited()
+        run(aikiu.cmd_start(update1, ctx1))
+        run(aikiu.cmd_start(update2, ctx2))
+    assert hogar_mod.existe_hogar(42)
+    assert hogar_mod.existe_hogar(999)
+    ctx1.bot.send_message.assert_awaited_once()
+    ctx2.bot.send_message.assert_awaited_once()
 
 
-def test_cmd_start_owner_existente_responde():
-    state_mod.registrar_owner(42)
+def test_cmd_invitar_genera_codigo_y_responde():
+    """`/invitar` crea un código de 6 caracteres y lo envía al adulto."""
+    from core import hogar as hogar_mod
+    from core import invites as invites_mod
+    update = _fake_update(chat_id=42)
+    ctx = _fake_context()
+    ctx.args = []
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+        run(aikiu.cmd_invitar(update, ctx))
+    assert hogar_mod.existe_hogar(42)
+    ctx.bot.send_message.assert_awaited_once()
+    msg = ctx.bot.send_message.await_args.kwargs.get("text", ctx.bot.send_message.await_args.args[1] if len(ctx.bot.send_message.await_args.args) > 1 else "")
+    # El mensaje contiene un código alfanumérico de 6 caracteres del alfabeto válido
+    import re
+    m = re.search(r"\b([A-Z2-9]{6})\b", msg)
+    assert m is not None, f"No encontré un código en el mensaje: {msg}"
+    codigo = m.group(1)
+    # El código existe en el storage y apunta a 42
+    assert invites_mod.consumir(codigo) == 42
+
+
+def test_cmd_invitar_falla_si_storage_revienta(monkeypatch):
+    """Si invites.generar_codigo falla, avisa al usuario y no rompe."""
+    from core import invites as invites_mod
+    update = _fake_update(chat_id=42)
+    ctx = _fake_context()
+    ctx.args = []
+    monkeypatch.setattr(invites_mod, "generar_codigo", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+        run(aikiu.cmd_invitar(update, ctx))
+    ctx.bot.send_message.assert_awaited_once()
+    msg = ctx.bot.send_message.await_args.kwargs.get("text", "")
+    assert "no pude" in msg.lower() or "intent" in msg.lower()
+
+
+def test_cmd_start_hogar_existente_responde():
+    from core import hogar as hogar_mod
+    hogar_mod.crear_hogar(42)
     update = _fake_update(chat_id=42)
     ctx = _fake_context()
     with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
@@ -253,15 +300,27 @@ def test_cmd_start_owner_existente_responde():
 # handle_message
 # ---------------------------------------------------------------------------
 
-def test_handle_message_no_autorizado():
-    """chat_id no autorizado no recibe respuesta."""
-    state_mod.registrar_owner(42)
+def test_handle_message_chat_id_nuevo_se_da_de_alta_y_responde(monkeypatch):
+    """En multi-tenant, un chat_id nuevo se da de alta automáticamente y
+    se procesa el mensaje. Antes era 'rechazado'."""
+    from core import hogar as hogar_mod
     update = _fake_update(chat_id=999)
     update.message.voice = None
     update.message.text = "hola"
     ctx = _fake_context()
+    monkeypatch.setattr(aikiu, "historiales", {})
+    monkeypatch.setattr(aikiu, "CONFIG",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                         "_perfil": "", "modelo_llm": "m"})
+    monkeypatch.setattr(aikiu, "generar_respuesta",
+                        AsyncMock(return_value="ok\nDISTRESS_LEVEL: 0"))
+    monkeypatch.setattr(aikiu, "registrar_log", lambda *a, **k: None)
+    monkeypatch.setattr(aikiu, "registrar_stats", lambda *a, **k: None)
+    monkeypatch.setattr(aikiu, "clasificar_receptividad", AsyncMock())
+    monkeypatch.setattr(aikiu, "create_background_task", lambda c: c.close())
     run(aikiu.handle_message(update, ctx))
-    ctx.bot.send_message.assert_not_awaited()
+    assert hogar_mod.existe_hogar(999)
+    ctx.bot.send_message.assert_awaited_once()
 
 
 def test_handle_message_texto_responde(monkeypatch):
@@ -355,8 +414,8 @@ def test_handle_message_distress_envia_alerta(monkeypatch):
                         AsyncMock(return_value="Entiendo Marta\nDISTRESS_LEVEL: 1"))
     notif_mock = AsyncMock()
     monkeypatch.setattr(aikiu, "notify_family", notif_mock)
-    monkeypatch.setattr(aikiu, "should_send_alert", lambda lvl: True)
-    monkeypatch.setattr(aikiu, "record_alert_sent", lambda lvl: None)
+    monkeypatch.setattr(aikiu, "should_send_alert", lambda *a, **k: True)
+    monkeypatch.setattr(aikiu, "record_alert_sent", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "registrar_log", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "registrar_stats", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "clasificar_receptividad", AsyncMock())
@@ -388,8 +447,8 @@ def test_handle_message_distress_sin_family_bot_no_explota(monkeypatch):
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="x\nDISTRESS_LEVEL: 1"))
-    monkeypatch.setattr(aikiu, "should_send_alert", lambda lvl: True)
-    monkeypatch.setattr(aikiu, "record_alert_sent", lambda lvl: None)
+    monkeypatch.setattr(aikiu, "should_send_alert", lambda *a, **k: True)
+    monkeypatch.setattr(aikiu, "record_alert_sent", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "registrar_log", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "registrar_stats", lambda *a, **k: None)
     monkeypatch.setattr(aikiu, "clasificar_receptividad", AsyncMock())
@@ -580,7 +639,7 @@ def test_calcular_ranking_con_datos(tmp_path, monkeypatch):
         {"tema": "plantas", "receptividad": "neutra","palabras_usuario": 5,  "ts": ahora.isoformat()},
     ]), encoding="utf-8")
     monkeypatch.setattr(aikiu, "RECEPTIVIDAD_PATH", rp)
-    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda: set())
+    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda *a, **k: set())
     ranking = aikiu._calcular_ranking_temas()
     assert ranking[0] == "cocina"  # mejor score
 
@@ -592,7 +651,7 @@ def test_calcular_ranking_ignora_viejos(tmp_path, monkeypatch):
         {"tema": "x", "receptividad": "alta", "palabras_usuario": 10, "ts": viejo},
     ]), encoding="utf-8")
     monkeypatch.setattr(aikiu, "RECEPTIVIDAD_PATH", rp)
-    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda: set())
+    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda *a, **k: set())
     assert aikiu._calcular_ranking_temas() == []
 
 
@@ -603,7 +662,7 @@ def test_calcular_ranking_ts_invalido_se_ignora(tmp_path, monkeypatch):
         {"tema": "y", "receptividad": "alta", "palabras_usuario": 5, "ts": datetime.now().isoformat()},
     ]), encoding="utf-8")
     monkeypatch.setattr(aikiu, "RECEPTIVIDAD_PATH", rp)
-    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda: set())
+    monkeypatch.setattr(aikiu, "_palabras_en_aprendizajes", lambda *a, **k: set())
     ranking = aikiu._calcular_ranking_temas()
     assert ranking == ["y"]
 

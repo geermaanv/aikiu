@@ -27,11 +27,16 @@ from core.tools import consultar_clima, consultar_dolar, consultar_noticias
 from core import state as state_mod
 from core import heartbeat as hb_mod
 from core import usage as usage_mod
+from core import hogar as hogar_mod
+from core import migrate_legacy
+from core import invites as invites_mod
 from core.utils import (
     norm, load_json, nombre_adulto, read_section,
     fecha_hora_es, fecha_en_espanol,
+    write_json_atomic, write_text_atomic,
     CLIMA_KEYWORDS, DOLAR_KEYWORDS, NOTICIAS_KEYWORDS,
 )
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Config
@@ -69,6 +74,108 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("aikiu")
+
+
+# ---------------------------------------------------------------------------
+# Resolvers por hogar (multi-tenant)
+# ---------------------------------------------------------------------------
+# Estos helpers devuelven la "vista" del config / perfil para un chat_id
+# específico. La idea es: hay un `config.yml` global que actúa como TEMPLATE
+# (defaults para nombre del adulto, ciudad, voz, etc.). Cada hogar puede
+# pisar campos en su `instances/<chat_id>/state.json` (clave por clave).
+#
+# Las funciones de negocio reciben `chat_id` como parámetro opcional:
+#   - Si se pasa, usan la vista del hogar (multi-tenant).
+#   - Si no, leen el CONFIG global (modo legacy / test).
+#
+# Esto permite que la suite de tests viejos siga andando sin tocar nada.
+
+_PERFIL_TEMPLATE_PATH = BASE_DIR / CONFIG.get("perfil", "perfil.md")
+
+
+def _state_hogar(chat_id: int) -> dict:
+    """Lee el `state.json` del hogar. {} si no existe."""
+    return hogar_mod.leer_state(chat_id)
+
+
+def _config_hogar(chat_id: int) -> dict:
+    """
+    Devuelve la vista de configuración para un hogar:
+    template global (CONFIG) con los campos del `state.json` del hogar
+    encima como overrides.
+
+    Campos overrideables (todos opcionales en el state):
+        nombre_adulto_mayor, nombre_asistente, ciudad, voz_tts
+    """
+    vista = dict(CONFIG)
+    estado = _state_hogar(chat_id)
+    for clave in ("nombre_adulto_mayor", "nombre_asistente", "ciudad", "voz_tts"):
+        if clave in estado:
+            vista[clave] = estado[clave]
+    return vista
+
+
+def _perfil_hogar(chat_id: int) -> str:
+    """
+    Lee `instances/<chat_id>/perfil.md`. Si no existe, lo crea copiando el
+    template global y devuelve el texto. Si tampoco hay template, devuelve "".
+    """
+    path = hogar_mod.perfil_path(chat_id)
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    if _PERFIL_TEMPLATE_PATH.exists():
+        contenido = _PERFIL_TEMPLATE_PATH.read_text(encoding="utf-8")
+        try:
+            write_text_atomic(path, contenido)
+        except OSError as e:
+            log.warning(f"No pude inicializar perfil para hogar {chat_id}: {e}")
+        return contenido
+    return ""
+
+
+def _nombre_adulto_de(chat_id: Optional[int]) -> str:
+    if chat_id is None:
+        return CONFIG.get("nombre_adulto_mayor", "Marta")
+    return _config_hogar(chat_id).get("nombre_adulto_mayor", "Marta")
+
+
+def _nombre_asistente_de(chat_id: Optional[int]) -> str:
+    if chat_id is None:
+        return CONFIG.get("nombre_asistente", "Clara")
+    return _config_hogar(chat_id).get("nombre_asistente", "Clara")
+
+
+def _ciudad_de(chat_id: Optional[int]) -> str:
+    if chat_id is None:
+        return CONFIG.get("ciudad", "Buenos Aires")
+    return _config_hogar(chat_id).get("ciudad", "Buenos Aires")
+
+
+def _voz_tts_de(chat_id: Optional[int]) -> str:
+    if chat_id is None:
+        return CONFIG.get("voz_tts", "es-AR-ElenaNeural")
+    return _config_hogar(chat_id).get("voz_tts", "es-AR-ElenaNeural")
+
+
+def _asegurar_hogar(chat_id: int, *, nombre_tg: Optional[str] = None) -> bool:
+    """
+    Crea `instances/<chat_id>/` si no existe. Devuelve True si era nuevo.
+
+    Cualquier mensaje al bot global de un chat_id desconocido dispara el alta
+    automática (self-service onboarding). El template de config global queda
+    activo; el adulto puede personalizar después editando perfil o state.
+    """
+    if hogar_mod.existe_hogar(chat_id):
+        return False
+    # Si el caller nos pasó algo que no es string (mocks, None, etc.) lo
+    # descartamos antes de persistir.
+    nombre_seguro = nombre_tg if isinstance(nombre_tg, str) else None
+    hogar_mod.crear_hogar(chat_id, nombre=nombre_seguro)
+    log.warning(
+        f"[HOGAR NUEVO] chat_id={chat_id} usuario_tg={nombre_seguro!r} "
+        f"hora={datetime.now().isoformat(timespec='seconds')}"
+    )
+    return True
 
 groq = AsyncGroq(api_key=CONFIG["groq_api_key"])
 
@@ -236,11 +343,11 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
     return prompt
 
 
-async def _pre_route(texto: str) -> str:
+async def _pre_route(texto: str, chat_id: Optional[int] = None) -> str:
     """Detecta si el mensaje requiere datos externos y los obtiene antes del LLM."""
     t = norm(texto)
     if any(w in t for w in CLIMA_KEYWORDS):
-        ciudad = CONFIG.get("ciudad", "Buenos Aires")
+        ciudad = _ciudad_de(chat_id)
         # Detectar ciudad mencionada explícitamente: "en Córdoba", "en Mendoza"
         m = re.search(r"\ben\s+([A-ZÁÉÍÓÚ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚ][a-záéíóúñ]+)?)", texto)
         if m:
@@ -262,10 +369,19 @@ async def _pre_route(texto: str) -> str:
     return ""
 
 
-async def generar_respuesta(texto_usuario: str, historial: list) -> str:
-    asistente     = CONFIG["nombre_asistente"]
-    nombre        = CONFIG["nombre_adulto_mayor"]
-    perfil        = CONFIG.get("_perfil", "")
+async def generar_respuesta(
+    texto_usuario: str,
+    historial: list,
+    chat_id: Optional[int] = None,
+) -> str:
+    if chat_id is None:
+        asistente = CONFIG["nombre_asistente"]
+        nombre    = CONFIG["nombre_adulto_mayor"]
+        perfil    = CONFIG.get("_perfil", "")
+    else:
+        asistente = _nombre_asistente_de(chat_id)
+        nombre    = _nombre_adulto_de(chat_id)
+        perfil    = _perfil_hogar(chat_id)
     system_prompt = construir_system_prompt(perfil, asistente, nombre)
     modelo        = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
 
@@ -273,7 +389,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
     messages.extend(historial[-20:])
 
     # Pre-routing: obtener datos externos antes del LLM
-    datos_externos = await _pre_route(texto_usuario)
+    datos_externos = await _pre_route(texto_usuario, chat_id=chat_id)
     if datos_externos:
         messages.append({
             "role": "system",
@@ -281,7 +397,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
         })
 
     # Inyectar blacklist de temas con baja receptividad en las últimas 48h
-    evitar = _temas_a_evitar()
+    evitar = _temas_a_evitar(chat_id=chat_id)
     if evitar:
         messages.append({
             "role": "system",
@@ -290,7 +406,7 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
         })
 
     # Inyectar temas de alto engagement como sugerencia de iniciativa
-    preferidos = _temas_preferidos()
+    preferidos = _temas_preferidos(chat_id=chat_id)
     preferidos_filtrados = [t for t in preferidos if t not in evitar]
     if preferidos_filtrados:
         messages.append({
@@ -320,25 +436,52 @@ async def generar_respuesta(texto_usuario: str, historial: list) -> str:
 
 historiales: dict[int, list] = {}
 
-_ultima_actividad: datetime | None = None        # último mensaje del adulto mayor
-_alerta_inactividad_fecha: object = None         # date del último aviso (evita duplicados)
+# Multi-tenant: una última actividad por hogar. El global `_ultima_actividad`
+# se mantiene como espejo del último mensaje recibido entre TODOS los hogares
+# (para compat con tests existentes que lo monkeypatchean).
+_ultima_actividad: datetime | None = None
+_ultimas_actividades: dict[int, datetime] = {}
+_alertas_inactividad_fecha: dict[int, object] = {}
+_alerta_inactividad_fecha: object = None  # legacy global (espejo del default)
 
 # ---------------------------------------------------------------------------
 # Log diario y aprendizajes
 # ---------------------------------------------------------------------------
 
-PERFIL_PATH = BASE_DIR / "perfil.md"
+# Paths legacy / fallback. Cuando chat_id se pasa explícitamente, las
+# funciones usan los paths del hogar (`instances/<chat_id>/...`) y estos
+# atributos quedan ignorados. Se mantienen para retrocompatibilidad con
+# tests que los monkeypatchean directamente.
+PERFIL_PATH       = BASE_DIR / "perfil.md"
 LOGS_DIR          = BASE_DIR / "logs"
 STATS_PATH        = BASE_DIR / "stats.json"
 RECEPTIVIDAD_PATH = BASE_DIR / "receptividad.json"
 
-def registrar_log(usuario: str, respuesta: str):
+
+def _logs_dir(chat_id: Optional[int]) -> Path:
+    return hogar_mod.logs_dir(chat_id) if chat_id is not None else LOGS_DIR
+
+
+def _stats_path(chat_id: Optional[int]) -> Path:
+    return hogar_mod.stats_path(chat_id) if chat_id is not None else STATS_PATH
+
+
+def _receptividad_path(chat_id: Optional[int]) -> Path:
+    return hogar_mod.receptividad_path(chat_id) if chat_id is not None else RECEPTIVIDAD_PATH
+
+
+def _perfil_path(chat_id: Optional[int]) -> Path:
+    return hogar_mod.perfil_path(chat_id) if chat_id is not None else PERFIL_PATH
+
+
+def registrar_log(usuario: str, respuesta: str, chat_id: Optional[int] = None):
     now = datetime.now()
-    LOGS_DIR.mkdir(exist_ok=True)
-    log_file = LOGS_DIR / f"{now.strftime('%Y-%m-%d')}.md"
+    logs_dir = _logs_dir(chat_id)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = logs_dir / f"{now.strftime('%Y-%m-%d')}.md"
     encabezado = f"# Conversaciones del {now.strftime('%d/%m/%Y')}\n\n"
-    nombre = CONFIG["nombre_adulto_mayor"]
-    asistente = CONFIG["nombre_asistente"]
+    nombre = _nombre_adulto_de(chat_id)
+    asistente = _nombre_asistente_de(chat_id)
     entrada = f"**{now.strftime('%H:%M')}**\n- {nombre}: {usuario}\n- {asistente}: {respuesta}\n\n"
     if not log_file.exists():
         log_file.write_text(encabezado + entrada, encoding="utf-8")
@@ -346,12 +489,13 @@ def registrar_log(usuario: str, respuesta: str):
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(entrada)
 
-def registrar_stats(distress_level: int):
+def registrar_stats(distress_level: int, chat_id: Optional[int] = None):
     """Acumula estadísticas diarias en stats.json para el dashboard familiar."""
     now = datetime.now()
     hoy = now.strftime("%Y-%m-%d")
     hora = now.strftime("%H:%M")
-    stats = load_json(STATS_PATH)
+    stats_path = _stats_path(chat_id)
+    stats = load_json(stats_path)
 
     dia = stats.setdefault(hoy, {
         "mensajes": 0,
@@ -364,12 +508,16 @@ def registrar_stats(distress_level: int):
     if distress_level >= 1:
         dia["distress"][str(distress_level)] = dia["distress"].get(str(distress_level), 0) + 1
 
-    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(stats_path, stats)
 
 
-async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
+async def clasificar_receptividad(
+    texto_usuario: str,
+    respuesta_bot: str,
+    chat_id: Optional[int] = None,
+):
     """Background task: detecta tema y receptividad del último intercambio."""
-    nombre = CONFIG["nombre_adulto_mayor"]
+    nombre = _nombre_adulto_de(chat_id)
     prompt = (
         f"Analizá este intercambio y respondé con exactamente dos líneas.\n\n"
         f"{nombre}: {texto_usuario}\n"
@@ -400,34 +548,37 @@ async def clasificar_receptividad(texto_usuario: str, respuesta_bot: str):
                 receptividad = linea.split(":", 1)[1].strip().lower()
         if tema and receptividad in ("alta", "baja", "neutra") and tema != "general":
             palabras = len(texto_usuario.split())
-            _guardar_receptividad(tema, receptividad, palabras)
+            _guardar_receptividad(tema, receptividad, palabras, chat_id=chat_id)
             log.info(f"Receptividad: tema='{tema}' nivel='{receptividad}' palabras={palabras}")
     except Exception as e:
         log.warning(f"clasificar_receptividad falló: {e}")
 
 
-def _guardar_receptividad(tema: str, receptividad: str, palabras_usuario: int = 0):
+def _guardar_receptividad(
+    tema: str,
+    receptividad: str,
+    palabras_usuario: int = 0,
+    chat_id: Optional[int] = None,
+):
     """Agrega entrada al historial de receptividad."""
-    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    path = _receptividad_path(chat_id)
+    entradas = load_json(path, default=[])
     entradas.append({
         "tema": tema,
         "receptividad": receptividad,
         "palabras_usuario": palabras_usuario,
         "ts": datetime.now().isoformat(),
     })
-    # Mantener solo los últimos 200 registros
-    RECEPTIVIDAD_PATH.write_text(
-        json.dumps(entradas[-200:], ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    write_json_atomic(path, entradas[-200:])
 
 
-def _temas_a_evitar() -> list[str]:
+def _temas_a_evitar(chat_id: Optional[int] = None) -> list[str]:
     """Devuelve temas a evitar por dos criterios:
     1. Receptividad baja en las últimas 48h (sin señal alta que lo contrarreste).
     2. Engagement muy bajo: promedio < 3 palabras del usuario en 2+ días distintos
        en los últimos 7 días — bloqueado por 7 días.
     """
-    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    entradas = load_json(_receptividad_path(chat_id), default=[])
     if not entradas:
         return []
 
@@ -475,9 +626,9 @@ def _temas_a_evitar() -> list[str]:
     return list(evitar_48h | (bloqueados_engagement - altos))
 
 
-def _temas_preferidos() -> list[str]:
+def _temas_preferidos(chat_id: Optional[int] = None) -> list[str]:
     """Devuelve ranking de temas por engagement (precalculado en stats.json)."""
-    stats = load_json(STATS_PATH)
+    stats = load_json(_stats_path(chat_id))
     for dia in sorted(stats.keys(), reverse=True):
         ranking = stats[dia].get("ranking_temas")
         if ranking:
@@ -485,22 +636,23 @@ def _temas_preferidos() -> list[str]:
     return []
 
 
-def _palabras_en_aprendizajes() -> set[str]:
+def _palabras_en_aprendizajes(chat_id: Optional[int] = None) -> set[str]:
     """Palabras largas del bloque Aprendizajes del perfil (para bonus de scoring)."""
     try:
-        seccion = read_section(PERFIL_PATH.read_text(encoding="utf-8"), "Aprendizajes")
+        perfil_path = _perfil_path(chat_id)
+        seccion = read_section(perfil_path.read_text(encoding="utf-8"), "Aprendizajes")
         return {p for linea in seccion.splitlines() for p in linea.lower().split() if len(p) > 4}
     except Exception:
         return set()
 
 
-def _calcular_ranking_temas() -> list[str]:
+def _calcular_ranking_temas(chat_id: Optional[int] = None) -> list[str]:
     """Devuelve temas ordenados por score de engagement (últimas 96h)."""
-    entradas = load_json(RECEPTIVIDAD_PATH, default=[])
+    entradas = load_json(_receptividad_path(chat_id), default=[])
     if not entradas:
         return []
 
-    palabras_perfil = _palabras_en_aprendizajes()
+    palabras_perfil = _palabras_en_aprendizajes(chat_id=chat_id)
     limite = datetime.now().timestamp() - 96 * 3600
     temas: dict[str, dict] = {}
 
@@ -529,35 +681,53 @@ def _calcular_ranking_temas() -> list[str]:
     return [t for t, _ in sorted(temas.items(), key=lambda x: _score(x[0], x[1]), reverse=True)]
 
 
-def _actualizar_seccion_perfil(seccion: str, nuevas_lineas: list[str]):
+def _actualizar_seccion_perfil(
+    seccion: str,
+    nuevas_lineas: list[str],
+    chat_id: Optional[int] = None,
+):
     """Agrega nuevas líneas al inicio de una sección ## en perfil.md."""
     hoy = date.today().strftime("%d/%m/%Y")
     nuevas = "".join(f"{l} ({hoy})\n" for l in nuevas_lineas)
-    content = PERFIL_PATH.read_text(encoding="utf-8")
+    perfil_path = _perfil_path(chat_id)
+    content = perfil_path.read_text(encoding="utf-8")
     patron = rf"## {seccion}\n.*?(?=\n## |\Z)"
     if re.search(patron, content, re.DOTALL):
         content = content.replace(f"## {seccion}\n", f"## {seccion}\n{nuevas}")
     else:
         content = content.rstrip() + f"\n\n## {seccion}\n{nuevas}"
-    PERFIL_PATH.write_text(content, encoding="utf-8")
+    write_text_atomic(perfil_path, content)
 
-async def analisis_nocturno(app=None):
-    """Job nocturno: extrae aprendizajes del log del día y detecta patrones de mejora."""
-    nombre = CONFIG["nombre_adulto_mayor"]
-    asistente = CONFIG["nombre_asistente"]
+async def analisis_nocturno(app=None, chat_id: Optional[int] = None):
+    """Job nocturno: extrae aprendizajes del log del día y detecta patrones de mejora.
+
+    - Si `chat_id` se da, procesa solo ese hogar.
+    - Si es None y hay hogares registrados, itera todos.
+    - Si es None y no hay hogares (modo legacy / test), usa los paths globales.
+    """
+    if chat_id is None:
+        hogares = hogar_mod.listar_hogares()
+        if hogares:
+            for cid in hogares:
+                await analisis_nocturno(app=app, chat_id=cid)
+            return
+        # Modo legacy: sin hogares registrados, usar paths globales del módulo.
+
+    nombre = _nombre_adulto_de(chat_id)
+    asistente = _nombre_asistente_de(chat_id)
     hoy = date.today().strftime("%Y-%m-%d")
-    log_path = LOGS_DIR / f"{hoy}.md"
+    log_path = _logs_dir(chat_id) / f"{hoy}.md"
     if not log_path.exists():
-        log.info("analisis_nocturno: sin log del día, nada que analizar")
+        log.info(f"analisis_nocturno: sin log del día (chat_id={chat_id}), nada que analizar")
         return
 
     log_dia = log_path.read_text(encoding="utf-8")
-    perfil_actual = PERFIL_PATH.read_text(encoding="utf-8")
+    perfil_actual = _perfil_path(chat_id).read_text(encoding="utf-8")
 
     aprendizajes_actuales = read_section(perfil_actual, "Aprendizajes") or "(ninguno)"
 
     # Estadísticas del día para el resumen nocturno
-    stats_dia = _stats_del_dia(hoy)
+    stats_dia = _stats_del_dia(hoy, chat_id=chat_id)
 
     prompt = f"""Sos un asistente que analiza conversaciones de {asistente} con {nombre}, una adulta mayor.
 
@@ -599,22 +769,22 @@ AJUSTES_CONVERSACION:
         ajustes = _parsear_seccion(respuesta, "AJUSTES_CONVERSACION")
 
         if aprendizajes:
-            _actualizar_seccion_perfil("Aprendizajes", aprendizajes)
+            _actualizar_seccion_perfil("Aprendizajes", aprendizajes, chat_id=chat_id)
             log.info(f"analisis_nocturno: {len(aprendizajes)} aprendizaje(s) nuevo(s)")
         if ajustes:
-            instrucciones = await _ajustes_a_instrucciones(ajustes, CONFIG.get("nombre_asistente", "Clara"))
+            instrucciones = await _ajustes_a_instrucciones(ajustes, asistente)
             instrucciones = _filtrar_instrucciones_medicas(instrucciones)
-            _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones)
+            _actualizar_seccion_perfil("Ajustes sugeridos", instrucciones, chat_id=chat_id)
             log.info(f"analisis_nocturno: {len(instrucciones)} ajuste(s) convertido(s) a instrucciones")
 
         # Calcular ranking de engagement por tema y guardarlo en stats
-        ranking = _calcular_ranking_temas()
+        ranking = _calcular_ranking_temas(chat_id=chat_id)
 
         # Guardar resumen del día en stats.json
-        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia, ranking)
+        _actualizar_stats_resumen(hoy, len(aprendizajes), len(ajustes), stats_dia, ranking, chat_id=chat_id)
 
         # Detectar síntomas persistentes entre sesiones y alertar al familiar
-        await _alertar_sintomas_persistentes(app, log_dia)
+        await _alertar_sintomas_persistentes(app, log_dia, chat_id=chat_id)
 
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
@@ -625,11 +795,11 @@ _SINTOMAS_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-async def _alertar_sintomas_persistentes(app, log_hoy: str):
+async def _alertar_sintomas_persistentes(app, log_hoy: str, chat_id: Optional[int] = None):
     """Si un síntoma aparece hoy Y en el log de ayer, alerta al familiar silenciosamente."""
     try:
         ayer = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
-        log_ayer_path = LOGS_DIR / f"{ayer}.md"
+        log_ayer_path = _logs_dir(chat_id) / f"{ayer}.md"
         if not log_ayer_path.exists():
             return
 
@@ -639,7 +809,7 @@ async def _alertar_sintomas_persistentes(app, log_hoy: str):
         if not persistentes:
             return
 
-        nombre = CONFIG["nombre_adulto_mayor"]
+        nombre = _nombre_adulto_de(chat_id)
         texto = (
             f"🩺 *Síntoma(s) persistente(s) en {nombre}*\n\n"
             f"Los siguientes síntomas aparecieron tanto ayer como hoy:\n"
@@ -652,11 +822,15 @@ async def _alertar_sintomas_persistentes(app, log_hoy: str):
             log.info(f"Síntomas persistentes detectados ({persistentes}) pero family_bot no configurado")
             return
         from core.alerts import cargar_suscriptores
-        for chat_id in cargar_suscriptores():
+        suscriptores = (
+            cargar_suscriptores(chat_id) if chat_id is not None
+            else cargar_suscriptores()
+        )
+        for fam_chat_id in suscriptores:
             try:
-                await family_bot.send_message(chat_id=chat_id, text=texto, parse_mode="Markdown")
+                await family_bot.send_message(chat_id=fam_chat_id, text=texto, parse_mode="Markdown")
             except Exception as e:
-                log.warning(f"No se pudo enviar alerta de síntomas a {chat_id}: {e}")
+                log.warning(f"No se pudo enviar alerta de síntomas a {fam_chat_id}: {e}")
         log.info(f"Alerta de síntomas persistentes enviada: {persistentes}")
     except Exception as e:
         log.warning(f"_alertar_sintomas_persistentes falló: {e}")
@@ -706,13 +880,21 @@ async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[s
         return ajustes  # fallback: guardar los originales
 
 
-def _stats_del_dia(hoy: str) -> dict:
+def _stats_del_dia(hoy: str, chat_id: Optional[int] = None) -> dict:
     """Devuelve las stats acumuladas del día o un dict vacío."""
-    return load_json(STATS_PATH).get(hoy, {})
+    return load_json(_stats_path(chat_id)).get(hoy, {})
 
-def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, stats_dia: dict, ranking: list[str] | None = None):
+def _actualizar_stats_resumen(
+    hoy: str,
+    n_aprendizajes: int,
+    n_ajustes: int,
+    stats_dia: dict,
+    ranking: list[str] | None = None,
+    chat_id: Optional[int] = None,
+):
     """Agrega al stats del día el resumen del análisis nocturno."""
-    stats = load_json(STATS_PATH)
+    path = _stats_path(chat_id)
+    stats = load_json(path)
     dia = stats.setdefault(hoy, stats_dia or {})
     dia["analisis_nocturno"] = {
         "aprendizajes_nuevos": n_aprendizajes,
@@ -720,8 +902,8 @@ def _actualizar_stats_resumen(hoy: str, n_aprendizajes: int, n_ajustes: int, sta
     }
     if ranking:
         dia["ranking_temas"] = ranking
-    STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
-    log.info(f"analisis_nocturno: stats actualizadas para {hoy}")
+    write_json_atomic(path, stats)
+    log.info(f"analisis_nocturno: stats actualizadas para {hoy} (chat_id={chat_id})")
 
 
 def _parsear_seccion(texto: str, seccion: str) -> list[str]:
@@ -745,24 +927,33 @@ def _parsear_seccion(texto: str, seccion: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def chat_id_autorizado(chat_id: int) -> bool:
-    """True solo para el adulto registrado (TOFU). Si todavía no hay dueño,
-    nadie está autorizado: el registro se hace explícitamente en /start."""
-    return state_mod.es_owner(chat_id)
+    """En multi-tenant TODO chat_id puede operar: si no tiene hogar todavía,
+    se lo crea en `handle_message`/`cmd_start`. La función se mantiene como
+    extension point para futuros bloqueos (ban, lista negra)."""
+    return True
 
 
 def _owner_chat_id_o_warn() -> int | None:
-    """Devuelve el chat_id del adulto o None, logueando si no está bindeado."""
+    """Compat: devuelve el primer hogar registrado o None.
+
+    Solo usado por código legacy que asume un único hogar. El flujo
+    multi-tenant maneja chat_ids explícitos.
+    """
     cid = state_mod.owner_chat_id()
     if cid is None:
+        hogares = hogar_mod.listar_hogares()
+        if hogares:
+            return hogares[0]
         log.warning(
-            "No hay adulto registrado todavía: pedile que abra el bot y mande /start."
+            "No hay adultos registrados todavía: cualquier /start al bot va a "
+            "crear el primer hogar automáticamente."
         )
     return cid
 
 async def responder_con_voz(context, chat_id: int, texto: str):
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "respuesta.ogg"
-        await sintetizar(texto, ogg, voz=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
+        await sintetizar(texto, ogg, voz=_voz_tts_de(chat_id))
         with open(ogg, "rb") as audio:
             await context.bot.send_voice(chat_id=chat_id, voice=audio)
 
@@ -770,38 +961,69 @@ async def responder_con_voz(context, chat_id: int, texto: str):
 # Handlers
 # ---------------------------------------------------------------------------
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_invitar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genera un código de invitación de 6 caracteres para compartir con
+    un familiar. El familiar lo usa con `/vincular <CODIGO>` en el bot
+    familiar y queda asociado a este hogar."""
     chat_id = update.effective_chat.id
-    nombre = CONFIG["nombre_adulto_mayor"]
-    asistente = CONFIG["nombre_asistente"]
+    raw_first = getattr(update.effective_user, "first_name", None) if update.effective_user else None
+    nombre_tg = raw_first if isinstance(raw_first, str) and raw_first else None
+    _asegurar_hogar(chat_id, nombre_tg=nombre_tg)
 
-    # TOFU: si todavía no hay adulto registrado, este /start lo registra.
-    if not state_mod.tiene_owner():
-        if state_mod.registrar_owner(chat_id):
-            log.warning(
-                f"[OWNER REGISTRADO] chat_id={chat_id} usuario_tg={update.effective_user.first_name!r} "
-                f"hora={datetime.now().isoformat(timespec='seconds')}"
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
-            )
-            return
-
-    if not chat_id_autorizado(chat_id):
-        log.warning(f"/start rechazado: chat_id={chat_id} no es el adulto registrado")
+    try:
+        codigo = invites_mod.generar_codigo(chat_id)
+    except Exception as e:
+        log.warning(f"cmd_invitar falló: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="No pude generar el código. Intentá de nuevo en un rato."
+        )
         return
 
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+        text=(
+            f"Listo. Pasale este código a tu familiar:\n\n"
+            f"*{codigo}*\n\n"
+            f"Tiene que escribir en el bot familiar:\n"
+            f"`/vincular {codigo}`\n\n"
+            f"_Vale por 24 horas y un solo uso._"
+        ),
+        parse_mode="Markdown",
     )
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Self-service onboarding: cualquier chat_id que mande /start crea su hogar."""
+    chat_id = update.effective_chat.id
+    raw_first = getattr(update.effective_user, "first_name", None) if update.effective_user else None
+    nombre_tg = raw_first if isinstance(raw_first, str) and raw_first else None
+
+    nuevo = _asegurar_hogar(chat_id, nombre_tg=nombre_tg)
+    nombre = _nombre_adulto_de(chat_id)
+    asistente = _nombre_asistente_de(chat_id)
+
+    if nuevo:
+        bienvenida = (
+            f"Hola {nombre_tg or nombre}, soy {asistente}. "
+            f"Te di de alta en Aikiu. Contame cómo te sentís o pedime lo que "
+            f"necesites (el clima, el dólar, una charla)."
+        )
+    else:
+        bienvenida = f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+
+    await context.bot.send_message(chat_id=chat_id, text=bienvenida)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if not chat_id_autorizado(chat_id):
         log.warning(f"chat_id no autorizado: {chat_id}")
         return
+
+    # Self-service: si el chat_id es nuevo, lo damos de alta sin pedir /start.
+    raw_first = getattr(update.effective_user, "first_name", None) if update.effective_user else None
+    nombre_tg = raw_first if isinstance(raw_first, str) and raw_first else None
+    _asegurar_hogar(chat_id, nombre_tg=nombre_tg)
 
     is_voice = bool(update.message.voice)
     action = "record_voice" if is_voice else "typing"
@@ -822,9 +1044,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Generar respuesta y separar nivel de distress
     historial = historiales.setdefault(chat_id, [])
-    raw = await generar_respuesta(texto, historial)
+    raw = await generar_respuesta(texto, historial, chat_id=chat_id)
     respuesta, distress_level = parse_llm_response(raw)
-    log.info(f"LLM: '{respuesta}' | distress={distress_level}")
+    log.info(f"[chat_id={chat_id}] LLM: '{respuesta}' | distress={distress_level}")
 
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
@@ -834,25 +1056,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(chat_id=chat_id, text=respuesta)
 
-    # Registrar actividad para el sistema de inactividad
+    # Registrar actividad para el sistema de inactividad (por hogar)
+    _ultimas_actividades[chat_id] = datetime.now()
+    # Backwards compat: mantener el global para tests viejos que lo inspeccionan.
     global _ultima_actividad
     _ultima_actividad = datetime.now()
 
-    # Tareas en background (no bloquean la respuesta)
-    registrar_log(texto, respuesta)
-    registrar_stats(distress_level)
-    create_background_task(clasificar_receptividad(texto, respuesta))
+    # Tareas en background (no bloquean la respuesta) — siempre con chat_id
+    registrar_log(texto, respuesta, chat_id=chat_id)
+    registrar_stats(distress_level, chat_id=chat_id)
+    create_background_task(clasificar_receptividad(texto, respuesta, chat_id=chat_id))
 
-    if should_send_alert(distress_level):
-        record_alert_sent(distress_level)
+    if should_send_alert(distress_level, adulto_chat_id=chat_id):
+        record_alert_sent(distress_level, adulto_chat_id=chat_id)
         family_bot = context.bot_data.get("family_bot")
         if family_bot:
-            log.info(f"Enviando alerta nivel {distress_level} a suscriptores")
+            log.info(f"Enviando alerta nivel {distress_level} a suscriptores del hogar {chat_id}")
             create_background_task(notify_family(
                 distress_level=distress_level,
                 adulto_message=texto,
                 bot_response=respuesta,
                 family_bot=family_bot,
+                adulto_chat_id=chat_id,
             ))
         else:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
@@ -861,17 +1086,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Mensajes proactivos
 # ---------------------------------------------------------------------------
 
-async def enviar_mensaje_voz(app: Application, texto: str):
-    chat_id = _owner_chat_id_o_warn()
+async def enviar_mensaje_voz(
+    app: Application,
+    texto: str,
+    chat_id: Optional[int] = None,
+):
+    """
+    Envía una nota de voz proactiva.
+
+    - Si `chat_id` se especifica, manda a ese hogar.
+    - Si es None, busca todos los hogares registrados y manda a cada uno
+      (modo multi-tenant). Si no hay hogares, intenta el `owner_chat_id`
+      legacy para preservar comportamiento viejo.
+    """
     if chat_id is None:
-        log.warning(f"Proactivo NO enviado (sin adulto registrado): '{texto}'")
-        return
+        hogares = hogar_mod.listar_hogares()
+        if hogares:
+            for cid in hogares:
+                await enviar_mensaje_voz(app, texto, chat_id=cid)
+            return
+        # Legacy fallback
+        chat_id = _owner_chat_id_o_warn()
+        if chat_id is None:
+            log.warning(f"Proactivo NO enviado (sin adulto registrado): '{texto}'")
+            return
+
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "proactivo.ogg"
-        await sintetizar(texto, ogg, voz=CONFIG.get("voz_tts", "es-AR-ElenaNeural"))
+        await sintetizar(texto, ogg, voz=_voz_tts_de(chat_id))
         with open(ogg, "rb") as audio:
             await app.bot.send_voice(chat_id=chat_id, voice=audio)
-    log.info(f"Proactivo enviado: '{texto}'")
+    log.info(f"Proactivo enviado a chat_id={chat_id}: '{texto}'")
 
 
 async def consultar_feriado(fecha: datetime | None = None) -> str:
@@ -892,10 +1137,23 @@ async def consultar_feriado(fecha: datetime | None = None) -> str:
     return ""
 
 
-async def saludo_matutino(app: Application):
-    nombre    = CONFIG["nombre_adulto_mayor"]
-    asistente = CONFIG["nombre_asistente"]
-    ciudad    = CONFIG.get("ciudad", "Buenos Aires")
+async def saludo_matutino(app: Application, chat_id: Optional[int] = None):
+    """
+    Saludo matutino. Si `chat_id` se da, saluda a ese hogar. Si es None,
+    itera todos los hogares registrados. Si no hay ninguno, usa el
+    comportamiento legacy (CONFIG global + owner registrado).
+    """
+    if chat_id is None:
+        hogares = hogar_mod.listar_hogares()
+        if hogares:
+            for cid in hogares:
+                await saludo_matutino(app, chat_id=cid)
+            return
+        # Modo legacy: sin hogares, saluda al owner registrado (si lo hay).
+
+    nombre    = _nombre_adulto_de(chat_id)
+    asistente = _nombre_asistente_de(chat_id)
+    ciudad    = _ciudad_de(chat_id)
 
     clima_frase = ""
     try:
@@ -923,45 +1181,80 @@ async def saludo_matutino(app: Application):
         f"Hola {nombre}, soy {asistente}. Hoy es {fecha_frase}."
         f"{clima_frase}{feriado_frase} ¿Cómo amaneciste hoy?"
     )
-    await enviar_mensaje_voz(app, texto)
+    await enviar_mensaje_voz(app, texto, chat_id=chat_id)
 
-async def verificar_inactividad(app: Application):
+async def verificar_inactividad(app: Application, chat_id: Optional[int] = None):
+    """
+    Verifica inactividad y dispara alerta al familiar si corresponde.
+
+    Multi-tenant: si `chat_id` es None, itera todos los hogares. Para cada
+    hogar usa su propia última actividad y su propio "ya alerté hoy".
+    Si no hay hogares registrados, usa los globales legacy (compat con tests).
+    """
+    if chat_id is None:
+        hogares = hogar_mod.listar_hogares()
+        if hogares:
+            for cid in hogares:
+                await verificar_inactividad(app, chat_id=cid)
+            return
+        # Modo legacy: cae al flujo viejo abajo con chat_id=None.
+
     global _alerta_inactividad_fecha
 
     cfg = CONFIG.get("alerta_inactividad", {})
     if not cfg.get("activa", True):
         return
-    if _ultima_actividad is None:
-        log.info("Inactividad: sin baseline aún (bot recién arrancó)")
+
+    # Baseline de actividad: por hogar si tenemos chat_id, sino el global legacy.
+    if chat_id is not None:
+        ultima = _ultimas_actividades.get(chat_id)
+    else:
+        ultima = _ultima_actividad
+
+    if ultima is None:
+        log.info(f"Inactividad: sin baseline aún (chat_id={chat_id})")
         return
 
-    horas = (datetime.now() - _ultima_actividad).total_seconds() / 3600
+    horas = (datetime.now() - ultima).total_seconds() / 3600
     umbral = cfg.get("horas_umbral", 4)
 
     if horas < umbral:
-        log.info(f"Inactividad: {horas:.1f}h — dentro del rango normal ({umbral}h)")
+        log.info(f"Inactividad chat_id={chat_id}: {horas:.1f}h — normal ({umbral}h)")
         return
 
     hoy = datetime.now().date()
-    if _alerta_inactividad_fecha == hoy:
-        log.info("Inactividad: ya se alertó hoy, no se repite")
-        return
+    if chat_id is not None:
+        if _alertas_inactividad_fecha.get(chat_id) == hoy:
+            log.info(f"Inactividad chat_id={chat_id}: ya se alertó hoy")
+            return
+        _alertas_inactividad_fecha[chat_id] = hoy
+    else:
+        if _alerta_inactividad_fecha == hoy:
+            log.info("Inactividad: ya se alertó hoy")
+            return
+        _alerta_inactividad_fecha = hoy
 
-    _alerta_inactividad_fecha = hoy
     family_bot = app.bot_data.get("family_bot")
     if not family_bot:
         log.warning("Inactividad detectada pero family_bot no está configurado")
         return
 
-    log.info(f"Alerta de inactividad: {horas:.1f}h sin actividad de {CONFIG.get('nombre_adulto_mayor', 'Marta')}")
+    log.info(
+        f"Alerta inactividad: {horas:.1f}h sin actividad de "
+        f"{_nombre_adulto_de(chat_id)} (chat_id={chat_id})"
+    )
     create_background_task(notify_inactividad(
         horas=int(horas),
-        ultima_actividad=_ultima_actividad,
+        ultima_actividad=ultima,
         family_bot=family_bot,
+        adulto_chat_id=chat_id,
     ))
 
 
 def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
+    """Programa jobs proactivos. Todos iteran sobre los hogares en runtime
+    (no en build-time) para soportar hogares que se den de alta después de
+    arrancar el bot."""
     saludo_cfg = CONFIG.get("saludo_diario", {})
     if saludo_cfg.get("activo", True):
         hora, minuto = map(int, saludo_cfg.get("hora", "08:30").split(":"))
@@ -978,11 +1271,11 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
             hour=hora, minute=minuto,
             args=[app, r["mensaje"]],
         )
-        log.info(f"Recordatorio programado {r['hora']}: {r['mensaje']}")
+        log.info(f"Recordatorio programado {r['hora']} (todos los hogares): {r['mensaje']}")
 
     hora_an, minuto_an = map(int, CONFIG.get("analisis_nocturno_hora", "23:30").split(":"))
-    scheduler.add_job(analisis_nocturno, "cron", hour=hora_an, minute=minuto_an)
-    log.info(f"Análisis nocturno programado a las {hora_an:02d}:{minuto_an:02d}")
+    scheduler.add_job(analisis_nocturno, "cron", hour=hora_an, minute=minuto_an, args=[app])
+    log.info(f"Análisis nocturno programado a las {hora_an:02d}:{minuto_an:02d} (todos los hogares)")
 
     cfg_inact = CONFIG.get("alerta_inactividad", {})
     if cfg_inact.get("activa", True):
@@ -1001,8 +1294,20 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
 
 async def main():
     log.info("=" * 50)
-    log.info(f"Aikiu iniciando para {CONFIG['nombre_adulto_mayor']}")
+    log.info("Aikiu iniciando (multi-tenant)")
     log.info("=" * 50)
+
+    # Migración automática del layout legacy single-tenant al multi-tenant.
+    # Idempotente: si ya hay hogares en instances/, no hace nada.
+    try:
+        owner_migrado = migrate_legacy.migrar_si_corresponde()
+        if owner_migrado is not None:
+            log.info(f"Migración legacy completada para chat_id={owner_migrado}")
+    except Exception as e:
+        log.warning(f"Migración legacy falló: {e}")
+
+    hogares = hogar_mod.listar_hogares()
+    log.info(f"Hogares detectados: {len(hogares)} → {hogares}")
 
     scheduler = AsyncIOScheduler()
 
@@ -1012,6 +1317,7 @@ async def main():
         .build()
     )
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("invitar", cmd_invitar))
     app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
 
     async with app:
@@ -1028,13 +1334,13 @@ async def main():
         else:
             log.warning("Bot familiar no configurado — alertas desactivadas (revisá FAMILIAR_BOT_TOKEN en .env)")
 
-        if not state_mod.tiene_owner():
+        if not hogares:
             log.warning(
-                "Todavía no hay adulto registrado. Pedile a la persona que abra el bot "
-                "(@<username_del_bot>) y mande /start. Ese chat va a quedar bindeado."
+                "Todavía no hay hogares registrados. Cualquiera que mande /start "
+                "al bot va a crear el suyo automáticamente."
             )
         else:
-            log.info(f"Adulto registrado: chat_id={state_mod.owner_chat_id()}")
+            log.info(f"{len(hogares)} hogar(es) activo(s): {hogares}")
 
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)

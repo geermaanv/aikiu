@@ -95,6 +95,7 @@ def test_escribe_aprendizajes_nuevos():
         log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola Marta\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n- Dato viejo (01/01/2026)\n")
         tmp_perfil.flush()
+        tmp_perfil.close()  # Windows: liberar el handle antes del os.replace atómico
         perfil_path = Path(tmp_perfil.name)
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
@@ -145,6 +146,7 @@ def test_escribe_ajustes_sugeridos():
         log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
         tmp_perfil.flush()
+        tmp_perfil.close()  # Windows: liberar el handle antes del os.replace atómico
         perfil_path = Path(tmp_perfil.name)
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
@@ -217,6 +219,8 @@ def test_analisis_nocturno_actualiza_stats():
         log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
         tmp_perfil.flush()
+        tmp_perfil.close()  # Windows: liberar handle antes del os.replace atómico
+        tmp_stats.close()
         stats_path = Path(tmp_stats.name)
         stats_path.write_text("{}")
 

@@ -81,6 +81,9 @@
   orientar mejor que nadie."
 
 ## Aprendizajes
+- Marta tiene un hijo llamado Roberto. (22/05/2026)
+- Marta tiene un nieto llamado Tomás. (22/05/2026)
+- Marta se cayó y se rompió la rodilla. (22/05/2026)
 - Marta tiene problemas con los ojos secos y está usando gotas para tratarlos. (22/05/2026)
 - Marta disfruta de tomar mate amargo (no le gustan los saborizados), con tostadas y mermelada de durazno casera que le trae Germán. (22/05/2026)
 - Marta valora la compañía y la paz que le brindan sus plantas en el balcón. (22/05/2026)
@@ -102,6 +105,9 @@
 - Se levantó triste, aunque dijo sentirse bien en general. (15/05/2026)
 
 ## Ajustes sugeridos
+- No cambies de tema abruptamente cuando Marta esté hablando. (22/05/2026)
+- Ofrece apoyo emocional y validación a Marta en lugar de intentar cambiar de tema. (22/05/2026)
+- Evita hacer preguntas innecesarias o repetitivas a Marta. (22/05/2026)
 - Aportar datos o anécdotas propias de forma consistente antes de preguntar. (22/05/2026)
 - Evitar repetir textualmente las palabras clave de Marta — usar sinónimos o refrasear. (22/05/2026)
 - Ante CUALQUIER dolor físico (mano, cabeza, etc.), siempre sugerir que lo consulte con su médico. (22/05/2026)

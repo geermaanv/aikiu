@@ -113,15 +113,15 @@ def test_nivel_2_bloqueado_dentro_de_cooldown():
     assert should_send_alert(2) is False
 
 def test_nivel_1_pasa_despues_de_cooldown():
-    distress._last_alert_time[1] = datetime.now() - timedelta(minutes=61)
+    distress._last_alert_time[(None, 1)] = datetime.now() - timedelta(minutes=61)
     assert should_send_alert(1) is True
 
 def test_nivel_2_pasa_despues_de_cooldown():
-    distress._last_alert_time[2] = datetime.now() - timedelta(minutes=31)
+    distress._last_alert_time[(None, 2)] = datetime.now() - timedelta(minutes=31)
     assert should_send_alert(2) is True
 
 def test_nivel_1_bloqueado_justo_antes_de_cooldown():
-    distress._last_alert_time[1] = datetime.now() - timedelta(minutes=59)
+    distress._last_alert_time[(None, 1)] = datetime.now() - timedelta(minutes=59)
     assert should_send_alert(1) is False
 
 def test_cooldowns_de_distintos_niveles_son_independientes():
@@ -129,3 +129,33 @@ def test_cooldowns_de_distintos_niveles_son_independientes():
     # Nivel 1 bloqueado, nivel 2 libre
     assert should_send_alert(1) is False
     assert should_send_alert(2) is True
+
+
+# ---------------------------------------------------------------------------
+# Cooldown por hogar (multi-tenant)
+# ---------------------------------------------------------------------------
+
+def test_cooldown_distress_es_por_hogar():
+    """Una alerta nivel 2 en el hogar A no debe silenciar la alerta
+    nivel 2 que el hogar B necesita en el mismo intervalo."""
+    record_alert_sent(2, adulto_chat_id=1001)
+    # Hogar 1001 está en cooldown
+    assert should_send_alert(2, adulto_chat_id=1001) is False
+    # Hogar 2002 todavía no — su reloj es independiente
+    assert should_send_alert(2, adulto_chat_id=2002) is True
+
+
+def test_modo_legacy_sin_chat_id_sigue_funcionando():
+    """Llamadas sin adulto_chat_id (modo single-tenant) usan key (None, level)."""
+    record_alert_sent(1)
+    assert should_send_alert(1) is False
+    # No contamina a un chat_id explícito
+    assert should_send_alert(1, adulto_chat_id=42) is True
+
+
+def test_reset_cooldowns_limpia_estado():
+    record_alert_sent(2, adulto_chat_id=1001)
+    record_alert_sent(2, adulto_chat_id=2002)
+    distress.reset_cooldowns()
+    assert should_send_alert(2, adulto_chat_id=1001) is True
+    assert should_send_alert(2, adulto_chat_id=2002) is True

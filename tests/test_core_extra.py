@@ -47,7 +47,7 @@ def test_cargar_suscriptores_con_archivo(tmp_path, monkeypatch):
 
 def test_notify_family_sin_suscriptores_no_envia(monkeypatch):
     from core import alerts
-    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda: [])
+    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda *a, **k: [])
     bot = MagicMock()
     bot.send_message = AsyncMock()
     run(alerts.notify_family(1, "msg", "resp", bot))
@@ -56,7 +56,7 @@ def test_notify_family_sin_suscriptores_no_envia(monkeypatch):
 
 def test_notify_family_envia_a_todos(monkeypatch):
     from core import alerts
-    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda: [10, 20, 30])
+    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda *a, **k: [10, 20, 30])
     bot = MagicMock()
     bot.send_message = AsyncMock()
     run(alerts.notify_family(2, "me siento mal", "te acompaño", bot))
@@ -68,7 +68,7 @@ def test_notify_family_envia_a_todos(monkeypatch):
 
 def test_notify_family_un_envio_falla_y_sigue(monkeypatch):
     from core import alerts
-    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda: [10, 20])
+    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda *a, **k: [10, 20])
     bot = MagicMock()
     enviados = []
     async def fake_send(**kwargs):
@@ -82,7 +82,7 @@ def test_notify_family_un_envio_falla_y_sigue(monkeypatch):
 
 def test_notify_family_nivel_3_es_alerta_roja(monkeypatch):
     from core import alerts
-    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda: [1])
+    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda *a, **k: [1])
     mensajes = []
     bot = MagicMock()
     async def fake_send(**kwargs):
@@ -95,7 +95,7 @@ def test_notify_family_nivel_3_es_alerta_roja(monkeypatch):
 def test_notify_family_un_envio_falla_y_loggea(monkeypatch):
     """Verifica que un fallo individual no rompe el batch."""
     from core import alerts
-    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda: [10])
+    monkeypatch.setattr(alerts, "cargar_suscriptores", lambda *a, **k: [10])
     bot = MagicMock()
     bot.send_message = AsyncMock(side_effect=Exception("Forbidden"))
     # No debe lanzar

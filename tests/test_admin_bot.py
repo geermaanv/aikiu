@@ -822,6 +822,9 @@ def test_cmd_logs_sin_archivo(monkeypatch, tmp_path):
     admin_state.registrar_admin(42)
     monkeypatch.setattr(admin_bot, "descubrir_instancias", lambda: [tmp_path])
     monkeypatch.setattr(admin_bot, "id_de", lambda d: "i1")
+    # Aseguramos que el fallback BASE_DIR/aikiu.log tampoco exista, así el
+    # test verifica realmente el caso "no hay log".
+    monkeypatch.setattr(admin_bot, "BASE_DIR", tmp_path / "fake_repo_root")
     update = _fake_update(chat_id=42)
     run(admin_bot.cmd_logs(update, _fake_context()))
     msg = update.message.reply_text.await_args.args[0]
@@ -891,3 +894,103 @@ def test_cmd_logs_vacio(monkeypatch, tmp_path):
     run(admin_bot.cmd_logs(update, _fake_context()))
     msg = update.message.reply_text.await_args.args[0]
     assert "log vacío" in msg or "vacío" in msg
+
+
+# ---------------------------------------------------------------------------
+# /hogares
+# ---------------------------------------------------------------------------
+
+def test_cmd_hogares_no_admin_rechaza():
+    update = _fake_update(chat_id=99)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    update.message.reply_text.assert_not_awaited()
+
+
+def test_cmd_hogares_sin_hogares():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "No hay hogares" in msg
+
+
+def test_cmd_hogares_lista_los_registrados():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    hogar_mod.crear_hogar(2002, nombre="Pepe")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "1001" in msg
+    assert "2002" in msg
+    assert "Marta" in msg
+    assert "Pepe" in msg
+
+
+# ---------------------------------------------------------------------------
+# /borrar
+# ---------------------------------------------------------------------------
+
+def test_cmd_borrar_no_admin_rechaza():
+    update = _fake_update(chat_id=99)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001"])))
+    update.message.reply_text.assert_not_awaited()
+
+
+def test_cmd_borrar_sin_args_muestra_uso():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "Uso" in msg or "/borrar" in msg
+
+
+def test_cmd_borrar_id_invalido():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["foo"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "no es un chat_id" in msg
+
+
+def test_cmd_borrar_hogar_inexistente():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["9999"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "No encontré" in msg
+
+
+def test_cmd_borrar_paso_1_pide_confirmacion():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "CONFIRMAR" in msg
+    assert "Marta" in msg
+    # Sigue existiendo
+    assert hogar_mod.existe_hogar(1001)
+
+
+def test_cmd_borrar_paso_2_ejecuta():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    assert hogar_mod.existe_hogar(1001)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001", "CONFIRMAR"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "borré" in msg.lower() or "listo" in msg.lower()
+    assert not hogar_mod.existe_hogar(1001)
+
+
+def test_cmd_borrar_confirmar_case_insensitive():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001", "confirmar"])))
+    assert not hogar_mod.existe_hogar(1001)
