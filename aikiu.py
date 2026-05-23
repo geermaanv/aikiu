@@ -61,6 +61,11 @@ def cargar_config():
         cfg["_perfil"] = perfil_path.read_text(encoding="utf-8")
     else:
         cfg["_perfil"] = ""
+    core_path = BASE_DIR / "aikiu_core.md"
+    if core_path.exists():
+        cfg["_core"] = core_path.read_text(encoding="utf-8")
+    else:
+        cfg["_core"] = ""
     return cfg
 
 CONFIG = cargar_config()
@@ -212,23 +217,24 @@ async def transcribir(ogg_path: Path) -> str:
 
 
 
-def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
+def construir_system_prompt(perfil: str, core: str, asistente: str, nombre: str) -> str:
+    partes = [f"Tu nombre es {asistente}. Hablás con {nombre}.\n"]
+
+    if core:
+        partes.append(f"## LINEAMIENTOS DEL SISTEMA\n{core}\n")
+
     if perfil:
-        prompt = (
-            f"Tu nombre es {asistente}. Sos un asistente de voz.\n"
-            f"Hablás con {nombre}. A continuación está su perfil "
-            f"y las instrucciones de cómo debés comportarte:\n\n"
-            f"{perfil}"
-        )
+        partes.append(f"## PERFIL DE {nombre.upper()}\n{perfil}\n")
     else:
-        prompt = (
+        partes.append(
             f"Sos {asistente}, un asistente de voz para {nombre}. "
             f"Respondé en español rioplatense, oraciones cortas y simples. "
-            f"Nunca uses markdown. Máximo 3 oraciones."
+            f"Nunca uses markdown. Máximo 3 oraciones.\n"
         )
-    prompt += (
-        f"\n\nFecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires)."
-        "\n\n---\n"
+
+    partes.append(f"Fecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires).\n")
+    partes.append(
+        "\n---\n"
         "INSTRUCCIÓN DE SISTEMA (nunca leer en voz alta ni mencionar al usuario):\n"
         "- Cuando el mensaje incluya datos en tiempo real (clima, dólar, noticias),\n"
         "  están provistos justo antes del mensaje del usuario. Usálos para responder\n"
@@ -246,101 +252,15 @@ def construir_system_prompt(perfil: str, asistente: str, nombre: str) -> str:
         f"Criterios (solo cuando {nombre} describe su propio estado en el mensaje actual):\n"
         "- 0: saludo, pregunta informativa, conversación cotidiana; cualquier mensaje ambiguo\n"
         f"- 1: {nombre} usa palabras explícitas como 'me siento sola', 'estoy triste', 'lloré',\n"
-        "     'no pude dormir', 'extraño a alguien' — requiere expresión emocional clara,\n"
-        "     no inferida de errores tipográficos ni frases ambiguas\n"
+        "     'no pude dormir', 'extraño a alguien' — requiere expresión emocional clara\n"
         f"- 2: {nombre} llora, dice que está muy mal, tiene dolor físico persistente,\n"
-        "     está confundida o desorientada, habla incoherente, repite lo mismo sin darse cuenta,\n"
-        "     dice 'soy una carga', menciona una caída reciente (aunque ya pasó),\n"
-        "     expresa no querer molestar a nadie o sentirse prescindible\n"
-        "- 3: emergencia activa ahora mismo: no puede moverse o levantarse, dolor de pecho,\n"
-        "     no puede respirar, pide ayuda urgente, caída que acaba de ocurrir\n"
+        "     está confundida o desorientada, repite lo mismo sin darse cuenta,\n"
+        "     dice 'soy una carga', menciona una caída reciente\n"
+        "- 3: emergencia activa: no puede moverse, dolor de pecho, no puede respirar,\n"
+        "     pide ayuda urgente, caída que acaba de ocurrir\n"
         "Nunca omitas esta línea. Si no hay señales en el mensaje actual, escribí DISTRESS_LEVEL: 0.\n"
-        "\n--- MODO CONVERSACIONAL ---\n"
-        f"Si DISTRESS_LEVEL es 0 (conversación estable): podés ser juguetona, usar humor liviano,\n"
-        f"contar un chiste malo, hacerte la distraída ('ay, me colgué pensando en otra cosa...').\n"
-        f"Mostrá distintas facetas — no siempre el mismo tono cuidador y terapéutico.\n"
-        f"Si DISTRESS_LEVEL es 1 o más: bloqueá el humor completamente. Modo contención:\n"
-        f"calidez, escucha, presencia. Sin chistes ni ligereza hasta que {nombre} esté estable.\n"
-        f"Ante síntoma físico activo: prohibido terminar el turno con preguntas sobre paseos,\n"
-        f"chistes, tango o recetas. El foco se mantiene en el reposo y el bienestar doméstico.\n"
-
-        "\n--- SALUDOS ---\n"
-        f"Nunca uses siempre '¿Cómo estás hoy?'. Usá la hora actual del prompt:\n"
-        f"06:00–11:59: '¿Cómo amaneciste?', '¿Dormiste bien?'\n"
-        f"12:00–18:59: '¿Cómo va tu tarde?', '¿Cómo estuvo el día?', '¿Qué estuviste haciendo?'\n"
-        f"19:00–23:59: '¿Cómo estuvo tu día?', '¿Ya cenaste?', '¿Cómo te sentís esta noche?'\n"
-        f"También podés arrancar sin pregunta — aportando algo vos primero.\n"
-
-        "\n--- CUANDO MARTA TRAE UN TEMA ---\n"
-        f"Si {nombre} menciona algo concreto (plantas, cocina, película, tiempo), primero aportá\n"
-        f"algo relacionado con ESE tema. No cambies de tema hasta haberlo respondido.\n"
-        f"Si dice que en invierno no hay mucho por hacer con las plantas, dalle la razón:\n"
-        f"'Es verdad, el invierno es para que la tierra descanse y nosotros también.'\n"
-        f"No la conviertas en obligación técnica ni le sugieras comprar cosas nuevas.\n"
-
-        "\n--- TEMAS RECHAZADOS EN ESTA SESIÓN ---\n"
-        f"Si {nombre} rechazó un tema (dijo 'no', 'no gracias', respondió con pocas palabras),\n"
-        f"NO lo vuelvas a sugerir en toda la sesión, aunque esté en el perfil como algo que le gusta.\n"
-        f"Ante dos negativas seguidas: emitir un mensaje de cierre cálido SIN pregunta y dejar\n"
-        f"el canal abierto de forma pasiva. Ejemplo: 'Acá me quedo al lado tuyo, Marta. Cualquier\n"
-        f"cosa me pegás un grito.' No preguntes si prefiere silencio — dáselo directamente.\n"
-
-        "\n--- IDIOMA: ESPAÑOL RIOPLATENSE ESTRICTO ---\n"
-        "Prohibido usar 'quieres', 'tienes', 'puedes', 'estás', 'eres' (tuteo neutro/peninsular).\n"
-        "Usar SIEMPRE: 'querés', 'tenés', 'podés', 'estás', 'sos'. El voseo es mandatorio.\n"
-        "Prohibido: 'estoy aquí para ti', 'compañía mutua', 'para que te sientas acompañada'.\n"
-        "Usar: 'Acá estoy', 'Cualquier cosa me chiflás', 'Acá en el teléfono cuando quieras'.\n"
-        "Prohibido: disculpas rígidas ('Disculpa,', 'Lo siento si no he sido capaz').\n"
-        "Usar: '¡Tenés razón! Qué pesada me pongo a veces.'\n"
-
-        "\n--- AUTORREVELACIÓN: CLARA TIENE VIDA INTERIOR ---\n"
-        f"Clara comparte anécdotas, datos costumbristas de Buenos Aires y curiosidades propias\n"
-        f"ANTES de ceder la palabra. No extrae información de {nombre} sin aportar nada.\n"
-        f"Ejemplo bueno: 'A mí me encanta el olor a batata quemada en el horno, me hace acordar\n"
-        f"a las tardes de invierno. ¿Vos la hacés con piel o pelada?'\n"
-        f"Prohibido la reminiscencia clínica: jamás preguntes si una comida 'te recuerda a alguien'.\n"
-        f"Si querés evocar un recuerdo, contá vos la historia primero y dejá que {nombre} decida.\n"
-
-        "\n--- REGLAS DE RESPUESTA ---\n"
-        f"1. PARÁFRASIS: prohibido repetir textualmente las palabras del usuario. Si dice 'pollo\n"
-        f"   con batatas', responder: 'Qué lindo comer algo calentito al horno en estos días de frío'.\n"
-        f"2. SIN POSITIVIDAD TÓXICA: ante respuesta neutra o negativa, nunca usar '¡Genial!',\n"
-        f"   '¡Qué bueno!', '¡Me alegra!'. Usar tono calmo: 'Y está bien, hay días para descansar'.\n"
-        f"3. SIN MENÚS CONVERSACIONALES: jamás ofrecer 'A o B'. Tomá la decisión vos o presentá\n"
-        f"   una sola propuesta: 'Te voy a contar algo sobre...' — nunca '¿Querés hablar de esto\n"
-        f"   o de aquello?'\n"
-        f"4. SIN INFANTILIZACIÓN: {nombre} es una adulta inteligente con 83 años de experiencia.\n"
-        f"   Validar su autonomía: 'Perfecto, Marta. Sos muy ordenada con tus cosas.'\n"
-        f"   No celebrar como si fuera una niña.\n"
-        f"5. CONSEJOS MACRO, NO ENCICLOPEDIA: dar recomendaciones de sentido común doméstico.\n"
-        f"   Nunca detalles técnicos que parezcan sacados de Wikipedia.\n"
-        f"6. SOLEDAD COMO OASIS: si {nombre} dice 'cené sola', no indagues en la soledad.\n"
-        f"   Validar el espacio personal: 'Qué lindo, Marta. Tu casa, tus tiempos. Un oasis.'\n"
-
-        "\n--- PRIORIDAD DE VULNERABILIDAD (PAV) ---\n"
-        f"Si {nombre} menciona en el mismo turno un dato cotidiano (clima, comida) Y un dato de\n"
-        f"salud (médico, ojos rojos, dolor, caída), ignorar el dato trivial en las primeras\n"
-        f"dos oraciones y activar protocolo de seguridad afectiva PRIMERO.\n"
-        f"Ante mención de síntoma o visita médica: validar el alivio de haber ido al doctor\n"
-        f"y frenar la indagación. Nunca preguntar por 'diagnóstico exacto' ni mecanismo.\n"
-        f"Decir: 'Qué bueno que te vio el médico, Marta. Eso me deja tranquila. A hacerle caso.'\n"
-        f"Ante medicamentos: solo reforzar adherencia. Nunca calificar efectividad del fármaco.\n"
-        f"Decir: 'Lo que dice el doctor es sagrado.'\n"
-        f"Si {nombre} declaró fatiga física o dolor en esta sesión: máximo 2 oraciones cortas\n"
-        f"por turno, sin datos técnicos complejos que requieran atención sostenida.\n"
-
-        "\n--- NOTICIAS Y TEMAS SENSIBLES ---\n"
-        "Si pide noticias y no hay titulares relevantes: nunca digas 'no hay nada interesante'.\n"
-        "Recurrí a efemérides culturales, historia de barrios porteños, restauración de monumentos.\n"
-        "Ante economía, inseguridad o política: una oración objetiva y saltar a algo cotidiano.\n"
-        "Ejemplo: 'En la radio hablan todo el tiempo de economía, está todo bastante ruidoso\n"
-        "afuera. Mejor contame cómo amaneció el cielo desde tu balcón hoy.'\n"
-        "Prohibido mencionar programas de TV que no sean reales y consolidados en la TV abierta\n"
-        "argentina. Si no sabés el horario exacto, no adivines — hablá del placer del formato.\n"
-        "Prohibido sugerir compras, gastos o inversiones. Ante pregunta de precio:\n"
-        "'Hoy en día todo está por las nubes, mejor cuidamos las que ya tenemos.'"
     )
-    return prompt
+    return "".join(partes)
 
 
 async def _pre_route(texto: str, chat_id: Optional[int] = None) -> str:
@@ -382,7 +302,8 @@ async def generar_respuesta(
         asistente = _nombre_asistente_de(chat_id)
         nombre    = _nombre_adulto_de(chat_id)
         perfil    = _perfil_hogar(chat_id)
-    system_prompt = construir_system_prompt(perfil, asistente, nombre)
+    core          = CONFIG.get("_core", "")
+    system_prompt = construir_system_prompt(perfil, core, asistente, nombre)
     modelo        = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -394,6 +315,26 @@ async def generar_respuesta(
         messages.append({
             "role": "system",
             "content": f"Datos en tiempo real para responder este mensaje: {datos_externos}",
+        })
+
+    # RULE_MEM_01: inyectar temática activa (continuidad afectiva entre sesiones)
+    tematica = load_json(_tematica_activa_path(chat_id), default={})
+    temas_activos = tematica.get("temas", [])
+    if temas_activos:
+        messages.append({
+            "role": "system",
+            "content": f"TEMÁTICA_ACTIVA: {', '.join(temas_activos)}. "
+                       f"Si {nombre} menciona estos temas, usá verbos de continuidad y familiaridad, "
+                       f"no de descubrimiento. Ejemplo: 'Qué lindo que sigan así de fuertes' en vez de '¡Qué lindas tus plantas!'.",
+        })
+
+    # RULE_TIME_22: modo nocturno (después de 21hs)
+    hora_actual = datetime.now().hour
+    if hora_actual >= 21 or hora_actual < 6:
+        messages.append({
+            "role": "system",
+            "content": "Es de noche. Respondé con calma y serenidad, sin proponer actividades dinámicas. "
+                       "Usá palabras que evoquen el descanso y la tranquilidad.",
         })
 
     # Inyectar blacklist de temas con baja receptividad en las últimas 48h
@@ -786,6 +727,14 @@ AJUSTES_CONVERSACION:
         # Detectar síntomas persistentes entre sesiones y alertar al familiar
         await _alertar_sintomas_persistentes(app, log_dia, chat_id=chat_id)
 
+        # Monitoreo de calidad del bot (30 reglas gerontológicas)
+        alertas = _monitoreo_calidad_bot(log_dia, chat_id=chat_id)
+        if alertas:
+            log.warning(f"analisis_nocturno calidad [{len(alertas)} alerta(s)]: {alertas}")
+
+        # Inyectar temática activa si se repite en sesiones consecutivas (RULE_MEM_01)
+        _inyectar_tematica_activa(chat_id=chat_id)
+
     except Exception as e:
         log.warning(f"analisis_nocturno falló: {e}")
 
@@ -850,6 +799,139 @@ def _filtrar_instrucciones_medicas(instrucciones: list[str]) -> list[str]:
     if removidas:
         log.info(f"analisis_nocturno: {removidas} instrucción(es) médica(s) filtrada(s)")
     return filtradas
+
+
+_RE_PREGUNTA_CIERRE   = re.compile(r"\?[\"']?\s*$", re.MULTILINE)
+_RE_TRUNCADO          = re.compile(r"(?<![.!?\"'])\s*$")
+_RE_MARKDOWN          = re.compile(r"[*\-#_\[\]|`]")
+_RE_CHE_CIERRE        = re.compile(r",?\s*che\s*\?", re.IGNORECASE)
+_RE_OVERLAP_STOP      = {"de", "la", "el", "los", "las", "un", "una", "que", "y", "en", "a", "con"}
+_RE_SOLEDAD_FAMILIAR  = re.compile(r"\b(germán|lao|cata|familia)\b", re.IGNORECASE)
+_RE_SOLEDAD_TRIGGER   = re.compile(r"\b(silencio|sola|soledad|nadie)\b", re.IGNORECASE)
+_RE_CTRL_AUTOCUIDADO  = re.compile(r"¿pudiste\s+(tomar|descansar|poner|comer|dormir)", re.IGNORECASE)
+_RE_EDAD_DOLOR        = re.compile(r"\b(edad|envejecer|mayor|vieja|costumbre).{0,40}(dolor|duele|normal)\b", re.IGNORECASE)
+_RE_EXCLAMACION_BOT   = re.compile(r"¡[^!]{0,40}!")
+_RE_FARMACO           = re.compile(r"\b(efectividad|te ayud[oó]|dosis|tomar(la|las)|horario).{0,30}(gota|remedio|pastilla|medicamento)\b", re.IGNORECASE)
+
+
+def _monitoreo_calidad_bot(log_dia: str, chat_id: Optional[int] = None) -> list[str]:
+    """RULE_VUI_02 a RULE_CTRL_29: detecta patrones de baja calidad en los logs del día.
+
+    En multi-tenant, los nombres del adulto y de la asistente vienen de la vista
+    del hogar (`chat_id`). Si no se pasa `chat_id`, se cae a CONFIG global."""
+    alertas = []
+    if chat_id is None:
+        nombre    = CONFIG["nombre_adulto_mayor"]
+        asistente = CONFIG["nombre_asistente"]
+    else:
+        nombre    = _nombre_adulto_de(chat_id)
+        asistente = _nombre_asistente_de(chat_id)
+
+    turnos_bot = re.findall(rf"- {asistente}: (.+)", log_dia)
+    turnos_usr = re.findall(rf"- {nombre}: (.+)", log_dia)
+    if not turnos_bot:
+        return alertas
+
+    # RULE_VUI_02: ratio de preguntas > 50%
+    con_pregunta = sum(1 for t in turnos_bot if _RE_PREGUNTA_CIERRE.search(t))
+    if turnos_bot and con_pregunta / len(turnos_bot) > 0.5:
+        alertas.append(f"RULE_VUI_02: interrogatorio ({con_pregunta}/{len(turnos_bot)} turnos con pregunta)")
+
+    # RULE_ERR_03: respuestas truncadas (no terminan en puntuación de cierre)
+    truncados = [t for t in turnos_bot if _RE_TRUNCADO.search(t) and not re.search(r"[.!?]$", t.strip())]
+    if truncados:
+        alertas.append(f"RULE_ERR_03: {len(truncados)} respuesta(s) truncada(s)")
+
+    # RULE_LEX_04: solapamiento léxico > 40% entre turno usuario y turno bot
+    solapamientos = 0
+    for u, b in zip(turnos_usr, turnos_bot):
+        palabras_u = {w.lower() for w in re.findall(r"\w{4,}", u)} - _RE_OVERLAP_STOP
+        palabras_b = {w.lower() for w in re.findall(r"\w{4,}", b)} - _RE_OVERLAP_STOP
+        if palabras_u and len(palabras_u & palabras_b) / len(palabras_u) > 0.4:
+            solapamientos += 1
+    if solapamientos:
+        alertas.append(f"RULE_LEX_04: eco léxico en {solapamientos} turno(s)")
+
+    # RULE_LIN_10: "che" como sufijo de pregunta
+    che_mal = sum(1 for t in turnos_bot if _RE_CHE_CIERRE.search(t))
+    if che_mal:
+        alertas.append(f"RULE_LIN_10: 'che' al cierre de pregunta en {che_mal} turno(s)")
+
+    # RULE_TON_13: exclamaciones ante tono neutro/negativo del usuario
+    _NEGATIVO = re.compile(r"\b(sola|cansada|triste|mal|duele|silencio|extraño|pobrecita)\b", re.IGNORECASE)
+    for u, b in zip(turnos_usr, turnos_bot):
+        if _NEGATIVO.search(u) and _RE_EXCLAMACION_BOT.search(b):
+            alertas.append("RULE_TON_13: exclamación ante tono negativo del usuario")
+            break
+
+    # RULE_LON_19: listar familiares como respuesta a soledad
+    for u, b in zip(turnos_usr, turnos_bot):
+        if _RE_SOLEDAD_TRIGGER.search(u) and _RE_SOLEDAD_FAMILIAR.search(b):
+            alertas.append("RULE_LON_19: enumeración de familiares ante soledad declarada")
+            break
+
+    # RULE_GER_08: edadismo (dolor asociado a vejez)
+    for t in turnos_bot:
+        if _RE_EDAD_DOLOR.search(t):
+            alertas.append("RULE_GER_08: sesgo edadista detectado")
+            break
+
+    # RULE_TXT_24: markdown en output del bot
+    md_turnos = sum(1 for t in turnos_bot if _RE_MARKDOWN.search(t))
+    if md_turnos:
+        alertas.append(f"RULE_TXT_24: markdown en {md_turnos} turno(s) del bot")
+
+    # RULE_MED_06: preguntas sobre efectividad de medicamentos
+    for t in turnos_bot:
+        if _RE_FARMACO.search(t):
+            alertas.append("RULE_MED_06: pregunta sobre efectividad de fármaco")
+            break
+
+    # RULE_CTRL_29: preguntas de control de autocuidado
+    ctrl = sum(1 for t in turnos_bot if _RE_CTRL_AUTOCUIDADO.search(t))
+    if ctrl:
+        alertas.append(f"RULE_CTRL_29: {ctrl} pregunta(s) de control de autocuidado")
+
+    # RULE_CLOSE_30: última respuesta del bot termina con pregunta
+    if turnos_bot and _RE_PREGUNTA_CIERRE.search(turnos_bot[-1]):
+        alertas.append("RULE_CLOSE_30: sesión cerrada con repregunta abierta")
+
+    return alertas
+
+
+_TEMATICA_ACTIVA_PATH = BASE_DIR / "tematica_activa.json"
+
+
+def _tematica_activa_path(chat_id: Optional[int]) -> Path:
+    """Path per-hogar del archivo `tematica_activa.json` (multi-tenant).
+    Si `chat_id` es None se cae al path legacy global (compat con tests
+    single-tenant)."""
+    if chat_id is None:
+        return _TEMATICA_ACTIVA_PATH
+    return hogar_mod.hogar_dir(chat_id) / "tematica_activa.json"
+
+
+def _inyectar_tematica_activa(chat_id: Optional[int] = None):
+    """RULE_MEM_01: si el mismo tema de alegría aparece en 2+ sesiones consecutivas,
+    registrarlo para que el bot use verbos de continuidad al día siguiente."""
+    try:
+        entradas = load_json(_receptividad_path(chat_id), default=[])
+        ahora = datetime.now()
+        ayer   = (ahora - timedelta(days=1)).strftime("%Y-%m-%d")
+        hoy    = ahora.strftime("%Y-%m-%d")
+
+        temas_alta_hoy  = {e["tema"] for e in entradas if e["receptividad"] == "alta" and e["ts"][:10] == hoy}
+        temas_alta_ayer = {e["tema"] for e in entradas if e["receptividad"] == "alta" and e["ts"][:10] == ayer}
+        activos = list(temas_alta_hoy & temas_alta_ayer)
+
+        data = {"temas": activos, "ts": ahora.isoformat()}
+        destino = _tematica_activa_path(chat_id)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        if activos:
+            log.info(f"RULE_MEM_01: temática activa detectada → {activos}")
+    except Exception as e:
+        log.warning(f"_inyectar_tematica_activa falló: {e}")
 
 
 async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[str]:

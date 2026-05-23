@@ -9,6 +9,7 @@ from core.distress import parse_llm_response
 
 BASE_DIR    = Path(__file__).parent.parent
 PERFIL_PATH = BASE_DIR / "perfil.md"
+CORE_PATH   = BASE_DIR / "aikiu_core.md"
 
 
 # ---------------------------------------------------------------------------
@@ -18,9 +19,16 @@ PERFIL_PATH = BASE_DIR / "perfil.md"
 def cargar_perfil() -> str:
     return PERFIL_PATH.read_text(encoding="utf-8")
 
+def cargar_core() -> str:
+    return CORE_PATH.read_text(encoding="utf-8") if CORE_PATH.exists() else ""
+
+def cargar_perfil_y_core() -> str:
+    """Devuelve el contenido combinado de perfil.md y aikiu_core.md para verificar reglas."""
+    return cargar_perfil() + "\n" + cargar_core()
+
 def construir_prompt(perfil: str, asistente: str = "Clara", nombre: str = "Marta") -> str:
     from aikiu import construir_system_prompt
-    return construir_system_prompt(perfil, asistente, nombre)
+    return construir_system_prompt(perfil, cargar_core(), asistente, nombre)
 
 
 # ---------------------------------------------------------------------------
@@ -28,33 +36,33 @@ def construir_prompt(perfil: str, asistente: str = "Clara", nombre: str = "Marta
 # ---------------------------------------------------------------------------
 
 def test_perfil_contiene_regla_no_consejos_medicos():
-    """Si alguien borra la regla de perfil.md, este test lo detecta."""
-    perfil = cargar_perfil()
-    assert "consejos médicos" in perfil.lower(), (
-        "perfil.md debe contener la regla de no dar consejos médicos"
+    """Si alguien borra la regla, este test lo detecta (en aikiu_core.md o perfil.md)."""
+    contenido = cargar_perfil_y_core()
+    assert "consejos médicos" in contenido.lower(), (
+        "aikiu_core.md o perfil.md deben contener la regla de no dar consejos médicos"
     )
 
 def test_perfil_indica_derivar_al_medico():
     """La regla debe indicar explícitamente derivar al médico."""
-    perfil = cargar_perfil()
-    assert "médico" in perfil, (
-        "perfil.md debe mencionar que Clara debe derivar al médico"
+    contenido = cargar_perfil_y_core()
+    assert "médico" in contenido, (
+        "aikiu_core.md o perfil.md deben mencionar que Clara debe derivar al médico"
     )
 
 def test_perfil_cubre_caidas():
-    """perfil.md debe tener instrucción explícita para manejar caídas."""
-    perfil = cargar_perfil()
-    assert "caída" in perfil.lower() or "caídas" in perfil.lower()
+    """aikiu_core.md o perfil.md deben tener instrucción explícita para manejar caídas."""
+    contenido = cargar_perfil_y_core()
+    assert "caída" in contenido.lower() or "caídas" in contenido.lower()
 
 def test_perfil_cubre_soy_una_carga():
-    """perfil.md debe tener instrucción para manejar 'soy una carga'."""
-    perfil = cargar_perfil()
-    assert "carga" in perfil.lower()
+    """aikiu_core.md o perfil.md deben tener instrucción para manejar 'soy una carga'."""
+    contenido = cargar_perfil_y_core()
+    assert "carga" in contenido.lower()
 
 def test_perfil_cubre_dolor_fisico():
-    """perfil.md debe indicar cómo responder ante dolores físicos."""
-    perfil = cargar_perfil()
-    assert "dolor" in perfil.lower()
+    """aikiu_core.md o perfil.md deben indicar cómo responder ante dolores físicos."""
+    contenido = cargar_perfil_y_core()
+    assert "dolor" in contenido.lower()
 
 def test_system_prompt_incluye_regla_medica():
     """La regla de no dar consejos médicos llega al prompt que se envía al LLM."""
