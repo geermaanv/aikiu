@@ -53,18 +53,19 @@ def cargar_perfil_simulacion() -> str:
     return contenido
 
 
-def system_prompt_bot(perfil: str, nombre_adulto: str = "Marta", nombre_bot: str = "Clara") -> str:
+def system_prompt_bot(perfil: str, core: str = "", nombre_adulto: str = "Marta", nombre_bot: str = "Clara") -> str:
     sys.path.insert(0, str(BASE_DIR))
     from core.utils import fecha_hora_es
-    return (
-        f"Tu nombre es {nombre_bot}. Sos un asistente de voz.\n"
-        f"Hablás con {nombre_adulto}. A continuación está su perfil "
-        f"y las instrucciones de cómo debés comportarte:\n\n"
-        f"{perfil}\n\n"
+    partes = [f"Tu nombre es {nombre_bot}. Hablás con {nombre_adulto}.\n"]
+    if core:
+        partes.append(f"## LINEAMIENTOS DEL SISTEMA\n{core}\n")
+    partes.append(f"## PERFIL DE {nombre_adulto.upper()}\n{perfil}\n")
+    partes.append(
         f"Fecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires).\n"
         f"Respondé siempre en español rioplatense. Máximo 3 oraciones. "
         f"Nunca uses markdown. Al final de cada respuesta agregá: DISTRESS_LEVEL: 0"
     )
+    return "".join(partes)
 
 
 async def _llamar_bot(
@@ -157,6 +158,10 @@ async def simular(
     perfil = cargar_perfil_simulacion()
     persona_prompt = cargar_persona(persona)
 
+    # Cargar lineamientos del sistema (aikiu_core.md)
+    core_path = BASE_DIR / "aikiu_core.md"
+    core = core_path.read_text(encoding="utf-8") if core_path.exists() else ""
+
     gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
     # Agente A: Gemini simula al adulto mayor
@@ -167,7 +172,7 @@ async def simular(
 
     # Agente B: bot con fallback multi-proveedor
     historial_bot: list[dict] = []
-    sp_bot = system_prompt_bot(perfil)
+    sp_bot = system_prompt_bot(perfil, core)
 
     LOGS_SIM_DIR.mkdir(exist_ok=True)
     log_path = LOGS_SIM_DIR / f"iter{iteracion:02d}_{persona}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
