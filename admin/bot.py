@@ -104,6 +104,20 @@ _SEMAFORO = {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴", "ausente": "�
 _ORDEN_ESTADO = {"ausente": 0, "rojo": 1, "amarillo": 2, "verde": 3}
 
 
+def _escape_md(text: object) -> str:
+    """Escapa los caracteres especiales del Markdown v1 de Telegram.
+
+    Necesario para cualquier texto controlado por el usuario (nombres de
+    adultos/familiares, etc.) que se inyecta en mensajes con
+    `parse_mode="Markdown"`. Sin esto, un nombre con `_`, `*`, `` ` `` o `[`
+    rompe el parser y Telegram devuelve 400 BadRequest.
+    """
+    s = str(text) if text is not None else ""
+    for ch in ("_", "*", "`", "["):
+        s = s.replace(ch, "\\" + ch)
+    return s
+
+
 def _hace(iso_ts: Optional[str], ahora: Optional[datetime] = None) -> str:
     """ISO timestamp → 'hace 30s' / 'hace 4 min' / 'hace 2h'. None → '—'."""
     if not iso_ts:
@@ -1106,10 +1120,16 @@ def _info_hogar(chat_id: int) -> dict:
     perfil_p = hogar_mod.perfil_path(chat_id)
     perfil_kb = perfil_p.stat().st_size // 1024 if perfil_p.exists() else 0
 
+    nombre_raw = estado.get("nombre_adulto") or estado.get("nombre_adulto_mayor")
+    if nombre_raw:
+        nombre_md = f"*{_escape_md(nombre_raw)}*"
+    else:
+        nombre_md = "_(sin nombre)_"
+
     return {
         "chat_id": chat_id,
         "dir": d,
-        "nombre": estado.get("nombre_adulto") or estado.get("nombre_adulto_mayor") or "_(sin nombre)_",
+        "nombre_md": nombre_md,
         "alta": estado.get("registered_at", "—"),
         "migrated": estado.get("migrated_from_legacy", False),
         "familiares": len(fams),
@@ -1143,7 +1163,7 @@ async def cmd_hogares(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for cid in ids:
         info = _info_hogar(cid)
         marca_mig = " · _(migrado del legacy)_" if info["migrated"] else ""
-        lineas.append(f"*{info['nombre']}* — `{cid}`{marca_mig}")
+        lineas.append(f"{info['nombre_md']} — `{cid}`{marca_mig}")
         lineas.append(f"   • Alta: {info['alta']}")
         lineas.append(
             f"   • Familiares vinculados: {info['familiares']}"
@@ -1205,7 +1225,7 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not confirma:
         await update.message.reply_text(
             f"⚠️ *Vas a borrar el hogar `{objetivo}`*\n\n"
-            f"• Adulto: *{info['nombre']}*\n"
+            f"• Adulto: {info['nombre_md']}\n"
             f"• Alta: {info['alta']}\n"
             f"• Familiares vinculados: {info['familiares']}\n"
             f"• Perfil: {info['perfil_kb']} KB\n"
@@ -1243,7 +1263,7 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         extras_txt = ("\n_" + "; ".join(extras) + "._") if extras else ""
         await update.message.reply_text(
-            f"✅ Listo, borré el hogar `{objetivo}` ({info['nombre']}).{extras_txt}\n"
+            f"✅ Listo, borré el hogar `{objetivo}` ({info['nombre_md']}).{extras_txt}\n"
             f"_Si el adulto vuelve a mandar /start, se le crea uno nuevo desde cero._",
             parse_mode="Markdown",
         )
