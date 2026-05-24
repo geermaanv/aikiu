@@ -17,7 +17,7 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from telegram import Bot, Update
+from telegram import Bot, BotCommand, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import AsyncGroq
 from core.distress import parse_llm_response, should_send_alert, record_alert_sent
@@ -1623,6 +1623,15 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
 # Main
 # ---------------------------------------------------------------------------
 
+# Lista que Telegram muestra en el boton de menu azul al lado de la caja de texto.
+# Solo exponemos comandos utiles fuera de un flujo de conversacion: /saltar y
+# /cancelar viven adentro del onboarding y no tiene sentido ofrecerlos siempre.
+COMANDOS_TELEGRAM = [
+    BotCommand("start",   "Iniciar o reiniciar la conversacion con Clara"),
+    BotCommand("invitar", "Generar codigo para vincular un familiar"),
+]
+
+
 async def main():
     log.info("=" * 50)
     log.info("Aikiu iniciando (multi-tenant)")
@@ -1673,6 +1682,14 @@ async def main():
         programar_recordatorios(scheduler, app)
         scheduler.start()
         hb_mod.iniciar_heartbeat("aikiu")
+
+        # Publica los comandos en Telegram para que aparezcan en el botón de menú
+        # azul (al lado del campo de texto) apenas el adulto abre el chat.
+        try:
+            await app.bot.set_my_commands(COMANDOS_TELEGRAM)
+            log.info(f"Comandos publicados en Telegram: {len(COMANDOS_TELEGRAM)}")
+        except Exception as e:
+            log.warning(f"No pude publicar los comandos en Telegram: {e}")
 
         familiar_token = os.environ.get("FAMILIAR_BOT_TOKEN", "").strip()
         log.info(f"FAMILIAR_BOT_TOKEN: {'presente (' + str(len(familiar_token)) + ' chars)' if familiar_token else 'no encontrado'}")
