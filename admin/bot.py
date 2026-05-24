@@ -44,7 +44,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 from telegram import Bot, BotCommand, Update
-from telegram.error import TelegramError
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from core import heartbeat as hb_mod, llm_limits, usage as usage_mod
@@ -116,6 +116,22 @@ def _escape_md(text: object) -> str:
     for ch in ("_", "*", "`", "["):
         s = s.replace(ch, "\\" + ch)
     return s
+
+
+async def _reply_md_safe(message, text: str) -> None:
+    """Envía un mensaje con `parse_mode="Markdown"`. Si Telegram rechaza el
+    Markdown (entidades mal cerradas, anidadas, etc.) reintenta como texto
+    plano para que el admin reciba el contenido aunque pierda el formato.
+
+    El bug que motivó este helper: Markdown legacy NO soporta anidar
+    entidades (ej. `` ` `` dentro de `_..._`) y devuelve 400 BadRequest, lo
+    que dejaba al admin sin respuesta y solo con un traceback en los logs.
+    """
+    try:
+        await message.reply_text(text, parse_mode="Markdown")
+    except BadRequest as e:
+        log.warning(f"Markdown parse falló ({e}); reintentando como texto plano")
+        await message.reply_text(text)
 
 
 def _hace(iso_ts: Optional[str], ahora: Optional[datetime] = None) -> str:
@@ -1152,10 +1168,10 @@ async def cmd_hogares(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ids = hogar_mod.listar_hogares()
     if not ids:
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             "*🏠 Hogares*\n\nNo hay hogares registrados todavía.\n"
             "_Cualquiera que mande /start al bot principal va a crear el suyo._",
-            parse_mode="Markdown",
         )
         return
 
@@ -1175,8 +1191,8 @@ async def cmd_hogares(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lineas.append(f"   • Perfil: {info['perfil_kb']} KB")
         lineas.append("")
 
-    lineas.append("_Para eliminar un hogar: `/borrar <chat_id>` (pide confirmación)._")
-    await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
+    lineas.append("Para eliminar un hogar usá `/borrar <chat_id>` (pide confirmación).")
+    await _reply_md_safe(update.message, "\n".join(lineas))
 
 
 async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1195,27 +1211,27 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     args = context.args or []
     if not args:
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             "Uso: `/borrar <chat_id>` (te muestro qué se borraría).\n"
             "Después: `/borrar <chat_id> CONFIRMAR` para ejecutar.",
-            parse_mode="Markdown",
         )
         return
 
     try:
         objetivo = int(args[0])
     except ValueError:
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             f"`{args[0]}` no es un chat_id válido (tiene que ser un número).",
-            parse_mode="Markdown",
         )
         return
 
     if not hogar_mod.existe_hogar(objetivo):
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             f"No encontré un hogar con chat_id `{objetivo}`. "
             f"Mirá la lista con `/hogares`.",
-            parse_mode="Markdown",
         )
         return
 
@@ -1223,7 +1239,8 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info = _info_hogar(objetivo)
 
     if not confirma:
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             f"⚠️ *Vas a borrar el hogar `{objetivo}`*\n\n"
             f"• Adulto: {info['nombre_md']}\n"
             f"• Alta: {info['alta']}\n"
@@ -1233,7 +1250,6 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Esto borra TODO (state, perfil, stats, logs, familiares) y "
             f"es irreversible. Si estás seguro:\n\n"
             f"`/borrar {objetivo} CONFIRMAR`",
-            parse_mode="Markdown",
         )
         return
 
@@ -1262,15 +1278,15 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{familiares_reasignados} familiar(es) reasignado(s) a otro adulto"
             )
         extras_txt = ("\n_" + "; ".join(extras) + "._") if extras else ""
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             f"✅ Listo, borré el hogar `{objetivo}` ({info['nombre_md']}).{extras_txt}\n"
             f"_Si el adulto vuelve a mandar /start, se le crea uno nuevo desde cero._",
-            parse_mode="Markdown",
         )
     else:
-        await update.message.reply_text(
+        await _reply_md_safe(
+            update.message,
             f"❌ No pude borrar `{objetivo}`. Mirá los logs del admin.",
-            parse_mode="Markdown",
         )
 
 
