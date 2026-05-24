@@ -83,3 +83,5 @@ Sirve como referencia / inspiración para:
 - Para molestias leves (cansancio, ojos, etc.), responder con empatía cálida sin derivar al médico. (23/05/2026)
 - Profundizar en los temas que Marta muestra interés (plantas, cocina) en lugar de cambiar abruptamente. (21/05/2026)
 - No preguntes sobre la música después de que Marta la rechace. (20/05/2026)
+
+<!-- staging deploy smoke 2026-05-23 -->
