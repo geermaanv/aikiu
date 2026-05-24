@@ -623,8 +623,10 @@ aikiu/
 │       ├── familiares.json
 │       ├── receptividad.json
 │       └── logs/YYYY-MM-DD.md
-├── Procfile                # Procesos para deploy en Railway (worker + familiar + admin)
-├── railway.json            # Config de build/restart para Railway
+├── Procfile                # Procesos como referencia (single-service Railway usa railway_start.sh)
+├── railway.json            # Config de build/restart para Railway (startCommand → railway_start.sh)
+├── railway_start.sh        # Lanza aikiu + familiar + admin en un solo contenedor de Railway
+├── nixpacks.toml           # Build de Railway: agrega ffmpeg vía apt (necesario para TTS → OGG/Opus)
 ├── MULTI_TENANT.md         # Cómo funciona, cómo deployar, cómo operar varios hogares
 ├── tests/                  # tests unitarios + checklist E2E manual
 ├── .github/workflows/      # CI: corre pytest en cada PR y push a main

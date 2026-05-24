@@ -173,18 +173,26 @@ Si vas a desplegar con varios adultos activos:
    - Sin volumen, todo se pierde en el siguiente push (Railway por
      defecto tiene filesystem efímero).
 
-3. **Procesos**: el `Procfile` define tres procesos:
+3. **Procesos**: el `railway.json` arranca `bash railway_start.sh`, que
+   lanza los tres bots en paralelo dentro del mismo contenedor:
 
    ```
-   worker:   python aikiu.py
-   familiar: python familiar_bot.py
-   admin:    python admin/bot.py
+   aikiu.py         (siempre)
+   familiar_bot.py  (si FAMILIAR_BOT_TOKEN está seteado)
+   admin/bot.py     (si ADMIN_BOT_TOKEN está seteado)
    ```
 
-   Por default Railway corre `worker`. Los otros dos se pueden
-   habilitar desde la UI ("Add Service" → mismo repo, distinto
-   `Start Command`) o usando un solo Service con `start.sh` (que
-   lanza los tres en paralelo dentro del mismo contenedor).
+   Si cualquiera de los tres muere, el script sale con su exit code y
+   Railway aplica `restartPolicy: ON_FAILURE` reiniciando el contenedor
+   entero. El `Procfile` de la raíz queda como referencia para correr
+   los bots como servicios separados (`Add Service` → mismo repo,
+   distinto `Start Command`), pero el default es un solo contenedor.
+
+4. **ffmpeg**: el build de NIXPACKS lo instala automáticamente vía
+   `nixpacks.toml` (apt). Es necesario para convertir el MP3 de
+   `edge-tts` al OGG/Opus que Telegram acepta como nota de voz. Si lo
+   sacás, el bot principal va a fallar con `FileNotFoundError: 'ffmpeg'`
+   apenas intente responder en voz.
 
 ### Verificación post-deploy
 
