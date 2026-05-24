@@ -73,12 +73,19 @@ def write_json_atomic(path: Path, data) -> None:
 
 
 def nombre_adulto() -> str:
-    """Devuelve el nombre del adulto mayor desde config.yml."""
+    """Devuelve el nombre del adulto mayor desde config.yml.
+
+    LEGACY single-tenant: en multi-tenant esta función no es la fuente de
+    verdad — usar `aikiu._nombre_adulto_de(chat_id)` o
+    `familiar_bot._nombre_adulto_de(chat_id_adulto)` en cualquier código
+    que ya tenga el chat_id. Solo se mantiene como compat para callers
+    legacy y para tests que asumen single-tenant.
+    """
     cfg_path = BASE_DIR / "config.yml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("nombre_adulto_mayor", "Marta")
-    return "Marta"
+            return yaml.safe_load(f).get("nombre_adulto_mayor", "") or ""
+    return ""
 
 
 def read_section(perfil: str, seccion: str) -> str:

@@ -81,8 +81,9 @@ VOZ_TTS = _CONFIG.get("voz_tts", "es-AR-ElenaNeural")
 
 def _nombre_adulto_global() -> str:
     """Nombre por default del adulto (template global). Solo se usa cuando
-    no hay un adulto activo / hogar específico (modo legacy)."""
-    return _CONFIG.get("nombre_adulto_mayor", "Marta")
+    no hay un adulto activo / hogar específico (modo legacy). Multi-tenant
+    devuelve "" porque el template no tiene un nombre propio."""
+    return _CONFIG.get("nombre_adulto_mayor", "") or ""
 
 
 def _nombre_adulto_de(chat_id_adulto: Optional[int]) -> str:
@@ -97,7 +98,12 @@ def _nombre_adulto_de(chat_id_adulto: Optional[int]) -> str:
 _nombre_adulto = _nombre_adulto_global
 
 
-ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE = range(3)
+(
+    ELIGIENDO, RECIBIENDO, ESPERANDO_MENSAJE,
+    # Wizard /configurar — un estado por pregunta
+    CFG_NOMBRE, CFG_EDAD, CFG_CIUDAD, CFG_DESCRIPCION, CFG_ASISTENTE,
+    CFG_FAMILIA, CFG_GUSTOS, CFG_SALUD,
+) = range(11)
 
 # Lista que Telegram muestra en el boton de menu azul al lado de la caja de texto.
 COMANDOS_TELEGRAM = [
@@ -107,6 +113,7 @@ COMANDOS_TELEGRAM = [
     BotCommand("mensaje",       "Enviarle un mensaje al adulto (texto o voz)"),
     BotCommand("nombre",        "Registrar como te conoce el adulto"),
     BotCommand("perfil",        "Ver el perfil completo del adulto activo"),
+    BotCommand("configurar",    "Armar el perfil del adulto desde cero (8 preguntas)"),
     BotCommand("editar",        "Editar una seccion del perfil"),
     BotCommand("stats",         "Actividad del adulto en los ultimos dias"),
     BotCommand("aprendizajes",  "Lo que Clara aprendio del adulto"),
@@ -728,6 +735,173 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
+# Wizard /configurar — setup completo del perfil del adulto activo
+# ---------------------------------------------------------------------------
+#
+# /editar deja modificar UNA sección puntual. /configurar es para el setup
+# inicial: 8 preguntas en cadena que arman el perfil desde cero usando
+# `configurar.generar_perfil`. Si el adulto ya tenía perfil, se sobreescribe
+# (el familiar tiene contexto pleno y suele querer regenerarlo).
+#
+# /cancelar en cualquier paso aborta sin escribir nada.
+
+import configurar as configurar_mod
+
+
+def _parsear_lista(texto: str) -> list[str]:
+    """Convierte el texto de un mensaje en una lista de items.
+
+    Acepta tanto items en líneas separadas como separados por coma.
+    Filtra líneas vacías y guiones iniciales tipo markdown."""
+    items: list[str] = []
+    for raw in re.split(r"[\n,]", texto):
+        item = raw.strip().lstrip("-•").strip()
+        if item:
+            items.append(item)
+    return items
+
+
+async def cmd_configurar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not es_suscriptor(chat_id):
+        await _pedir_start(update)
+        return ConversationHandler.END
+    adulto_id, status = _resolver_adulto_o_explicar_async_handler(chat_id)
+    if status == "pedir_elegir":
+        await _pedir_elegir_adulto(update, fam_state.adultos_de(chat_id))
+        return ConversationHandler.END
+    if status == "pedir_vincular":
+        await _pedir_vincular(update)
+        return ConversationHandler.END
+
+    context.user_data["cfg_adulto_id"] = adulto_id
+    context.user_data["cfg_datos"] = {}
+
+    nombre_actual = _nombre_adulto_de(adulto_id) or "(sin nombre)"
+    await update.message.reply_text(
+        f"Vamos a armar el perfil del adulto (actualmente: *{nombre_actual}*).\n"
+        f"Te voy a hacer 8 preguntas. /cancelar para salir sin guardar.\n\n"
+        f"*1/8* ¿Cómo se llama?",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return CFG_NOMBRE
+
+
+async def cfg_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["nombre"] = update.message.text.strip()
+    await update.message.reply_text("*2/8* ¿Cuántos años tiene? (podés dejar vacío con un guión `-`)", parse_mode="Markdown")
+    return CFG_EDAD
+
+
+async def cfg_edad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    valor = update.message.text.strip()
+    context.user_data["cfg_datos"]["edad"] = "" if valor == "-" else valor
+    await update.message.reply_text("*3/8* ¿En qué ciudad vive?", parse_mode="Markdown")
+    return CFG_CIUDAD
+
+
+async def cfg_ciudad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["ciudad"] = update.message.text.strip()
+    await update.message.reply_text(
+        "*4/8* Describila en una oración (personalidad, cómo es).",
+        parse_mode="Markdown",
+    )
+    return CFG_DESCRIPCION
+
+
+async def cfg_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["descripcion"] = update.message.text.strip()
+    asistente_actual = _CONFIG.get("nombre_asistente", "Clara")
+    await update.message.reply_text(
+        f"*5/8* ¿Cómo se llama el asistente para ella?\n"
+        f"(Enter para usar *{asistente_actual}*)",
+        parse_mode="Markdown",
+    )
+    return CFG_ASISTENTE
+
+
+async def cfg_asistente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    valor = update.message.text.strip()
+    asistente = valor or _CONFIG.get("nombre_asistente", "Clara")
+    context.user_data["cfg_datos"]["nombre_asistente"] = asistente
+    await update.message.reply_text(
+        "*6/8* Familiares cercanos. Listalos uno por línea (o separados por coma).\n"
+        "Ejemplo: `Hija Laura, vive en Mendoza, la visita los domingos`",
+        parse_mode="Markdown",
+    )
+    return CFG_FAMILIA
+
+
+async def cfg_familia(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["familiares"] = _parsear_lista(update.message.text)
+    await update.message.reply_text(
+        "*7/8* Gustos y temas que la alegran (uno por línea o coma).\n"
+        "Ejemplo: `tango, programas de cocina, plantas`",
+        parse_mode="Markdown",
+    )
+    return CFG_GUSTOS
+
+
+async def cfg_gustos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["gustos"] = _parsear_lista(update.message.text)
+    await update.message.reply_text(
+        "*8/8* Notas de salud relevantes (uno por línea o coma).\n"
+        "Ejemplo: `medicación para la presión, ojos secos, dificultad para oír`",
+        parse_mode="Markdown",
+    )
+    return CFG_SALUD
+
+
+def _persistir_configuracion(adulto_id: int, datos: dict) -> Path:
+    """Escribe el perfil generado y actualiza el state del hogar.
+
+    Devuelve el path del perfil escrito."""
+    perfil_md = configurar_mod.generar_perfil(datos)
+    perfil_path = hogar_mod.perfil_path(adulto_id)
+    perfil_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(perfil_path, perfil_md)
+
+    estado = hogar_mod.leer_state(adulto_id) or {"owner_chat_id": int(adulto_id)}
+    if datos.get("nombre"):
+        estado["nombre_adulto_mayor"] = datos["nombre"]
+    if datos.get("nombre_asistente"):
+        estado["nombre_asistente"] = datos["nombre_asistente"]
+    if datos.get("ciudad"):
+        estado["ciudad"] = datos["ciudad"]
+    estado["perfil_completo"] = True
+    hogar_mod.escribir_state(adulto_id, estado)
+    return perfil_path
+
+
+async def cfg_salud(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cfg_datos"]["salud"] = _parsear_lista(update.message.text)
+    adulto_id = context.user_data.get("cfg_adulto_id")
+    datos = context.user_data.get("cfg_datos", {})
+
+    try:
+        perfil_path = _persistir_configuracion(adulto_id, datos)
+    except Exception as e:
+        log.warning(f"/configurar falló al guardar adulto={adulto_id}: {e}")
+        await update.message.reply_text(
+            "Algo falló al guardar el perfil. Probá de nuevo más tarde.",
+        )
+        return ConversationHandler.END
+
+    log.info(
+        f"/configurar: perfil de {adulto_id} reescrito por familiar "
+        f"{update.effective_chat.id} ({perfil_path})"
+    )
+    nombre = datos.get("nombre") or _nombre_adulto_de(adulto_id) or "el adulto"
+    await update.message.reply_text(
+        f"Listo. Perfil de *{nombre}* guardado. "
+        f"{datos.get('nombre_asistente', 'Clara')} lo va a tener en cuenta desde la próxima conversación.",
+        parse_mode="Markdown",
+    )
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
 # Puente familiar (/mensaje)
 # ---------------------------------------------------------------------------
 
@@ -859,6 +1033,22 @@ async def main():
         allow_reentry=True,
     )
 
+    conv_configurar = ConversationHandler(
+        entry_points=[CommandHandler("configurar", cmd_configurar)],
+        states={
+            CFG_NOMBRE:      [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_nombre)],
+            CFG_EDAD:        [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_edad)],
+            CFG_CIUDAD:      [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_ciudad)],
+            CFG_DESCRIPCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_descripcion)],
+            CFG_ASISTENTE:   [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_asistente)],
+            CFG_FAMILIA:     [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_familia)],
+            CFG_GUSTOS:      [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_gustos)],
+            CFG_SALUD:       [MessageHandler(filters.TEXT & ~filters.COMMAND, cfg_salud)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+        allow_reentry=True,
+    )
+
     conv_mensaje = ConversationHandler(
         entry_points=[CommandHandler("mensaje", cmd_mensaje)],
         states={
@@ -882,6 +1072,7 @@ async def main():
     app.add_handler(CommandHandler("misadultos",     cmd_misadultos))
     app.add_handler(CommandHandler("elegir",         cmd_elegir))
     app.add_handler(conv_editar)
+    app.add_handler(conv_configurar)
     app.add_handler(conv_mensaje)
 
     log.info("Bot familiar iniciando...")

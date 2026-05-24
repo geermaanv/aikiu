@@ -126,6 +126,19 @@ servidor propio. Corre en cualquier Mac con Python.
   compartidos). Cada adulto que mande `/start` queda dado de alta automático
   y se le crea su carpeta en `instances/<chat_id>/` con state, perfil, stats,
   familiares y logs aislados (módulo `core/hogar.py`)
+- **Template global neutro**: `perfil.md` y `config.yml` de la raíz son
+  un esqueleto sin nombres propios. Los datos reales de cada adulto viven
+  exclusivamente en `instances/<chat_id>/state.json` (overrides) y
+  `instances/<chat_id>/perfil.md`. `configurar.py --template` regenera el
+  esqueleto; `configurar.py --chat-id <id>` configura un hogar puntual
+- **Wizard de onboarding** en el bot principal: el primer `/start` de un
+  adulto dispara una `ConversationHandler` de 5 preguntas (nombre, edad,
+  ciudad, familia, gustos) que acepta texto **y** voz (transcripción
+  Whisper). El progreso se persiste turno a turno en `state.json` por si
+  se corta la conversación. `/saltar` y `/cancelar` para escapar
+- **`/configurar` en el bot familiar**: 8 preguntas guiadas que el
+  familiar contesta para armarle el perfil al adulto activo desde su
+  propio Telegram. Reusa `configurar.generar_perfil()`
 - **Migración idempotente** del single-tenant viejo: la primera vez que arranca
   `aikiu.py`, detecta los archivos en la raíz del repo (`state.json`,
   `perfil.md`, etc.) y los mueve a `instances/<owner_chat_id>/`. Marca el state

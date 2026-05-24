@@ -599,7 +599,7 @@ aikiu/
 │   ├── perfil_simulacion.md   # Perfil paralelo que evoluciona (gitignored, runtime)
 │   ├── logs/               # Conversaciones en JSONL por iteración (gitignored, runtime)
 │   └── scores.jsonl        # Histórico de puntajes por iteración (gitignored, runtime)
-├── configurar.py           # Wizard interactivo para generar perfil.md
+├── configurar.py           # Setup: --template regenera el esqueleto neutro, --chat-id <id> configura un hogar puntual
 ├── core/
 │   ├── distress.py         # Parsing del DISTRESS_LEVEL y lógica de cooldowns
 │   ├── alerts.py           # Envío de alertas (distress + inactividad) a familiares
@@ -630,7 +630,8 @@ aikiu/
 ├── .github/workflows/      # CI: corre pytest en cada PR y push a main
 ├── .cursor/rules/          # Reglas para el agente de Cursor (convenciones del repo)
 ├── config.yml              # Config no sensible (nombres, voz, horarios, recordatorios)
-├── perfil.md               # Perfil del adulto mayor en lenguaje natural
+├── perfil.md               # Esqueleto neutro del perfil (fallback; los reales viven en instances/<chat_id>/perfil.md)
+├── ejemploPerfil-Marta.md  # Ejemplo de referencia: cómo queda un perfil real bien armado tras semanas de uso
 ├── requirements.txt        # Dependencias Python
 ├── .env.example            # Plantilla de variables de entorno
 ├── setup.sh                # Instala dependencias en venv (macOS / Linux)
@@ -748,12 +749,14 @@ AIKIU_REGISTRY=/data/instances
 
 ### 2. Configuración no sensible (`config.yml`)
 
+`config.yml` es el **template global**: defaults que se aplican a hogares nuevos. Es deliberadamente neutro (sin nombres propios) — los datos personales de cada adulto viven en `instances/<chat_id>/state.json`.
+
 ```yaml
-nombre_adulto_mayor: "Marta"
-nombre_asistente: "Clara"
-ciudad: "Olivos, Buenos Aires"
+nombre_adulto_mayor: ""                # se completa per-hogar en el wizard de onboarding
+nombre_asistente: "Clara"              # default de marca (cada hogar puede sobrescribir)
+ciudad: ""                             # se completa per-hogar
 perfil: "perfil.md"
-voz_tts: "es-AR-ElenaNeural"          # opciones: es-AR-TomasNeural, es-ES-ElviraNeural, etc.
+voz_tts: "es-AR-ElenaNeural"           # opciones: es-AR-TomasNeural, es-ES-ElviraNeural, etc.
 modelo_llm: "llama-3.3-70b-versatile"
 
 saludo_diario:
@@ -767,22 +770,24 @@ alerta_inactividad:
   horas_umbral: 4
   checks: ["11:30", "19:00"]
 
-recordatorios:
+recordatorios:                         # genéricos, sin nombre propio
   - hora: "09:00"
-    mensaje: "Marta, ¿tomaste el medicamento de la mañana?"
+    mensaje: "Es hora del medicamento de la mañana."
   - hora: "21:00"
-    mensaje: "Marta, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."
+    mensaje: "Ya es tarde, pensá en descansar."
 ```
 
-### 3. Perfil del adulto mayor (`perfil.md`)
+### 3. Perfil del adulto (`perfil.md`)
 
-Editalo a mano o, mejor, usá el wizard interactivo:
+En multi-tenant **no hay un único `perfil.md`**: hay uno por hogar en `instances/<chat_id>/perfil.md`. El `perfil.md` de la raíz es solo un esqueleto neutro que se usa como fallback cuando un hogar todavía no completó su onboarding.
 
-```bash
-bash configurar.sh
-```
+Hay tres formas de armar el perfil de un hogar:
 
-El wizard pregunta paso a paso por: identidad, familia, gustos, salud, temas a tratar con cuidado y reglas del asistente. Genera `perfil.md` automáticamente.
+| Forma | Cuándo usarla | Comando |
+|---|---|---|
+| **Wizard del bot principal** | El adulto recién se registra (primer `/start`). 5 preguntas por chat — acepta voz y texto. | `/start` desde el Telegram del adulto |
+| **`/configurar` del bot familiar** | El familiar prefiere armarle el perfil al adulto desde su propio Telegram (8 preguntas). | `/configurar` en el bot familiar, sobre el adulto activo |
+| **`configurar.py` desde la consola** | Setup offline (operador del deploy) o regenerar el template global. | `python configurar.py --chat-id <id>` para un hogar puntual, o `python configurar.py --template` para el esqueleto |
 
 `perfil.md` es lenguaje natural editable: el LLM lo lee como contexto. Cuanto más concreto y específico, mejor. Las secciones son:
 

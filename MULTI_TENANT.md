@@ -61,12 +61,54 @@ segunda vez no encuentra nada que mover).
 
 1. El adulto abre el chat del bot principal y manda `/start`.
 2. `aikiu.py` detecta que el `chat_id` no tiene hogar y crea uno nuevo
-   en `instances/<chat_id>/` con un `state.json` mínimo.
-3. Desde ese momento, todos los mensajes del adulto se procesan dentro
-   del contexto de ese hogar: perfil propio, stats propios, log propio.
+   en `instances/<chat_id>/` con un `state.json` mínimo (incluye el
+   `first_name` de Telegram como hint).
+3. Como el hogar no tiene `perfil_completo: true`, arranca el **wizard
+   de onboarding**: 5 preguntas en cadena por el chat (nombre, edad,
+   ciudad, familia, gustos). Acepta respuestas por texto **o por voz**
+   (se transcriben con Whisper).
+4. Si el adulto contesta "no sé", "no" o "nada" en una pregunta
+   opcional (todo menos el nombre), se guarda vacío y se avanza. Para
+   abandonar el wizard hay `/cancelar` y para saltar la pregunta
+   actual `/saltar`.
+5. El progreso se persiste turno a turno bajo
+   `state.json → onboarding_progress`. Si el adulto cierra el chat a
+   mitad y vuelve con `/start`, el wizard retoma desde la última
+   pregunta pendiente.
+6. Al terminar las 5 preguntas, se genera
+   `instances/<chat_id>/perfil.md` con `configurar.generar_perfil()` y
+   se marca `perfil_completo: true`. Desde ese momento, todos los
+   mensajes del adulto se procesan en modo conversación normal.
+
+Si preferís que el familiar arme el perfil del adulto sin que el
+adulto pase por el wizard, hay dos alternativas:
+
+- `/configurar` en el bot familiar (8 preguntas guiadas sobre el
+  adulto activo). Funciona aún si el adulto ya pasó por el wizard —
+  sobrescribe el perfil.
+- `python configurar.py --chat-id <chat_id>` desde la consola del
+  servidor (útil para el operador del deploy). Si el hogar no existe
+  pide que el adulto haga `/start` primero.
 
 No hay límite de cantidad de hogares en el código (sí en los rate
 limits del LLM, ver más abajo).
+
+## Template global vs hogares
+
+El template (`perfil.md` y `config.yml` de la raíz) es **neutro**: no
+contiene datos de ninguna persona concreta. Sirve como fallback para
+hogares todavía no onboardeados y como esqueleto para regenerar la
+configuración base. Los datos reales viven exclusivamente en
+`instances/<chat_id>/`.
+
+- `python configurar.py --template` regenera el template neutro
+  (también es lo que corre `instalarWin.ps1` paso 3).
+- `python configurar.py --chat-id <id>` reconfigura un hogar
+  existente sin tocar el template.
+
+Cuando un hogar tiene un override en su `state.json` (ej.
+`nombre_adulto_mayor: "Marta"`), ese valor pisa al del template. Así
+podés tener un template vacío con muchos hogares poblados.
 
 ## Familiares vinculados a varios adultos (many-to-many)
 

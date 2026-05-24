@@ -143,7 +143,7 @@ def test_main_genera_perfil_y_actualiza_config(tmp_path, monkeypatch):
         "s",
     ])
     with patch.object(builtins, "input", side_effect=lambda *_: next(inputs)):
-        configurar.main()
+        configurar.main(["--template"])
 
     perfil_path = tmp_path / "perfil.md"
     assert perfil_path.exists()
@@ -177,7 +177,119 @@ def test_main_sin_familiares_pone_placeholder(tmp_path, monkeypatch):
         "s",  # reglas defaults
     ])
     with patch.object(builtins, "input", side_effect=lambda *_: next(inputs)):
-        configurar.main()
+        configurar.main(["--template"])
     perfil = (tmp_path / "perfil.md").read_text(encoding="utf-8")
     assert "completar con los familiares" in perfil.lower()
     assert "Sin notas cargadas" in perfil
+
+
+# ---------------------------------------------------------------------------
+# generar_perfil — función pura usada por wizards del bot
+# ---------------------------------------------------------------------------
+
+def test_generar_perfil_con_nombre_arma_seccion_quien_es():
+    datos = {
+        "nombre": "Pedro",
+        "edad": "78",
+        "ciudad": "Rosario",
+        "descripcion": "Tranquilo, le gusta el dominó",
+        "nombre_asistente": "Sofi",
+        "familiares": ["Hijo Lucas, vive cerca"],
+        "gustos": ["Dominó", "Mate amargo"],
+        "salud": ["Toma para el colesterol"],
+    }
+    perfil = configurar.generar_perfil(datos)
+    assert "# Perfil de Pedro" in perfil
+    assert "Pedro, 78 años, vive en Rosario" in perfil
+    assert "Tranquilo, le gusta el dominó" in perfil
+    assert "Al asistente lo conoce como Sofi" in perfil
+    assert "Hijo Lucas" in perfil
+    assert "## Aprendizajes" in perfil
+    assert "## Ajustes sugeridos" in perfil
+
+
+def test_generar_perfil_sin_nombre_devuelve_esqueleto_neutro():
+    perfil = configurar.generar_perfil({})
+    assert "# Perfil del adulto" in perfil
+    assert "Nombre y edad pendientes" in perfil
+    # No debe contener nombres propios filtrados
+    assert "Marta" not in perfil
+    assert "Pedro" not in perfil
+
+
+def test_generar_perfil_solo_nombre_no_explota():
+    perfil = configurar.generar_perfil({"nombre": "Ana"})
+    assert "# Perfil de Ana" in perfil
+    assert "- Ana" in perfil
+    # No imprime "X años" si no hay edad
+    assert "años" not in perfil
+    # Asistente por defecto: Clara
+    assert "Al asistente lo conoce como Clara" in perfil
+
+
+def test_generar_perfil_sin_edad_pero_con_ciudad():
+    perfil = configurar.generar_perfil({"nombre": "Luis", "ciudad": "Tigre"})
+    assert "Luis, vive en Tigre" in perfil
+
+
+# ---------------------------------------------------------------------------
+# Modo --chat-id: configura un hogar existente
+# ---------------------------------------------------------------------------
+
+def test_main_chat_id_inexistente_sale_con_error(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("AIKIU_REGISTRY", str(tmp_path / "instances"))
+    with pytest.raises(SystemExit) as exc:
+        configurar.main(["--chat-id", "9999"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "no existe" in err
+    assert "/start" in err
+
+
+def test_main_chat_id_existente_reescribe_perfil_y_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIKIU_REGISTRY", str(tmp_path / "instances"))
+    # Crear hogar simulado
+    from core import hogar as hogar_mod
+    hogar_mod.crear_hogar(12345, nombre="Pre-existente")
+
+    inputs = iter([
+        "Pedro", "78", "Rosario", "Tranquilo", "Sofi",  # identidad
+        "Hijo Lucas", "",                                # familiares
+        "s",                                              # gustos defaults
+        "Presión arterial", "",                          # salud
+        "s",                                              # temas defaults
+        "s",                                              # reglas defaults
+    ])
+    with patch.object(builtins, "input", side_effect=lambda *_: next(inputs)):
+        configurar.main(["--chat-id", "12345"])
+
+    perfil = hogar_mod.perfil_path(12345).read_text(encoding="utf-8")
+    assert "# Perfil de Pedro" in perfil
+    assert "Hijo Lucas" in perfil
+
+    import json
+    state = json.loads(hogar_mod.state_path(12345).read_text(encoding="utf-8"))
+    assert state["nombre_adulto_mayor"] == "Pedro"
+    assert state["nombre_asistente"] == "Sofi"
+    assert state["ciudad"] == "Rosario"
+    assert state["perfil_completo"] is True
+    # owner_chat_id preservado del crear_hogar
+    assert state["owner_chat_id"] == 12345
+
+
+def test_main_template_sin_nombre_genera_esqueleto(tmp_path, monkeypatch):
+    """--template con Enter en todas las preguntas genera el esqueleto neutro."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        'nombre_adulto_mayor: ""\nnombre_asistente: "Clara"\nperfil: "perfil.md"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(configurar, "BASE_DIR", tmp_path)
+    # Todas las preguntas con Enter (default neutro) → 13 Enters
+    inputs = iter([""] * 30)
+    with patch.object(builtins, "input", side_effect=lambda *_: next(inputs)):
+        configurar.main(["--template"])
+    perfil = (tmp_path / "perfil.md").read_text(encoding="utf-8")
+    assert "# Perfil del adulto" in perfil
+    assert "Nombre y edad pendientes" in perfil
+    assert "Marta" not in perfil

@@ -111,12 +111,20 @@ def _config_hogar(chat_id: int) -> dict:
 
     Campos overrideables (todos opcionales en el state):
         nombre_adulto_mayor, nombre_asistente, ciudad, voz_tts
+
+    Compat: si el state tiene `nombre_adulto` (clave que persiste
+    `crear_hogar` con el first_name de Telegram en el /start) y no tiene
+    `nombre_adulto_mayor`, lo promovemos. Así un hogar nuevo que solo
+    pasó por el alta automática ya muestra el nombre del usuario en vez
+    de caer al fallback del template global.
     """
     vista = dict(CONFIG)
     estado = _state_hogar(chat_id)
     for clave in ("nombre_adulto_mayor", "nombre_asistente", "ciudad", "voz_tts"):
         if clave in estado:
             vista[clave] = estado[clave]
+    if "nombre_adulto_mayor" not in estado and estado.get("nombre_adulto"):
+        vista["nombre_adulto_mayor"] = estado["nombre_adulto"]
     return vista
 
 
@@ -140,8 +148,8 @@ def _perfil_hogar(chat_id: int) -> str:
 
 def _nombre_adulto_de(chat_id: Optional[int]) -> str:
     if chat_id is None:
-        return CONFIG.get("nombre_adulto_mayor", "Marta")
-    return _config_hogar(chat_id).get("nombre_adulto_mayor", "Marta")
+        return CONFIG.get("nombre_adulto_mayor", "") or ""
+    return _config_hogar(chat_id).get("nombre_adulto_mayor", "") or ""
 
 
 def _nombre_asistente_de(chat_id: Optional[int]) -> str:
@@ -1075,26 +1083,267 @@ async def cmd_invitar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+import configurar as configurar_mod
+from telegram.ext import ConversationHandler
+
+# Estados del wizard de onboarding del adulto en el bot principal.
+# Se preguntan en cadena en el primer /start del adulto. Cada respuesta
+# se persiste en `state.json` bajo `onboarding_progress` por si el chat
+# se cierra a mitad del wizard (al volver con /start, se reanuda).
+(
+    OB_NOMBRE, OB_EDAD, OB_CIUDAD, OB_FAMILIA, OB_GUSTOS,
+) = range(5)
+
+_OB_PASOS = ("nombre", "edad", "ciudad", "familiares", "gustos")
+_OB_NO_RESPUESTAS = {"no", "no se", "no sé", "ninguno", "ninguna", "nada", "no recuerdo"}
+
+
+async def _texto_desde_update(update: Update) -> str:
+    """Extrae el texto del mensaje, transcribiendo si es voz. '' si no hay nada."""
+    msg = update.message
+    if msg is None:
+        return ""
+    if msg.voice:
+        with tempfile.TemporaryDirectory() as tmp:
+            ogg = Path(tmp) / "entrada.ogg"
+            file = await msg.voice.get_file()
+            await file.download_to_drive(ogg)
+            texto = await transcribir(ogg)
+        return (texto or "").strip()
+    return (msg.text or "").strip()
+
+
+def _normalizar_respuesta_onboarding(valor: str, paso: str) -> str | list[str]:
+    """Devuelve el valor a guardar para `paso` dada la respuesta `valor`.
+
+    - "no", "no sé", "nada" → vacío (campo opcional saltado).
+    - `familiares` y `gustos` se parsean como lista (líneas o comas).
+    - resto → string strippeado.
+    """
+    if not valor or norm(valor) in _OB_NO_RESPUESTAS:
+        if paso in ("familiares", "gustos"):
+            return []
+        return ""
+    if paso in ("familiares", "gustos"):
+        items: list[str] = []
+        for raw in re.split(r"[\n,]", valor):
+            item = raw.strip().lstrip("-•").strip()
+            if item:
+                items.append(item)
+        return items
+    return valor.strip()
+
+
+_OB_PROMPTS = {
+    OB_NOMBRE: ("1/5 ¿Cómo te llamás? (Solo el nombre está bien)"),
+    OB_EDAD: ("2/5 ¿Cuántos años tenés? (Podés decir 'no sé' para saltar)"),
+    OB_CIUDAD: ("3/5 ¿En qué ciudad vivís?"),
+    OB_FAMILIA: (
+        "4/5 ¿Quiénes son tus familiares más cercanos? Nombrámelos en una "
+        "frase. Por ejemplo: 'mi hija Laura y mi nieto Juan'."
+    ),
+    OB_GUSTOS: (
+        "5/5 ¿Qué te gusta hacer o sobre qué te gusta hablar? Por ejemplo: "
+        "'tango, cocinar, las plantas'."
+    ),
+}
+
+
+def _onboarding_pendiente(estado: dict) -> bool:
+    """True si el hogar todavía no completó el wizard de bienvenida."""
+    if estado.get("perfil_completo"):
+        return False
+    return True
+
+
+def _proximo_paso_onboarding(estado: dict) -> int:
+    """Estado siguiente del ConversationHandler según `onboarding_progress`."""
+    progreso = estado.get("onboarding_progress", {}) or {}
+    for idx, clave in enumerate(_OB_PASOS):
+        if clave not in progreso:
+            return [OB_NOMBRE, OB_EDAD, OB_CIUDAD, OB_FAMILIA, OB_GUSTOS][idx]
+    return OB_NOMBRE  # ya completó todo pero perfil_completo no marcó: arrancar de cero
+
+
+def _guardar_progreso_ob(chat_id: int, paso: str, valor) -> dict:
+    estado = hogar_mod.leer_state(chat_id) or {"owner_chat_id": int(chat_id)}
+    progreso = dict(estado.get("onboarding_progress") or {})
+    progreso[paso] = valor
+    estado["onboarding_progress"] = progreso
+    hogar_mod.escribir_state(chat_id, estado)
+    return estado
+
+
+def _finalizar_onboarding(chat_id: int) -> tuple[Path, str]:
+    """Escribe `perfil.md` con las respuestas y marca `perfil_completo: true`.
+
+    Devuelve (path_perfil, nombre_del_adulto)."""
+    estado = hogar_mod.leer_state(chat_id) or {"owner_chat_id": int(chat_id)}
+    progreso = estado.get("onboarding_progress") or {}
+    nombre = (progreso.get("nombre") or estado.get("nombre_adulto") or "").strip()
+
+    datos = {
+        "nombre": nombre,
+        "edad": progreso.get("edad", ""),
+        "ciudad": progreso.get("ciudad", ""),
+        "descripcion": "",
+        "nombre_asistente": estado.get("nombre_asistente") or CONFIG.get("nombre_asistente", "Clara"),
+        "familiares": progreso.get("familiares") or [],
+        "gustos": progreso.get("gustos") or [],
+        "salud": [],
+    }
+
+    perfil_md = configurar_mod.generar_perfil(datos)
+    perfil_path = hogar_mod.perfil_path(chat_id)
+    perfil_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(perfil_path, perfil_md)
+
+    if nombre:
+        estado["nombre_adulto_mayor"] = nombre
+    if datos["ciudad"]:
+        estado["ciudad"] = datos["ciudad"]
+    estado["perfil_completo"] = True
+    hogar_mod.escribir_state(chat_id, estado)
+    return perfil_path, nombre
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Self-service onboarding: cualquier chat_id que mande /start crea su hogar."""
+    """Self-service onboarding: cualquier chat_id que mande /start crea su hogar.
+
+    Si el hogar es nuevo o tiene onboarding pendiente, arranca el wizard
+    (devuelve un estado del ConversationHandler). Si el adulto ya está
+    onboardeado, manda solo el saludo y termina (END)."""
     chat_id = update.effective_chat.id
     raw_first = getattr(update.effective_user, "first_name", None) if update.effective_user else None
     nombre_tg = raw_first if isinstance(raw_first, str) and raw_first else None
 
     nuevo = _asegurar_hogar(chat_id, nombre_tg=nombre_tg)
-    nombre = _nombre_adulto_de(chat_id)
-    asistente = _nombre_asistente_de(chat_id)
+    estado = hogar_mod.leer_state(chat_id) or {}
+    asistente = _nombre_asistente_de(chat_id) or "Clara"
 
-    if nuevo:
-        bienvenida = (
-            f"Hola {nombre_tg or nombre}, soy {asistente}. "
-            f"Te di de alta en Aikiu. Contame cómo te sentís o pedime lo que "
-            f"necesites (el clima, el dólar, una charla)."
+    if _onboarding_pendiente(estado):
+        nombre_visible = nombre_tg or _nombre_adulto_de(chat_id) or ""
+        saludo = nombre_visible and f"Hola {nombre_visible}." or "Hola."
+        intro = (
+            f"{saludo} Soy {asistente}. "
+            f"Antes de empezar te hago unas preguntas cortas para conocerte "
+            f"mejor. Podés contestarme por texto o por voz, lo que te resulte "
+            f"más cómodo. Si alguna pregunta no querés contestar, decime 'no' "
+            f"o mandá /saltar. Para abandonar el cuestionario, /cancelar.\n\n"
         )
-    else:
-        bienvenida = f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+        siguiente = _proximo_paso_onboarding(estado)
+        await context.bot.send_message(chat_id=chat_id, text=intro + _OB_PROMPTS[siguiente])
+        if nuevo:
+            log.info(f"[ONBOARDING] arrancando wizard para chat_id={chat_id}")
+        return siguiente
 
+    nombre = _nombre_adulto_de(chat_id) or nombre_tg or ""
+    if nombre:
+        bienvenida = f"Hola {nombre}, soy {asistente}. ¿En qué te puedo ayudar?"
+    else:
+        bienvenida = f"Hola, soy {asistente}. ¿En qué te puedo ayudar?"
     await context.bot.send_message(chat_id=chat_id, text=bienvenida)
+    return ConversationHandler.END
+
+
+async def _ob_recibir(update: Update, context: ContextTypes.DEFAULT_TYPE, paso: str, siguiente_estado: int | None):
+    """Handler genérico de cada paso. Persiste el progreso y avanza."""
+    chat_id = update.effective_chat.id
+    texto = await _texto_desde_update(update)
+    valor = _normalizar_respuesta_onboarding(texto, paso)
+
+    if paso == "nombre" and not valor:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Necesito al menos tu nombre para llamarte. ¿Cómo te llamás?",
+        )
+        return OB_NOMBRE
+
+    _guardar_progreso_ob(chat_id, paso, valor)
+
+    if siguiente_estado is None:
+        perfil_path, nombre = _finalizar_onboarding(chat_id)
+        log.info(f"[ONBOARDING] completado chat_id={chat_id} → {perfil_path}")
+        asistente = _nombre_asistente_de(chat_id) or "Clara"
+        cierre = (
+            f"Listo{', ' + nombre if nombre else ''}. Ya está. "
+            f"Soy {asistente} y voy a estar acá cuando me necesites. "
+            f"Contame cómo estás hoy o pedime lo que quieras."
+        )
+        await context.bot.send_message(chat_id=chat_id, text=cierre)
+        return ConversationHandler.END
+
+    await context.bot.send_message(chat_id=chat_id, text=_OB_PROMPTS[siguiente_estado])
+    return siguiente_estado
+
+
+async def ob_nombre(update, context):
+    return await _ob_recibir(update, context, "nombre", OB_EDAD)
+
+
+async def ob_edad(update, context):
+    return await _ob_recibir(update, context, "edad", OB_CIUDAD)
+
+
+async def ob_ciudad(update, context):
+    return await _ob_recibir(update, context, "ciudad", OB_FAMILIA)
+
+
+async def ob_familia(update, context):
+    return await _ob_recibir(update, context, "familiares", OB_GUSTOS)
+
+
+async def ob_gustos(update, context):
+    return await _ob_recibir(update, context, "gustos", None)
+
+
+async def cmd_saltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Salta la pregunta actual con valor vacío y avanza al siguiente paso."""
+    chat_id = update.effective_chat.id
+    estado = hogar_mod.leer_state(chat_id) or {}
+    siguiente = _proximo_paso_onboarding(estado)
+    paso_actual = _OB_PASOS[siguiente]  # el paso que está pendiente AHORA
+    if paso_actual == "nombre":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="El nombre no se puede saltar. ¿Cómo te llamás?",
+        )
+        return OB_NOMBRE
+    valor: str | list[str] = [] if paso_actual in ("familiares", "gustos") else ""
+    _guardar_progreso_ob(chat_id, paso_actual, valor)
+    # Buscar el siguiente paso después de saltear
+    estado = hogar_mod.leer_state(chat_id)
+    idx_actual = _OB_PASOS.index(paso_actual)
+    if idx_actual + 1 >= len(_OB_PASOS):
+        perfil_path, nombre = _finalizar_onboarding(chat_id)
+        log.info(f"[ONBOARDING] completado tras /saltar chat_id={chat_id} → {perfil_path}")
+        asistente = _nombre_asistente_de(chat_id) or "Clara"
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"Listo{', ' + nombre if nombre else ''}. Ya está. "
+                f"Soy {asistente} y voy a estar acá cuando me necesites."
+            ),
+        )
+        return ConversationHandler.END
+    nuevo_estado = [OB_NOMBRE, OB_EDAD, OB_CIUDAD, OB_FAMILIA, OB_GUSTOS][idx_actual + 1]
+    await context.bot.send_message(chat_id=chat_id, text=_OB_PROMPTS[nuevo_estado])
+    return nuevo_estado
+
+
+async def cmd_cancelar_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Aborta el wizard. El perfil queda neutro hasta que vuelva /start o
+    el familiar use /configurar."""
+    chat_id = update.effective_chat.id
+    asistente = _nombre_asistente_de(chat_id) or "Clara"
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"Listo, dejamos las preguntas para otro momento. "
+            f"Soy {asistente}, podés escribirme cuando quieras."
+        ),
+    )
+    return ConversationHandler.END
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -1398,7 +1647,24 @@ async def main():
         .token(CONFIG["bot_token"])
         .build()
     )
-    app.add_handler(CommandHandler("start", cmd_start))
+    onboarding_conv = ConversationHandler(
+        entry_points=[CommandHandler("start", cmd_start)],
+        states={
+            OB_NOMBRE: [MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), ob_nombre)],
+            OB_EDAD:   [MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), ob_edad)],
+            OB_CIUDAD: [MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), ob_ciudad)],
+            OB_FAMILIA:[MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), ob_familia)],
+            OB_GUSTOS: [MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), ob_gustos)],
+        },
+        fallbacks=[
+            CommandHandler("saltar", cmd_saltar),
+            CommandHandler("cancelar", cmd_cancelar_onboarding),
+            CommandHandler("start", cmd_start),
+        ],
+        allow_reentry=True,
+        name="onboarding",
+    )
+    app.add_handler(onboarding_conv)
     app.add_handler(CommandHandler("invitar", cmd_invitar))
     app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
 
