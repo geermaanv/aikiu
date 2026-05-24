@@ -85,3 +85,4 @@ Sirve como referencia / inspiración para:
 - No preguntes sobre la música después de que Marta la rechace. (20/05/2026)
 
 <!-- staging deploy smoke 2026-05-23 -->
+<!-- staging deploy smoke 2026-05-23 #2 -->
