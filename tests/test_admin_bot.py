@@ -928,6 +928,39 @@ def test_cmd_hogares_lista_los_registrados():
     assert "Pepe" in msg
 
 
+def test_cmd_hogares_escapa_markdown_en_nombres():
+    """Regresión: un nombre con `_`, `*`, `` ` `` o `[` rompía Markdown v1.
+
+    Antes del fix Telegram devolvía 400 BadRequest ("can't find end of the
+    entity"). Ahora el helper `_escape_md` los antepone con `\\`.
+    """
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Ana_Maria")
+    hogar_mod.crear_hogar(2002, nombre="José*Luis")
+    hogar_mod.crear_hogar(3003, nombre="Tito`")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "Ana\\_Maria" in msg
+    assert "José\\*Luis" in msg
+    assert "Tito\\`" in msg
+
+
+def test_cmd_hogares_hogar_sin_nombre_no_rompe_markdown():
+    """Si un hogar no tiene `nombre_adulto`, el fallback `_(sin nombre)_` no
+    debe quedar envuelto en `*…*` (lo que generaba `*_(...)_* ` y rompía el
+    parser de Markdown v1)."""
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001)  # sin nombre
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "_(sin nombre)_" in msg
+    assert "*_(sin nombre)_*" not in msg
+
+
 # ---------------------------------------------------------------------------
 # /borrar
 # ---------------------------------------------------------------------------
