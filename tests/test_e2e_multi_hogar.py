@@ -460,3 +460,194 @@ def test_e2e_admin_hogares_lista_dos_y_marca_migrado():
     assert "Marta" in msg
     assert "Pepe" in msg
     assert "migrado" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# E2E — Jobs proactivos hacen fan-out a todos los hogares al disparar
+# ---------------------------------------------------------------------------
+#
+# Los jobs del scheduler (saludo, recordatorios, inactividad, análisis
+# nocturno) se agendan UNA sola vez con `chat_id=None`. Al disparar, cada
+# job hace fan-out a `hogar_mod.listar_hogares()` y se llama a sí mismo
+# con cada chat_id, de modo que hogares dados de alta DESPUÉS del arranque
+# también reciben los proactivos sin reiniciar el bot.
+
+
+def _setup_dos_hogares_con_overrides():
+    """Crea dos hogares con state overrides distintos para verificar
+    aislamiento (cada uno con su nombre, asistente, ciudad y voz)."""
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    estado_marta = hogar_mod.leer_state(1001)
+    estado_marta.update({
+        "nombre_adulto_mayor": "Marta",
+        "nombre_asistente": "Clara",
+        "ciudad": "Olivos",
+        "voz_tts": "es-AR-ElenaNeural",
+    })
+    hogar_mod.escribir_state(1001, estado_marta)
+
+    hogar_mod.crear_hogar(2002, nombre="Pepe")
+    estado_pepe = hogar_mod.leer_state(2002)
+    estado_pepe.update({
+        "nombre_adulto_mayor": "Pepe",
+        "nombre_asistente": "Sofi",
+        "ciudad": "Mendoza",
+        "voz_tts": "es-AR-TomasNeural",
+    })
+    hogar_mod.escribir_state(2002, estado_pepe)
+
+
+def test_e2e_recordatorio_proactivo_fanout_a_todos_los_hogares(monkeypatch):
+    """`enviar_mensaje_voz(app, "texto")` (sin chat_id) llega a los 2 hogares,
+    cada uno con su voz_tts propia."""
+    _setup_dos_hogares_con_overrides()
+
+    voces_usadas = []
+    async def fake_sintetizar(texto, ogg, voz):
+        voces_usadas.append(voz)
+        ogg.write_bytes(b"FAKE_OGG_BYTES")
+    monkeypatch.setattr(aikiu, "sintetizar", fake_sintetizar)
+
+    app = MagicMock()
+    app.bot.send_voice = AsyncMock()
+
+    run(aikiu.enviar_mensaje_voz(app, "Es hora del medicamento"))
+
+    # Se llamó send_voice exactamente 2 veces, una por hogar
+    assert app.bot.send_voice.await_count == 2
+    chat_ids = sorted(c.kwargs["chat_id"] for c in app.bot.send_voice.await_args_list)
+    assert chat_ids == [1001, 2002]
+    # Cada hogar usó su propia voz
+    assert sorted(voces_usadas) == ["es-AR-ElenaNeural", "es-AR-TomasNeural"]
+
+
+def test_e2e_saludo_matutino_fanout_usa_overrides_de_cada_hogar(monkeypatch):
+    """`saludo_matutino(app)` saluda a ambos hogares con su nombre/asistente/ciudad."""
+    _setup_dos_hogares_con_overrides()
+
+    textos = []
+    async def fake_enviar(app, texto, chat_id=None):
+        textos.append((chat_id, texto))
+    monkeypatch.setattr(aikiu, "enviar_mensaje_voz", fake_enviar)
+
+    # Sin clima ni feriado para hacer el test determinístico
+    async def fake_consultar_clima(_):
+        return ""
+    async def fake_consultar_feriado(_=None):
+        return ""
+    monkeypatch.setattr(aikiu, "consultar_clima", fake_consultar_clima)
+    monkeypatch.setattr(aikiu, "consultar_feriado", fake_consultar_feriado)
+
+    app = MagicMock()
+    run(aikiu.saludo_matutino(app))
+
+    assert len(textos) == 2
+    por_hogar = dict(textos)
+    assert "Marta" in por_hogar[1001]
+    assert "Clara" in por_hogar[1001]
+    assert "Pepe" in por_hogar[2002]
+    assert "Sofi" in por_hogar[2002]
+
+
+def test_e2e_analisis_nocturno_fanout_procesa_logs_de_cada_hogar(monkeypatch):
+    """`analisis_nocturno(app)` lee el log de CADA hogar y actualiza SU perfil."""
+    from datetime import date
+    _setup_dos_hogares_con_overrides()
+    hogar_mod.perfil_path(1001).write_text(
+        "# Perfil de Marta\n\n## Aprendizajes\n\n## Ajustes sugeridos\n",
+        encoding="utf-8",
+    )
+    hogar_mod.perfil_path(2002).write_text(
+        "# Perfil de Pepe\n\n## Aprendizajes\n\n## Ajustes sugeridos\n",
+        encoding="utf-8",
+    )
+    hoy = date.today().strftime("%Y-%m-%d")
+    (hogar_mod.logs_dir(1001) / f"{hoy}.md").parent.mkdir(parents=True, exist_ok=True)
+    (hogar_mod.logs_dir(2002) / f"{hoy}.md").parent.mkdir(parents=True, exist_ok=True)
+    (hogar_mod.logs_dir(1001) / f"{hoy}.md").write_text(
+        "10:00\n- Marta: me gusta el tango\n- Clara: hermoso\n", encoding="utf-8",
+    )
+    (hogar_mod.logs_dir(2002) / f"{hoy}.md").write_text(
+        "10:00\n- Pepe: me gusta el rock\n- Sofi: bárbaro\n", encoding="utf-8",
+    )
+
+    # Mock LLM: devuelve aprendizajes distintos según el nombre del adulto en el prompt
+    llamadas = []
+
+    class FakeResp:
+        def __init__(self, content):
+            self.choices = [MagicMock(message=MagicMock(content=content))]
+            self.usage = MagicMock(prompt_tokens=10, completion_tokens=10, total_tokens=20)
+
+    async def fake_create(*, model, messages, **_):
+        prompt = messages[0]["content"]
+        llamadas.append(prompt)
+        if "MARTA" in prompt or "Marta" in prompt:
+            return FakeResp("APRENDIZAJES_NUEVOS:\n- Le gusta el tango\n\nAJUSTES_CONVERSACION:\nninguno")
+        return FakeResp("APRENDIZAJES_NUEVOS:\n- Le gusta el rock\n\nAJUSTES_CONVERSACION:\nninguno")
+
+    monkeypatch.setattr(aikiu.groq.chat.completions, "create", fake_create)
+
+    app = MagicMock()
+    app.bot_data = {}
+    run(aikiu.analisis_nocturno(app))
+
+    # El LLM se llamó (al menos) una vez por hogar para los aprendizajes
+    assert sum("Marta" in p for p in llamadas) >= 1
+    assert sum("Pepe" in p for p in llamadas) >= 1
+
+    # Cada perfil se actualizó con SU aprendizaje, no se cruzaron
+    perfil_marta = hogar_mod.perfil_path(1001).read_text(encoding="utf-8")
+    perfil_pepe = hogar_mod.perfil_path(2002).read_text(encoding="utf-8")
+    assert "tango" in perfil_marta
+    assert "rock" not in perfil_marta
+    assert "rock" in perfil_pepe
+    assert "tango" not in perfil_pepe
+
+
+def test_e2e_verificar_inactividad_fanout_aislado_por_hogar(monkeypatch):
+    """`verificar_inactividad(app)` chequea cada hogar con SU `_ultimas_actividades`
+    y SU `_alertas_inactividad_fecha`. Marta inactiva → alerta; Pepe activo → silencio."""
+    from datetime import datetime, timedelta
+    _setup_dos_hogares_con_overrides()
+
+    # Marta inactiva hace 8h, Pepe activo hace 1h
+    aikiu._ultimas_actividades[1001] = datetime.now() - timedelta(hours=8)
+    aikiu._ultimas_actividades[2002] = datetime.now() - timedelta(hours=1)
+    aikiu._alertas_inactividad_fecha.clear()
+
+    family_bot = MagicMock()
+    family_bot.send_message = AsyncMock()
+    app = MagicMock()
+    app.bot_data = {"family_bot": family_bot}
+
+    # Suscribir a Lao a Marta (no a Pepe)
+    hogar_mod.familiares_path(1001).write_text(
+        json.dumps([{"chat_id": 500, "nombre": "Lao"}]), encoding="utf-8",
+    )
+
+    with patch("aikiu.CONFIG", {
+        "nombre_adulto_mayor": "",
+        "nombre_asistente": "Clara",
+        "alerta_inactividad": {"activa": True, "horas_umbral": 4, "checks": ["11:30"]},
+    }):
+        run(aikiu.verificar_inactividad(app))
+        # Esperar a que el background notify_inactividad termine
+        async def drain():
+            await asyncio.sleep(0.1)
+        run(drain())
+
+    # Marta disparó alerta hacia Lao; Pepe no disparó nada
+    chat_ids = [c.kwargs["chat_id"] for c in family_bot.send_message.await_args_list]
+    assert 500 in chat_ids
+    assert all(cid == 500 for cid in chat_ids)
+    textos = " ".join(c.kwargs.get("text", "") for c in family_bot.send_message.await_args_list)
+    assert "Marta" in textos
+    assert "Pepe" not in textos
+    # Marca de "ya alerté hoy" puesta solo para Marta
+    assert 1001 in aikiu._alertas_inactividad_fecha
+    assert 2002 not in aikiu._alertas_inactividad_fecha
+
+    # Cleanup
+    aikiu._ultimas_actividades.clear()
+    aikiu._alertas_inactividad_fecha.clear()
