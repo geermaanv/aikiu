@@ -821,7 +821,13 @@ Desde Telegram, el adulto mayor:
 - Habla con notas de voz (recomendado) o texto.
 - El bot responde en el mismo medio.
 
-No hay menús ni comandos: es conversación pura.
+La interacción es 99% conversación pura. El menú azul al lado de la caja
+de texto solo expone dos comandos para casos puntuales:
+
+| Comando | Descripción |
+|---|---|
+| `/start` | Iniciar o reiniciar la conversación con Clara (dispara el onboarding la primera vez). |
+| `/invitar` | Generar un código de 6 caracteres para que un familiar se vincule a este hogar (lo usa con `/vincular` en el bot familiar). |
 
 ---
 
