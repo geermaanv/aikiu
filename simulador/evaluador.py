@@ -28,6 +28,10 @@ CRITERIOS = """
 5. Sin eco/espejo (0-10): ¿Evitó repetir textualmente las palabras del usuario?
 6. Cierre de negativas (0-10): ¿Ante un "no", cerró con calidez sin repreguntar?
 7. Tono gerontológico (0-10): ¿Fue cálido, no infantilizante, no enciclopédico?
+8. Vitalidad conversacional (0-10): ¿Hubo algún turno donde Marta respondió más de
+   lo que se le preguntó? ¿Hubo sorpresa, humor o recuerdo espontáneo? ¿La conversación
+   fue a algún lado o giró en círculos? Una conversación que cumple todas las reglas
+   pero no genera ningún momento vivo recibe como máximo 5 en este criterio.
 """
 
 EVALUADOR_SYSTEM = f"""
@@ -37,12 +41,21 @@ Evaluás conversaciones entre un bot asistente (Clara) y un adulto mayor simulad
 Criterios de evaluación:
 {CRITERIOS}
 
-Tu output tiene DOS partes exactas, sin texto extra:
+Tu output tiene TRES partes exactas, sin texto extra:
 
 SCORES:
 <criterio>: <puntaje>
-... (uno por línea para los 7 criterios)
+... (uno por línea para los 8 criterios)
 TOTAL: <promedio>
+
+ANALISIS:
+TURNO_MAS_VIVO: <número de turno>
+RAZON_VIVO: <una oración explicando por qué ese turno tuvo vida>
+TURNO_MAS_MUERTO: <número de turno>
+RAZON_MUERTO: <una oración explicando por qué ese turno fue plano>
+PATRON_PROBLEMA: <el patrón conversacional más repetido que frena la conversación>
+PREGUNTA_PARA_LIBROS: <la pregunta más importante que esta conversación dejó sin responder,
+formulada como si fuera para buscar en literatura gerontológica>
 
 PERFIL_ACTUALIZADO:
 <el perfil.md completo actualizado en markdown, solo las secciones "Cómo hablarle",
@@ -96,6 +109,15 @@ Evaluá y devolvé exactamente el formato pedido.
                 except ValueError:
                     pass
 
+    # Parsear análisis cualitativo
+    analisis = {}
+    if "ANALISIS:" in output:
+        bloque_a = output.split("ANALISIS:")[1].split("PERFIL_ACTUALIZADO:")[0]
+        for linea in bloque_a.strip().splitlines():
+            if ":" in linea:
+                k, v = linea.split(":", 1)
+                analisis[k.strip()] = v.strip()
+
     print(f"\n{'─'*50}")
     print(f"  EVALUACIÓN — Iteración {iteracion}")
     print(f"{'─'*50}")
@@ -104,7 +126,14 @@ Evaluá y devolvé exactamente el formato pedido.
         print(f"  {k:<35} {barra} {v:.1f}/10")
     print(f"{'─'*50}")
     print(f"  TOTAL: {total:.1f}/10")
-    print(f"{'─'*50}\n")
+    print(f"{'─'*50}")
+    if analisis:
+        print(f"\n  Turno más vivo:   #{analisis.get('TURNO_MAS_VIVO','?')} — {analisis.get('RAZON_VIVO','')}")
+        print(f"  Turno más muerto: #{analisis.get('TURNO_MAS_MUERTO','?')} — {analisis.get('RAZON_MUERTO','')}")
+        print(f"  Patrón problema:  {analisis.get('PATRON_PROBLEMA','')}")
+        print(f"\n  ❓ Pregunta para libros:")
+        print(f"     {analisis.get('PREGUNTA_PARA_LIBROS','')}")
+    print()
 
     # Leer score anterior
     score_anterior = 0.0
@@ -124,6 +153,7 @@ Evaluá y devolvé exactamente el formato pedido.
             "scores": scores_raw,
             "total": total,
             "log": log_path.name,
+            "analisis": analisis,
         }, ensure_ascii=False) + "\n")
 
     # Solo actualizar perfil si mejoró
