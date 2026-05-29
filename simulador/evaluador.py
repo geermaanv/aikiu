@@ -17,8 +17,9 @@ BASE_DIR = Path(__file__).parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
-PERFIL_SIM_PATH = BASE_DIR / "simulador" / "perfil_simulacion.md"
-SCORES_PATH     = BASE_DIR / "simulador" / "scores.jsonl"
+PERFIL_SIM_PATH   = BASE_DIR / "simulador" / "perfil_simulacion.md"
+SCORES_PATH       = BASE_DIR / "simulador" / "scores.jsonl"
+PREGUNTAS_PATH    = BASE_DIR / "simulador" / "preguntas_libros.md"
 
 CRITERIOS = """
 1. Voseo rioplatense (0-10): ¿Usó "querés/tenés/podés" siempre? ¿Cero tuteo neutro?
@@ -155,6 +156,15 @@ Evaluá y devolvé exactamente el formato pedido.
             "log": log_path.name,
             "analisis": analisis,
         }, ensure_ascii=False) + "\n")
+
+    # Agregar pregunta al archivo preguntas_libros.md
+    pregunta = analisis.get("PREGUNTA_PARA_LIBROS", "").strip()
+    if pregunta:
+        contenido = PREGUNTAS_PATH.read_text(encoding="utf-8")
+        nueva_linea = f"- [ ] {pregunta} _(iter {iteracion:02d}, score {total:.1f})_\n"
+        contenido = contenido.replace("## Pendientes\n", f"## Pendientes\n{nueva_linea}")
+        PREGUNTAS_PATH.write_text(contenido, encoding="utf-8")
+        print(f"[evaluador] Pregunta agregada a preguntas_libros.md")
 
     # Solo actualizar perfil si mejoró
     if total > score_anterior and "PERFIL_ACTUALIZADO:" in output:
