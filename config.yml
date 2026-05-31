@@ -1,11 +1,24 @@
 # ============================================================
-# Aikiu — Configuración (sin secretos — van en .env)
+# Aikiu — Template global (sin secretos — van en .env)
+# ============================================================
+#
+# Estos valores son los DEFAULTS para hogares nuevos. Cada hogar
+# (instances/<chat_id>/state.json) puede sobrescribir cualquier campo
+# por separado. Los datos personales (nombre, ciudad, voz) los
+# completa cada adulto en el primer /start (wizard de onboarding) o
+# después con /configurar desde el bot familiar.
+#
+# Mantené este archivo SIN nombres propios ni datos de un adulto
+# concreto — es el esqueleto compartido.
 # ============================================================
 
-# --- Identidad ---
-nombre_adulto_mayor: "Marta"
-nombre_asistente: "Clara"      # ← el familiar elige el nombre
-ciudad: "Olivos, Buenos Aires" # ← usada en el saludo matutino con temperatura
+# --- Identidad por defecto ---
+# Vacío → cada hogar usa lo que cargó en el wizard de onboarding.
+# El nombre del asistente ("Clara") es el default de marca y se puede
+# personalizar por hogar.
+nombre_adulto_mayor: ""
+nombre_asistente: "Clara"
+ciudad: ""
 
 # --- Perfil del asistente ---
 # Archivo markdown con el perfil completo de la persona y las instrucciones de comportamiento
@@ -35,8 +48,10 @@ alerta_inactividad:
     - "19:00"          # check de la tarde
 
 # --- Recordatorios ---
+# Genéricos, sin nombre propio. El LLM los recibe y los puede
+# personalizar con el nombre del adulto del hogar al enviarlos.
 recordatorios:
   - hora: "09:00"
-    mensaje: "Marta, ¿tomaste el medicamento de la mañana?"
+    mensaje: "Es hora del medicamento de la mañana."
   - hora: "21:00"
-    mensaje: "Marta, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."
+    mensaje: "Ya es tarde, pensá en descansar."

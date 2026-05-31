@@ -822,6 +822,9 @@ def test_cmd_logs_sin_archivo(monkeypatch, tmp_path):
     admin_state.registrar_admin(42)
     monkeypatch.setattr(admin_bot, "descubrir_instancias", lambda: [tmp_path])
     monkeypatch.setattr(admin_bot, "id_de", lambda d: "i1")
+    # Aseguramos que el fallback BASE_DIR/aikiu.log tampoco exista, así el
+    # test verifica realmente el caso "no hay log".
+    monkeypatch.setattr(admin_bot, "BASE_DIR", tmp_path / "fake_repo_root")
     update = _fake_update(chat_id=42)
     run(admin_bot.cmd_logs(update, _fake_context()))
     msg = update.message.reply_text.await_args.args[0]
@@ -891,3 +894,166 @@ def test_cmd_logs_vacio(monkeypatch, tmp_path):
     run(admin_bot.cmd_logs(update, _fake_context()))
     msg = update.message.reply_text.await_args.args[0]
     assert "log vacío" in msg or "vacío" in msg
+
+
+# ---------------------------------------------------------------------------
+# /hogares
+# ---------------------------------------------------------------------------
+
+def test_cmd_hogares_no_admin_rechaza():
+    update = _fake_update(chat_id=99)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    update.message.reply_text.assert_not_awaited()
+
+
+def test_cmd_hogares_sin_hogares():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "No hay hogares" in msg
+
+
+def test_cmd_hogares_lista_los_registrados():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    hogar_mod.crear_hogar(2002, nombre="Pepe")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "1001" in msg
+    assert "2002" in msg
+    assert "Marta" in msg
+    assert "Pepe" in msg
+
+
+def test_cmd_hogares_escapa_markdown_en_nombres():
+    """Regresión: un nombre con `_`, `*`, `` ` `` o `[` rompía Markdown v1.
+
+    Antes del fix Telegram devolvía 400 BadRequest ("can't find end of the
+    entity"). Ahora el helper `_escape_md` los antepone con `\\`.
+    """
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Ana_Maria")
+    hogar_mod.crear_hogar(2002, nombre="José*Luis")
+    hogar_mod.crear_hogar(3003, nombre="Tito`")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "Ana\\_Maria" in msg
+    assert "José\\*Luis" in msg
+    assert "Tito\\`" in msg
+
+
+def test_cmd_hogares_hogar_sin_nombre_no_rompe_markdown():
+    """Si un hogar no tiene `nombre_adulto`, el fallback `_(sin nombre)_` no
+    debe quedar envuelto en `*…*` (lo que generaba `*_(...)_* ` y rompía el
+    parser de Markdown v1)."""
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001)  # sin nombre
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "_(sin nombre)_" in msg
+    assert "*_(sin nombre)_*" not in msg
+
+
+def test_cmd_hogares_pie_no_anida_code_en_italic():
+    """Markdown legacy de Telegram NO soporta entidades anidadas (un `` ` ``
+    dentro de `_..._`). La línea final del listado no debe quedar envuelta
+    en italic conteniendo un bloque de código."""
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_hogares(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    pie = msg.rsplit("\n", 1)[-1]
+    assert "`/borrar" in pie  # el code sigue presente
+    # pero el pie no debe abrir italic
+    assert not pie.startswith("_")
+
+
+def test_reply_md_safe_reintenta_como_texto_plano_si_falla_markdown():
+    """Si Telegram rechaza el Markdown, el helper reintenta sin parse_mode
+    así el admin recibe igual el contenido."""
+    from telegram.error import BadRequest
+    msg = MagicMock()
+    msg.reply_text = AsyncMock(side_effect=[BadRequest("can't parse"), None])
+    run(admin_bot._reply_md_safe(msg, "texto *roto_"))
+    assert msg.reply_text.await_count == 2
+    primer_call = msg.reply_text.await_args_list[0]
+    assert primer_call.kwargs.get("parse_mode") == "Markdown"
+    segundo_call = msg.reply_text.await_args_list[1]
+    assert "parse_mode" not in segundo_call.kwargs
+
+
+# ---------------------------------------------------------------------------
+# /borrar
+# ---------------------------------------------------------------------------
+
+def test_cmd_borrar_no_admin_rechaza():
+    update = _fake_update(chat_id=99)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001"])))
+    update.message.reply_text.assert_not_awaited()
+
+
+def test_cmd_borrar_sin_args_muestra_uso():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context()))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "Uso" in msg or "/borrar" in msg
+
+
+def test_cmd_borrar_id_invalido():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["foo"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "no es un chat_id" in msg
+
+
+def test_cmd_borrar_hogar_inexistente():
+    admin_state.registrar_admin(42)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["9999"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "No encontré" in msg
+
+
+def test_cmd_borrar_paso_1_pide_confirmacion():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "CONFIRMAR" in msg
+    assert "Marta" in msg
+    # Sigue existiendo
+    assert hogar_mod.existe_hogar(1001)
+
+
+def test_cmd_borrar_paso_2_ejecuta():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    assert hogar_mod.existe_hogar(1001)
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001", "CONFIRMAR"])))
+    msg = update.message.reply_text.await_args.args[0]
+    assert "borré" in msg.lower() or "listo" in msg.lower()
+    assert not hogar_mod.existe_hogar(1001)
+
+
+def test_cmd_borrar_confirmar_case_insensitive():
+    from core import hogar as hogar_mod
+    admin_state.registrar_admin(42)
+    hogar_mod.crear_hogar(1001, nombre="Marta")
+    update = _fake_update(chat_id=42)
+    run(admin_bot.cmd_borrar(update, _fake_context(args=["1001", "confirmar"])))
+    assert not hogar_mod.existe_hogar(1001)

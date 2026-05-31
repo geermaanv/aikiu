@@ -98,7 +98,9 @@ def test_e2e_tofu_y_mensaje_genera_alerta_a_familiar(monkeypatch):
     ctx.bot_data = {}
 
     run(aikiu.cmd_start(update_start, ctx))
-    assert state_mod.owner_chat_id() == 42
+    # En multi-tenant, el primer /start crea el hogar `instances/42/`.
+    from core import hogar as hogar_mod
+    assert hogar_mod.existe_hogar(42)
 
     # Mensaje con distress
     update_msg = MagicMock()
@@ -501,13 +503,15 @@ def test_e2e_editar_perfil_completa_conversacion():
 # ---------------------------------------------------------------------------
 
 def test_e2e_mensaje_normal_sin_distress_no_alerta(monkeypatch):
-    state_mod.registrar_owner(42)
+    from core import hogar as hogar_mod
+    hogar_mod.crear_hogar(42)
     monkeypatch.setattr(aikiu, "CONFIG", {
         "nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
         "_perfil": "", "modelo_llm": "m",
     })
     update = MagicMock()
     update.effective_chat.id = 42
+    update.effective_user.first_name = "Marta"
     update.message = MagicMock(voice=None, text="qué lindo día")
     ctx = MagicMock()
     ctx.bot = MagicMock()

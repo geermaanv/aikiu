@@ -10,7 +10,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -206,7 +206,7 @@ async def simular(
 
         conversacion.append({
             "turno": turno + 1,
-            "ts": datetime.now(datetime.UTC if hasattr(datetime, "UTC") else None).isoformat() if False else datetime.utcnow().isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
             "usuario": msg_usuario,
             "bot": msg_bot_limpio,
             "backend": backend_actual,

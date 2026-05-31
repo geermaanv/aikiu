@@ -121,8 +121,51 @@ servidor propio. Corre en cualquier Mac con Python.
   usar humor liviano; si es ≥1, bloquea el humor completamente y activa modo
   contención hasta que Marta esté estable.
 
+### Multi-tenant (varios adultos en un mismo deploy)
+- Un mismo proceso atiende a múltiples adultos (un BOT_TOKEN, un GROQ_API_KEY
+  compartidos). Cada adulto que mande `/start` queda dado de alta automático
+  y se le crea su carpeta en `instances/<chat_id>/` con state, perfil, stats,
+  familiares y logs aislados (módulo `core/hogar.py`)
+- **Template global neutro**: `perfil.md` y `config.yml` de la raíz son
+  un esqueleto sin nombres propios. Los datos reales de cada adulto viven
+  exclusivamente en `instances/<chat_id>/state.json` (overrides) y
+  `instances/<chat_id>/perfil.md`. `configurar.py --template` regenera el
+  esqueleto; `configurar.py --chat-id <id>` configura un hogar puntual
+- **Wizard de onboarding** en el bot principal: el primer `/start` de un
+  adulto dispara una `ConversationHandler` de 5 preguntas (nombre, edad,
+  ciudad, familia, gustos) que acepta texto **y** voz (transcripción
+  Whisper). El progreso se persiste turno a turno en `state.json` por si
+  se corta la conversación. `/saltar` y `/cancelar` para escapar
+- **`/configurar` en el bot familiar**: 8 preguntas guiadas que el
+  familiar contesta para armarle el perfil al adulto activo desde su
+  propio Telegram. Reusa `configurar.generar_perfil()`
+- **Migración idempotente** del single-tenant viejo: la primera vez que arranca
+  `aikiu.py`, detecta los archivos en la raíz del repo (`state.json`,
+  `perfil.md`, etc.) y los mueve a `instances/<owner_chat_id>/`. Marca el state
+  con `migrated_from_legacy: true` para auditar (módulo `core/migrate_legacy.py`)
+- **Familiares many-to-many**: un familiar puede vincularse a varios adultos.
+  El adulto genera un código de invitación con `/invitar` (6 caracteres
+  alfanuméricos sin ambigüedad, 24h de vida, single-use) y el familiar lo
+  consume con `/vincular <CODIGO>`. El bot familiar gestiona el "adulto activo"
+  con `/misadultos` y `/elegir <chat_id>` (módulos `core/invites.py` +
+  `core/familiar_state.py`)
+- **Alertas por hogar**: cada `notify_family()` apunta al `familiares.json`
+  del hogar correcto. Los familiares solo reciben alertas de los adultos a
+  los que están vinculados, identificadas por nombre del adulto
+- **Admin multi-tenant**: nuevos comandos `/hogares` (lista los hogares con
+  alta, familiares y actividad) y `/borrar <chat_id>` (borrado de hogar en
+  dos pasos con confirmación explícita)
+- **Deploy en Railway**: `Procfile` con tres procesos (worker + familiar +
+  admin), `railway.json` con restart automático, `AIKIU_REGISTRY` apuntando
+  a un volumen persistente (`/data/instances`) para que los hogares
+  sobrevivan a redeploys. Detalle completo en `MULTI_TENANT.md`
+- **Backward-compatible**: las firmas públicas de `core/state.py`,
+  `core/alerts.py` y los handlers viejos siguen aceptando los parámetros
+  originales — instalaciones single-tenant existentes siguen andando sin
+  cambios después de la migración
+
 ### Tests y calidad
-- **714 tests** con pytest, **97% de cobertura global** (unit + integración E2E):
+- **821 tests** con pytest, **97% de cobertura global** (unit + integración E2E):
   - `core/distress.py`, `core/tools.py`, `core/alerts.py`, `core/heartbeat.py`,
     `core/state.py`, `core/usage.py`, `core/tts.py`, `core/llm_limits.py`,
     `core/instance.py`, `core/utils.py` — 93–100% por módulo
@@ -142,12 +185,22 @@ servidor propio. Corre en cualquier Mac con Python.
     /llm agregado, análisis nocturno con perfil real, /health, edición de perfil)
 - Receptividad, distress, system prompt y reglas anti-hallucination siguen cubiertos
 - Checklist manual E2E en `tests/checklist.md`
-- Git pre-commit hook: los 714 tests corren automáticamente antes de cada commit
+- Git pre-commit hook: los 821 tests corren automáticamente antes de cada commit
+- **Multi-tenant** (47 tests nuevos): `core/hogar.py`, `core/invites.py`,
+  `core/familiar_state.py`, migración legacy, flujo `/invitar` + `/vincular`
+  + `/misadultos` + `/elegir`, comandos legacy operando sobre el adulto
+  activo, `notify_family` con prefijo por adulto, admin `/hogares` y
+  `/borrar` en dos pasos
 
 ### Seguridad
-- Secretos en `.env` (nunca en el repo): BOT_TOKEN, CHAT_ID, GROQ_API_KEY
-- `.gitignore` protege `.env`, `venv/`, logs, caché y datos personales
-- Ambos bots solo responden a los chat_id autorizados
+- Secretos en `.env` (nunca en el repo): BOT_TOKEN, GROQ_API_KEY,
+  FAMILIAR_BOT_TOKEN, ADMIN_BOT_TOKEN
+- `.gitignore` protege `.env`, `venv/`, logs, caché, datos personales,
+  e `instances/` (datos de los hogares multi-tenant)
+- Self-service onboarding: cualquier `/start` crea un hogar — la
+  protección contra abuso debe venir de fuera (link de invitación,
+  limitación de polling, etc.). El admin bot puede borrar hogares con
+  `/borrar <chat_id>` si aparece uno indeseado
 - `.env.example` como plantilla pública
 
 ### Setup y operación
@@ -204,5 +257,7 @@ servidor propio. Corre en cualquier Mac con Python.
 | TTS (texto → voz) | edge-tts + ffmpeg (OGG OPUS) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest 9.0 (714 tests, 97% cobertura) |
-| Runtime | Python 3.14, macOS |
+| Tests | pytest 9.0 (821 tests, 97% cobertura) |
+| Multi-tenant | `core/hogar.py` + `core/invites.py` + `core/familiar_state.py` |
+| Deploy | Railway con `Procfile` + volumen persistente (`AIKIU_REGISTRY`) |
+| Runtime | Python 3.11+ (desarrollo en 3.14), macOS/Linux/Windows |

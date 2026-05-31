@@ -47,22 +47,23 @@ Construir un acompañante de IA **abierto, gratuito y respetuoso**, que:
 5. [Stack técnico](#stack-técnico)
 6. [Modelo de procesos y persistencia](#modelo-de-procesos-y-persistencia)
 7. [Estructura del repositorio](#estructura-del-repositorio)
-8. [Requisitos previos](#requisitos-previos)
-9. [Instalación](#instalación)
-10. [Configuración](#configuración)
-11. [Uso](#uso)
-12. [Comandos del bot familiar](#comandos-del-bot-familiar)
-13. [Comandos del bot admin](#comandos-del-bot-admin)
-14. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
-15. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
-16. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
-17. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
-18. [Andromarta — humanoide sintético para testing](#andromarta--humanoide-sintético-para-testing)
-19. [Simulador de conversación (laboratorio de prompts)](#simulador-de-conversación-laboratorio-de-prompts)
-20. [Tests](#tests)
-21. [Seguridad y privacidad](#seguridad-y-privacidad)
-22. [Roadmap](#roadmap)
-23. [Licencia](#licencia)
+8. [Multi-tenant: varios adultos en un mismo deploy](#multi-tenant-varios-adultos-en-un-mismo-deploy)
+9. [Requisitos previos](#requisitos-previos)
+10. [Instalación](#instalación)
+11. [Configuración](#configuración)
+12. [Uso](#uso)
+13. [Comandos del bot familiar](#comandos-del-bot-familiar)
+14. [Comandos del bot admin](#comandos-del-bot-admin)
+15. [Sistema de detección de angustia](#sistema-de-detección-de-angustia)
+16. [Memoria y aprendizaje continuo](#memoria-y-aprendizaje-continuo)
+17. [Consultas externas (clima, dólar, noticias)](#consultas-externas-clima-dólar-noticias)
+18. [Recordatorios y mensajes proactivos](#recordatorios-y-mensajes-proactivos)
+19. [Andromarta — humanoide sintético para testing](#andromarta--humanoide-sintético-para-testing)
+20. [Simulador de conversación (laboratorio de prompts)](#simulador-de-conversación-laboratorio-de-prompts)
+21. [Tests](#tests)
+22. [Seguridad y privacidad](#seguridad-y-privacidad)
+23. [Roadmap](#roadmap)
+24. [Licencia](#licencia)
 
 ---
 
@@ -512,7 +513,7 @@ sequenceDiagram
 | Persistencia | Suscriptores | `familiares.json` | `[{chat_id, nombre}]`, escrito atómicamente con `write_text` |
 | Persistencia | Conversaciones | `logs/YYYY-MM-DD.md` | Append per turno con timestamp `HH:MM` |
 | Persistencia | Logs del bot | `aikiu.log` | `logging.FileHandler` + stdout |
-| Tests | Suite | `pytest` (714 tests, 97% cobertura) | Unit + integración E2E: distress, alertas, tools, análisis nocturno, andromarta, admin/familiar bot, configurar, perfil, system prompt |
+| Tests | Suite | `pytest` (821 tests, 97% cobertura) | Unit + integración E2E: distress, alertas, tools, análisis nocturno, andromarta, admin/familiar bot, configurar, perfil, system prompt, multi-tenant |
 | Despliegue | Orquestación | `bash start.sh` | Lanza ambos procesos Python en paralelo, `trap SIGINT/SIGTERM` para shutdown limpio |
 | Seguridad | Autorización | Chat ID hardcodeado en `.env` | Bot principal rechaza cualquier `chat_id` distinto a `CHAT_ID` |
 
@@ -598,22 +599,41 @@ aikiu/
 │   ├── perfil_simulacion.md   # Perfil paralelo que evoluciona (gitignored, runtime)
 │   ├── logs/               # Conversaciones en JSONL por iteración (gitignored, runtime)
 │   └── scores.jsonl        # Histórico de puntajes por iteración (gitignored, runtime)
-├── configurar.py           # Wizard interactivo para generar perfil.md
+├── configurar.py           # Setup: --template regenera el esqueleto neutro, --chat-id <id> configura un hogar puntual
 ├── core/
 │   ├── distress.py         # Parsing del DISTRESS_LEVEL y lógica de cooldowns
 │   ├── alerts.py           # Envío de alertas (distress + inactividad) a familiares
 │   ├── tools.py            # Consultas externas: clima, dólar, noticias
 │   ├── tts.py              # Síntesis de voz con edge-tts + conversión a Opus
-│   ├── state.py            # TOFU del adulto mayor (state.json)
-│   ├── instance.py         # Abstracción de instancia (single + multi-tenant)
+│   ├── state.py            # Estado legacy (compat); ver hogar.py para multi-tenant
+│   ├── hogar.py            # Modelo de hogar (tenant) — un adulto = un hogar
+│   ├── migrate_legacy.py   # Migración idempotente single → multi-tenant al arranque
+│   ├── invites.py          # Códigos de invitación familiar↔adulto (/invitar + /vincular)
+│   ├── familiar_state.py   # Estado del familiar (nombre, adulto activo, many-to-many)
+│   ├── instance.py         # Abstracción legacy de instancia (single + multi-tenant)
 │   ├── heartbeat.py        # Heartbeat por rol y por instancia
 │   ├── llm_limits.py       # Catálogo de límites del free tier de Groq por modelo
 │   └── usage.py            # Tracking de tokens y latencias de Groq
+├── instances/              # Datos por hogar (gitignored, runtime; ver MULTI_TENANT.md)
+│   └── <chat_id>/          # Uno por cada adulto registrado
+│       ├── state.json
+│       ├── perfil.md
+│       ├── stats.json
+│       ├── usage.json
+│       ├── familiares.json
+│       ├── receptividad.json
+│       └── logs/YYYY-MM-DD.md
+├── Procfile                # Procesos como referencia (single-service Railway usa railway_start.sh)
+├── railway.json            # Config de build/restart para Railway (startCommand → railway_start.sh)
+├── railway_start.sh        # Lanza aikiu + familiar + admin en un solo contenedor de Railway
+├── nixpacks.toml           # Build de Railway: agrega ffmpeg vía apt (necesario para TTS → OGG/Opus)
+├── MULTI_TENANT.md         # Cómo funciona, cómo deployar, cómo operar varios hogares
 ├── tests/                  # tests unitarios + checklist E2E manual
 ├── .github/workflows/      # CI: corre pytest en cada PR y push a main
 ├── .cursor/rules/          # Reglas para el agente de Cursor (convenciones del repo)
 ├── config.yml              # Config no sensible (nombres, voz, horarios, recordatorios)
-├── perfil.md               # Perfil del adulto mayor en lenguaje natural
+├── perfil.md               # Esqueleto neutro del perfil (fallback; los reales viven en instances/<chat_id>/perfil.md)
+├── ejemploPerfil-Marta.md  # Ejemplo de referencia: cómo queda un perfil real bien armado tras semanas de uso
 ├── requirements.txt        # Dependencias Python
 ├── .env.example            # Plantilla de variables de entorno
 ├── setup.sh                # Instala dependencias en venv (macOS / Linux)
@@ -621,6 +641,35 @@ aikiu/
 ├── configurar.sh           # Atajo: corre configurar.py dentro del venv
 └── ROADMAP.md              # Estado del proyecto y backlog
 ```
+
+---
+
+## Multi-tenant: varios adultos en un mismo deploy
+
+Aikiu funciona como **multi-tenant**: un mismo proceso puede atender a
+varios adultos a la vez, cada uno con su propio perfil, stats, familiares
+y log. No hay que correr una instancia por adulto, basta con un solo
+`BOT_TOKEN` y un `GROQ_API_KEY` compartido.
+
+**Onboarding**: cualquier persona que mande `/start` al bot principal queda
+dada de alta automáticamente y se le crea su carpeta en
+`instances/<chat_id>/`. La primera vez que arranca, el sistema migra
+automáticamente la instalación single-tenant vieja (si la había) al nuevo
+formato (operación idempotente, segura para hacer `git pull` sobre un
+deploy existente).
+
+**Familiares con varios adultos**: un familiar puede vincularse a más de
+un adulto. El adulto genera un código con `/invitar`, el familiar lo usa
+con `/vincular <CODIGO>` en el bot familiar. Cuando un familiar tiene
+varios adultos, elige el "activo" con `/elegir <chat_id>`.
+
+**Datos persistentes en Railway**: en producción seteá `AIKIU_REGISTRY`
+apuntando a un volumen persistente (ej. `/data/instances`) para que los
+hogares sobrevivan a los redeploys.
+
+📖 **Guía completa**: ver [MULTI_TENANT.md](./MULTI_TENANT.md) para el
+modelo de datos, deploy en Railway con volumen persistente, comandos
+nuevos del admin (`/hogares`, `/borrar`) y diagnóstico de problemas.
 
 ---
 
@@ -635,7 +684,7 @@ aikiu/
 4. **Uno o dos bots de Telegram** creados con [@BotFather](https://t.me/BotFather):
    - El bot principal (obligatorio).
    - Un segundo bot para la familia (opcional pero recomendado, habilita las alertas y el panel de edición).
-5. El **chat ID de Telegram** del adulto mayor. Una forma rápida de obtenerlo: enviarle un mensaje al bot y consultar `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+5. El **chat ID de Telegram** del adulto mayor (opcional). Si no lo sabés, no importa: el primer `/start` crea automáticamente el hogar usando el chat_id detectado. Si querés saberlo de antemano, enviá un mensaje al bot y consultá `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 
 ---
 
@@ -676,17 +725,21 @@ Editá `.env` y completá:
 
 ```bash
 BOT_TOKEN=...                 # Bot principal (BotFather)
-CHAT_ID=...                   # chat_id del adulto mayor
 GROQ_API_KEY=...              # console.groq.com
+
+# El chat_id del adulto NO se setea acá: el primer /start crea el hogar
+# automáticamente (multi-tenant). Ver MULTI_TENANT.md.
 
 # Opcional pero recomendado: bot familiar
 FAMILIAR_BOT_TOKEN=...        # Segundo bot (BotFather)
-FAMILIAR_CHAT_ID=...          # chat_id de un familiar de fallback
 
 # Opcional: bot admin (vos + equipo, hasta 5) — habilita /health, /llm, /metricas
 ADMIN_BOT_TOKEN=...           # Tercer bot (BotFather)
 # Cada /start desde un chat distinto suma un admin nuevo hasta llenar el cupo
 # (5 por default). Cuando se llena, el resto se rechaza en silencio.
+
+# Recomendado en producción (Railway, etc): apuntar a un volumen persistente.
+AIKIU_REGISTRY=/data/instances
 # ADMIN_CHAT_IDS=111,222,333   # Opcional: fijar la lista por env (deshabilita /start y /quitar_admin).
 # ADMIN_MAX_USERS=5            # Opcional: cambiar el cupo (default 5).
 # GROQ_DAILY_TOKEN_LIMIT=100000 # Override manual del TPD para los avisos del admin (/llm). Si lo dejás sin setear, el admin usa el TPD del free tier de Groq por modelo desde core/llm_limits.py (ej. llama-3.3-70b-versatile = 100k TPD, llama-3.1-8b-instant = 500k TPD). Útil solo si tenés tier pago.
@@ -698,12 +751,14 @@ ADMIN_BOT_TOKEN=...           # Tercer bot (BotFather)
 
 ### 2. Configuración no sensible (`config.yml`)
 
+`config.yml` es el **template global**: defaults que se aplican a hogares nuevos. Es deliberadamente neutro (sin nombres propios) — los datos personales de cada adulto viven en `instances/<chat_id>/state.json`.
+
 ```yaml
-nombre_adulto_mayor: "Marta"
-nombre_asistente: "Clara"
-ciudad: "Olivos, Buenos Aires"
+nombre_adulto_mayor: ""                # se completa per-hogar en el wizard de onboarding
+nombre_asistente: "Clara"              # default de marca (cada hogar puede sobrescribir)
+ciudad: ""                             # se completa per-hogar
 perfil: "perfil.md"
-voz_tts: "es-AR-ElenaNeural"          # opciones: es-AR-TomasNeural, es-ES-ElviraNeural, etc.
+voz_tts: "es-AR-ElenaNeural"           # opciones: es-AR-TomasNeural, es-ES-ElviraNeural, etc.
 modelo_llm: "llama-3.3-70b-versatile"
 
 saludo_diario:
@@ -717,22 +772,24 @@ alerta_inactividad:
   horas_umbral: 4
   checks: ["11:30", "19:00"]
 
-recordatorios:
+recordatorios:                         # genéricos, sin nombre propio
   - hora: "09:00"
-    mensaje: "Marta, ¿tomaste el medicamento de la mañana?"
+    mensaje: "Es hora del medicamento de la mañana."
   - hora: "21:00"
-    mensaje: "Marta, ¿cómo estuvo tu día? Ya es tarde, pensá en descansar."
+    mensaje: "Ya es tarde, pensá en descansar."
 ```
 
-### 3. Perfil del adulto mayor (`perfil.md`)
+### 3. Perfil del adulto (`perfil.md`)
 
-Editalo a mano o, mejor, usá el wizard interactivo:
+En multi-tenant **no hay un único `perfil.md`**: hay uno por hogar en `instances/<chat_id>/perfil.md`. El `perfil.md` de la raíz es solo un esqueleto neutro que se usa como fallback cuando un hogar todavía no completó su onboarding.
 
-```bash
-bash configurar.sh
-```
+Hay tres formas de armar el perfil de un hogar:
 
-El wizard pregunta paso a paso por: identidad, familia, gustos, salud, temas a tratar con cuidado y reglas del asistente. Genera `perfil.md` automáticamente.
+| Forma | Cuándo usarla | Comando |
+|---|---|---|
+| **Wizard del bot principal** | El adulto recién se registra (primer `/start`). 5 preguntas por chat — acepta voz y texto. | `/start` desde el Telegram del adulto |
+| **`/configurar` del bot familiar** | El familiar prefiere armarle el perfil al adulto desde su propio Telegram (8 preguntas). | `/configurar` en el bot familiar, sobre el adulto activo |
+| **`configurar.py` desde la consola** | Setup offline (operador del deploy) o regenerar el template global. | `python configurar.py --chat-id <id>` para un hogar puntual, o `python configurar.py --template` para el esqueleto |
 
 `perfil.md` es lenguaje natural editable: el LLM lo lee como contexto. Cuanto más concreto y específico, mejor. Las secciones son:
 
@@ -766,7 +823,13 @@ Desde Telegram, el adulto mayor:
 - Habla con notas de voz (recomendado) o texto.
 - El bot responde en el mismo medio.
 
-No hay menús ni comandos: es conversación pura.
+La interacción es 99% conversación pura. El menú azul al lado de la caja
+de texto solo expone dos comandos para casos puntuales:
+
+| Comando | Descripción |
+|---|---|
+| `/start` | Iniciar o reiniciar la conversación con Clara (dispara el onboarding la primera vez). |
+| `/invitar` | Generar un código de 6 caracteres para que un familiar se vincule a este hogar (lo usa con `/vincular` en el bot familiar). |
 
 ---
 
@@ -775,15 +838,25 @@ No hay menús ni comandos: es conversación pura.
 | Comando | Descripción |
 |---|---|
 | `/start` | Registra al familiar como suscriptor de alertas. |
+| `/vincular <CODIGO>` | Vincularte a un adulto usando el código que él generó con `/invitar`. |
+| `/misadultos` | Listar a los adultos a los que estás vinculado (marca el activo). |
+| `/elegir <chat_id>` | Fijar el adulto activo (cuando estás vinculado a varios). |
 | `/nombre [Tu nombre]` | Registra cómo te conoce el adulto mayor (se usa al mandar mensajes-puente). |
-| `/mensaje` | Inicia el envío de un mensaje texto/voz que Aikiu le transmite al adulto mayor de tu parte. |
-| `/perfil` | Muestra el perfil completo actual. |
-| `/editar` | Menú interactivo para editar una sección del perfil. |
-| `/suscriptores` | Lista los familiares registrados. |
+| `/mensaje` | Inicia el envío de un mensaje texto/voz que Aikiu le transmite al adulto activo. |
+| `/perfil` | Muestra el perfil del adulto activo. |
+| `/editar` | Menú interactivo para editar una sección del perfil del adulto activo. |
+| `/stats` | Actividad del adulto activo en los últimos días. |
+| `/aprendizajes` | Lo que Clara aprendió del adulto activo. |
+| `/suscriptores` | Lista los familiares vinculados al adulto activo. |
 | `/ayuda` | Muestra la ayuda. |
 | `/cancelar` | Cancela la operación en curso. |
 
-Todas las alertas (angustia, inactividad) llegan a **todos** los suscriptores.
+Las alertas (angustia, inactividad) llegan a **todos los familiares
+vinculados al adulto que las disparó**. Un familiar vinculado a varios
+adultos recibe alertas de todos, identificadas por nombre.
+
+📖 Ver [MULTI_TENANT.md](./MULTI_TENANT.md) para el detalle del flujo
+many-to-many adulto↔familiar y los códigos de invitación.
 
 ---
 
@@ -802,12 +875,18 @@ Si venís de una instalación anterior al refactor que ponía `admin_state.json`
 | `/llm` | Consumo de Groq: detecta automáticamente qué modelos de chat tuvieron actividad en los últimos 30 días y muestra el headline por cada uno con sus límites RPM/RPD/TPM/TPD del free tier (catálogo en `core/llm_limits.py`). Tabla por período (hoy / 7d / 30d) con llamadas totales, OK, tokens y errores. Separa LLM de Whisper, clasifica los errores (rate limit / timeout / auth / etc.) y, cuando los 429 dominan, te indica el TPM/RPM exacto contra el que estás pegando. |
 | `/metricas` | Adultos activos hoy/7d, familiares suscritos por instancia, mensajes/día, alertas por nivel, aprendizajes nuevos, top temas. |
 | `/instancias` | Lista de instancias detectadas (`AIKIU_REGISTRY` o única). |
+| `/hogares` | Lista los hogares multi-tenant (un hogar por adulto): nombre, alta, familiares, actividad reciente. |
+| `/borrar <chat_id>` | Borra el hogar de un adulto. Flujo en dos pasos con confirmación explícita (`CONFIRMAR`). Irreversible. |
 | `/logs [instancia] [N]` | Últimas N líneas de `aikiu.log` (default 30). |
 | `/admins` | Lista los chat_ids con permiso de admin, cupo usado y fuente (TOFU o `.env`). |
 | `/quitar_admin <chat_id>` | Saca a un admin de la lista. Bloqueado si la lista está fijada por `ADMIN_CHAT_IDS`. |
 | `/ayuda` | Menú. |
 
-Multi-tenant: sin `AIKIU_REGISTRY` el admin monitorea la única instancia que vive en el repo. Si seteás `AIKIU_REGISTRY=/var/aikiu/instances`, cada deploy queda en `<registry>/<AIKIU_INSTANCE_ID>/` y el admin los descubre solo.
+Multi-tenant: sin `AIKIU_REGISTRY` los hogares viven en `instances/`
+dentro del repo y el admin monitorea esa carpeta. En producción seteá
+`AIKIU_REGISTRY=/data/instances` (o donde tengas el volumen persistente)
+para que los hogares sobrevivan a los redeploys de Railway/etc. Ver
+[MULTI_TENANT.md](./MULTI_TENANT.md) para el detalle.
 
 Para borrar todos los admins persistidos (por ejemplo si alguien se metió antes de tu equipo): `python -c "from admin.state import reset_admin; reset_admin()"`. No afecta a la lista fijada por `ADMIN_CHAT_IDS` en `.env`.
 
@@ -1071,7 +1150,7 @@ source venv/bin/activate
 pytest
 ```
 
-**714 tests** con **97% de cobertura global** (unit + integración E2E) cubren:
+**821 tests** con **97% de cobertura global** (unit + integración E2E) cubren:
 
 - `core/`: distress (parsing + cooldowns), tools (RSS, clima, dólar), alerts, heartbeat, state, usage, tts, llm_limits.
 - `aikiu.py`: `cargar_config`, `transcribir`, `generar_respuesta`, `analisis_nocturno`, ranking de temas, filtros médicos, alertas de síntomas persistentes, recordatorios, `main()`.
@@ -1094,8 +1173,9 @@ El workflow [`.github/workflows/tests.yml`](./.github/workflows/tests.yml) corre
 ## Seguridad y privacidad
 
 - **Secretos en `.env`**, nunca en el repo. `.env` está en `.gitignore`.
-- **Autorización por chat_id**: el bot principal sólo responde al `CHAT_ID` configurado.
-- **`familiares.json` y `subscribers.json`** (datos personales de los familiares) están en `.gitignore`.
+- **Onboarding self-service**: en multi-tenant cualquier `/start` al bot principal crea un hogar nuevo. Si necesitás cerrar el alta, controlalo desde fuera (link de invitación privado, no publicar el bot, etc.) y usá `/borrar <chat_id>` desde el admin para eliminar hogares indeseados. Ver [MULTI_TENANT.md](./MULTI_TENANT.md).
+- **Aislamiento por hogar**: cada adulto tiene su propio directorio `instances/<chat_id>/` con state, perfil, stats, familiares y logs. Los hogares no se ven entre sí.
+- **`familiares.json` y `subscribers.json`** (datos personales de los familiares) están en `.gitignore` (junto con todo `instances/`).
 - **`logs/`** (transcripciones de conversaciones) está en `.gitignore`.
 - **Sin servidor propio**: todo el procesamiento de IA ocurre en Groq Cloud. Esto implica que las transcripciones y mensajes se envían a Groq; ver [términos de uso de Groq](https://groq.com/terms-of-use) si esto es una consideración.
 - En el roadmap está prevista una capa opcional de **sanitización local** de datos sensibles antes del envío al LLM.

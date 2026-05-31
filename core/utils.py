@@ -1,6 +1,8 @@
 """Utilidades compartidas entre aikiu.py, familiar_bot.py y core/."""
 
 import json
+import os
+import tempfile
 import unicodedata
 import yaml
 from datetime import datetime
@@ -35,13 +37,55 @@ def load_json(path: Path, default=None):
         return default
 
 
+def write_text_atomic(path: Path, contenido: str) -> None:
+    """
+    Escribe texto a `path` de forma atómica (tmp + rename).
+
+    Si el proceso muere a mitad de la escritura, el archivo destino
+    queda como estaba (no a medio escribir). Importante para perfil.md,
+    stats.json, familiares.json y cualquier archivo cuya corrupción
+    rompa el funcionamiento del bot.
+
+    `os.replace` es atómico en POSIX y en Windows (NTFS) para archivos
+    en el mismo directorio.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(contenido)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def write_json_atomic(path: Path, data) -> None:
+    """Wrapper de `write_text_atomic` para JSON con formato estándar."""
+    write_text_atomic(
+        path, json.dumps(data, ensure_ascii=False, indent=2)
+    )
+
+
 def nombre_adulto() -> str:
-    """Devuelve el nombre del adulto mayor desde config.yml."""
+    """Devuelve el nombre del adulto mayor desde config.yml.
+
+    LEGACY single-tenant: en multi-tenant esta función no es la fuente de
+    verdad — usar `aikiu._nombre_adulto_de(chat_id)` o
+    `familiar_bot._nombre_adulto_de(chat_id_adulto)` en cualquier código
+    que ya tenga el chat_id. Solo se mantiene como compat para callers
+    legacy y para tests que asumen single-tenant.
+    """
     cfg_path = BASE_DIR / "config.yml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("nombre_adulto_mayor", "Marta")
-    return "Marta"
+            return yaml.safe_load(f).get("nombre_adulto_mayor", "") or ""
+    return ""
 
 
 def read_section(perfil: str, seccion: str) -> str:

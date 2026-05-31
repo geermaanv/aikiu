@@ -164,8 +164,10 @@ Probá uno por uno:
 |---|---|
 | `/health` | Te dice si los bots (principal, familiar, admin) están vivos. Verde = todo OK, amarillo = tardando, rojo = algo se rompió. |
 | `/llm` | Cuántos tokens del LLM gastaste hoy, en los últimos 7 días y en los últimos 30. Detecta automáticamente qué modelos están en uso (si conviven varios, los muestra todos por separado con sus respectivos límites) y te avisa si te estás acercando al tope del free tier de Groq de cada uno. |
-| `/metricas` | Cuántos mensajes intercambió Aikiu con el adulto mayor, alertas mandadas, aprendizajes del análisis nocturno. |
-| `/instancias` | Lista de instancias detectadas. Si tenés una sola instalación, va a aparecer una sola línea. |
+| `/metricas` | Métricas operativas. En multi-tenant primero muestra un bloque "Procesos" y "LLM" globales (la cuota de Groq es compartida), y después un bloque por cada hogar con tráfico, alertas, suscripciones y disco. |
+| `/instancias` | Lista de procesos detectados (un proceso = una instancia de Aikiu). En multi-tenant suele haber una sola instancia atendiendo varios hogares; la cantidad de hogares aparece en la cabecera. |
+| `/hogares` | Lista los adultos dados de alta (un adulto = un hogar). Te dice el chat_id, el nombre, cuántos familiares tiene vinculados y si vino de una migración legacy. |
+| `/borrar <chat_id>` | Borra un hogar completo (state, perfil, stats, familiares, logs propios). Requiere confirmar con `/borrar <chat_id> SI`. También purga los códigos de invitación pendientes de ese hogar y reasigna el adulto activo de los familiares afectados. |
 | `/logs` | Últimas 30 líneas del log de Aikiu. Útil cuando algo se rompe y querés ver qué pasó. `/logs 50` para 50 líneas. `/logs err` para ver solo errores. |
 | `/admins` | Lista los chat_ids con permiso de admin, cuántos lugares quedan, y de dónde viene cada uno (TOFU o `.env`). |
 | `/quitar_admin <chat_id>` | Saca a un admin de la lista. Tomá el chat_id de la salida de `/admins`. Solo funciona si la lista no está fijada por `.env`. |

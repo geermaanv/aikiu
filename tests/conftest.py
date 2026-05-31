@@ -3,16 +3,20 @@ Fixtures globales y bootstrap de env para que los módulos del repo se puedan
 importar limpio en cualquier test (incluso los que viven en módulos que leen
 env vars en tiempo de import: admin/bot.py, familiar_bot.py, andromarta/bot.py).
 
-Acá NO se patchea el filesystem global: cada test sigue siendo responsable de
-aislar su propio estado (state.json, usage.json, etc.). Solo nos aseguramos
-de que existan los tokens dummy mínimos en el entorno del proceso de tests.
+Bootstrap:
+- Tokens dummy en el entorno del proceso de tests.
+- `AIKIU_REGISTRY` apuntando a un directorio temporal por sesión, para que
+  los hogares creados por los tests no contaminen `instances/` del repo.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -31,3 +35,20 @@ _DUMMIES = {
 }
 for k, v in _DUMMIES.items():
     os.environ.setdefault(k, v)
+
+
+@pytest.fixture(autouse=True)
+def _aislar_registry_global(tmp_path, monkeypatch):
+    """Aísla `AIKIU_REGISTRY` por test.
+
+    Sin esto, cualquier test que cree un hogar (vía `aikiu.cmd_start`, etc.)
+    deja archivos en `instances/` del repo y contamina los siguientes tests
+    y las corridas del bot real en local.
+
+    Los tests que necesitan controlar AIKIU_REGISTRY ellos mismos pueden
+    sobreescribirlo con su propio `monkeypatch.setenv`.
+    """
+    registry = tmp_path / "_test_registry"
+    registry.mkdir(exist_ok=True)
+    monkeypatch.setenv("AIKIU_REGISTRY", str(registry))
+    yield

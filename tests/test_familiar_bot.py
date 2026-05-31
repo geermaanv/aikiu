@@ -454,6 +454,144 @@ def test_cancelar_corta_la_conversacion():
 
 
 # ---------------------------------------------------------------------------
+# /configurar — wizard de setup del perfil del adulto activo
+# ---------------------------------------------------------------------------
+
+def test_parsear_lista_linea_por_linea():
+    res = familiar_bot._parsear_lista("uno\ndos\ntres")
+    assert res == ["uno", "dos", "tres"]
+
+
+def test_parsear_lista_separado_por_coma():
+    res = familiar_bot._parsear_lista("uno, dos , tres ")
+    assert res == ["uno", "dos", "tres"]
+
+
+def test_parsear_lista_acepta_guion_markdown():
+    res = familiar_bot._parsear_lista("- uno\n- dos")
+    assert res == ["uno", "dos"]
+
+
+def test_parsear_lista_vacio():
+    assert familiar_bot._parsear_lista("") == []
+    assert familiar_bot._parsear_lista("   \n  ,  ") == []
+
+
+def test_cmd_configurar_no_suscriptor():
+    update = _fake_update(chat_id=42)
+    estado = run(familiar_bot.cmd_configurar(update, _fake_context()))
+    from telegram.ext import ConversationHandler
+    assert estado == ConversationHandler.END
+    msg = update.message.reply_text.await_args.args[0]
+    assert "/start" in msg
+
+
+def _setup_familiar_vinculado_a(adulto_id: int, familiar_id: int = 42):
+    """Crea un hogar para `adulto_id`, registra al familiar y los vincula."""
+    from core import hogar as hogar_mod
+    from core import familiar_state as fs
+    hogar_mod.crear_hogar(adulto_id, nombre="Pre-existente")
+    familiar_bot.agregar_familiar(familiar_id)
+    fs.asegurar_familiar(familiar_id, nombre="Test")
+    fs.vincular(familiar_id, adulto_id, nombre="Test")
+
+
+def test_cmd_configurar_arranca_wizard():
+    _setup_familiar_vinculado_a(adulto_id=999, familiar_id=42)
+    update = _fake_update(chat_id=42)
+    estado = run(familiar_bot.cmd_configurar(update, _fake_context()))
+    assert estado == familiar_bot.CFG_NOMBRE
+    msg = update.message.reply_text.await_args.args[0]
+    assert "1/8" in msg
+    assert "Cómo se llama" in msg
+
+
+def test_wizard_configurar_flujo_completo_persiste_perfil_y_state():
+    from core import hogar as hogar_mod
+    _setup_familiar_vinculado_a(adulto_id=999, familiar_id=42)
+
+    ctx = _fake_context()
+    # Arrancar el wizard
+    update = _fake_update(chat_id=42)
+    estado = run(familiar_bot.cmd_configurar(update, ctx))
+    assert estado == familiar_bot.CFG_NOMBRE
+
+    # 1/8 nombre
+    update = _fake_update(chat_id=42, text="Pedro")
+    estado = run(familiar_bot.cfg_nombre(update, ctx))
+    assert estado == familiar_bot.CFG_EDAD
+    # 2/8 edad
+    update = _fake_update(chat_id=42, text="78")
+    estado = run(familiar_bot.cfg_edad(update, ctx))
+    assert estado == familiar_bot.CFG_CIUDAD
+    # 3/8 ciudad
+    update = _fake_update(chat_id=42, text="Rosario")
+    estado = run(familiar_bot.cfg_ciudad(update, ctx))
+    assert estado == familiar_bot.CFG_DESCRIPCION
+    # 4/8 descripción
+    update = _fake_update(chat_id=42, text="Tranquilo, le gusta el dominó")
+    estado = run(familiar_bot.cfg_descripcion(update, ctx))
+    assert estado == familiar_bot.CFG_ASISTENTE
+    # 5/8 asistente (vacío → default Clara)
+    update = _fake_update(chat_id=42, text="Sofi")
+    estado = run(familiar_bot.cfg_asistente(update, ctx))
+    assert estado == familiar_bot.CFG_FAMILIA
+    # 6/8 familia
+    update = _fake_update(chat_id=42, text="Hijo Lucas, vive cerca\nNieta Vera")
+    estado = run(familiar_bot.cfg_familia(update, ctx))
+    assert estado == familiar_bot.CFG_GUSTOS
+    # 7/8 gustos
+    update = _fake_update(chat_id=42, text="dominó, mate amargo")
+    estado = run(familiar_bot.cfg_gustos(update, ctx))
+    assert estado == familiar_bot.CFG_SALUD
+    # 8/8 salud (último, dispara persistencia)
+    update = _fake_update(chat_id=42, text="presión, colesterol")
+    estado = run(familiar_bot.cfg_salud(update, ctx))
+    from telegram.ext import ConversationHandler
+    assert estado == ConversationHandler.END
+
+    # Perfil generado
+    perfil_path = hogar_mod.perfil_path(999)
+    perfil = perfil_path.read_text(encoding="utf-8")
+    assert "# Perfil de Pedro" in perfil
+    assert "Pedro, 78 años, vive en Rosario" in perfil
+    assert "Hijo Lucas" in perfil
+    assert "dominó" in perfil
+    assert "presión" in perfil
+
+    # State actualizado
+    state = hogar_mod.leer_state(999)
+    assert state["nombre_adulto_mayor"] == "Pedro"
+    assert state["nombre_asistente"] == "Sofi"
+    assert state["ciudad"] == "Rosario"
+    assert state["perfil_completo"] is True
+
+
+def test_wizard_configurar_asistente_vacio_usa_default_clara():
+    from core import hogar as hogar_mod
+    _setup_familiar_vinculado_a(adulto_id=888, familiar_id=42)
+    ctx = _fake_context()
+    run(familiar_bot.cmd_configurar(_fake_update(chat_id=42), ctx))
+    # Solo se está testeando el paso del asistente
+    ctx.user_data["cfg_datos"] = {"nombre": "X"}
+    estado = run(familiar_bot.cfg_asistente(
+        _fake_update(chat_id=42, text=""), ctx
+    ))
+    assert estado == familiar_bot.CFG_FAMILIA
+    assert ctx.user_data["cfg_datos"]["nombre_asistente"] == "Clara"
+
+
+def test_wizard_configurar_edad_guion_queda_vacia():
+    _setup_familiar_vinculado_a(adulto_id=777, familiar_id=42)
+    ctx = _fake_context()
+    run(familiar_bot.cmd_configurar(_fake_update(chat_id=42), ctx))
+    run(familiar_bot.cfg_nombre(_fake_update(chat_id=42, text="Ana"), ctx))
+    estado = run(familiar_bot.cfg_edad(_fake_update(chat_id=42, text="-"), ctx))
+    assert estado == familiar_bot.CFG_CIUDAD
+    assert ctx.user_data["cfg_datos"]["edad"] == ""
+
+
+# ---------------------------------------------------------------------------
 # cmd_mensaje — flujo del puente
 # ---------------------------------------------------------------------------
 

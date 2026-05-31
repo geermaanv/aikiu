@@ -44,10 +44,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 from telegram import Bot, BotCommand, Update
-from telegram.error import TelegramError
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from core import heartbeat as hb_mod, llm_limits, usage as usage_mod
+from core import hogar as hogar_mod
+from core import invites as invites_mod
+from core import familiar_state as fam_state_mod
 from core.instance import (
     BASE_DIR,
     descubrir_instancias,
@@ -99,6 +102,36 @@ async def _rechazar_silencioso(update: Update, motivo: str) -> None:
 
 _SEMAFORO = {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴", "ausente": "⚫"}
 _ORDEN_ESTADO = {"ausente": 0, "rojo": 1, "amarillo": 2, "verde": 3}
+
+
+def _escape_md(text: object) -> str:
+    """Escapa los caracteres especiales del Markdown v1 de Telegram.
+
+    Necesario para cualquier texto controlado por el usuario (nombres de
+    adultos/familiares, etc.) que se inyecta en mensajes con
+    `parse_mode="Markdown"`. Sin esto, un nombre con `_`, `*`, `` ` `` o `[`
+    rompe el parser y Telegram devuelve 400 BadRequest.
+    """
+    s = str(text) if text is not None else ""
+    for ch in ("_", "*", "`", "["):
+        s = s.replace(ch, "\\" + ch)
+    return s
+
+
+async def _reply_md_safe(message, text: str) -> None:
+    """Envía un mensaje con `parse_mode="Markdown"`. Si Telegram rechaza el
+    Markdown (entidades mal cerradas, anidadas, etc.) reintenta como texto
+    plano para que el admin reciba el contenido aunque pierda el formato.
+
+    El bug que motivó este helper: Markdown legacy NO soporta anidar
+    entidades (ej. `` ` `` dentro de `_..._`) y devuelve 400 BadRequest, lo
+    que dejaba al admin sin respuesta y solo con un traceback en los logs.
+    """
+    try:
+        await message.reply_text(text, parse_mode="Markdown")
+    except BadRequest as e:
+        log.warning(f"Markdown parse falló ({e}); reintentando como texto plano")
+        await message.reply_text(text)
 
 
 def _hace(iso_ts: Optional[str], ahora: Optional[datetime] = None) -> str:
@@ -179,7 +212,9 @@ MENU = (
     "/llm — tokens del LLM hoy / 7 días / 30 días\n"
     "/metricas — operación: volumen, errores, latencias, archivos\n\n"
     "🗂 *Multi-instancia*\n"
-    "/instancias — listar instancias detectadas\n\n"
+    "/instancias — listar instancias detectadas\n"
+    "/hogares — listar hogares multi-tenant (un hogar por adulto)\n"
+    "/borrar — borrar un hogar con confirmación (`/borrar <chat_id>`)\n\n"
     "👥 *Equipo*\n"
     "/admins — ver los chat_ids con permiso de admin\n"
     "/quitar\\_admin — quitar a un admin (`/quitar_admin <chat_id>`)\n\n"
@@ -193,6 +228,8 @@ COMANDOS_TELEGRAM = [
     BotCommand("llm",          "Uso del LLM: tokens y latencias"),
     BotCommand("metricas",     "Operacion: volumen, errores, latencias"),
     BotCommand("instancias",   "Listar instancias detectadas"),
+    BotCommand("hogares",      "Listar hogares multi-tenant"),
+    BotCommand("borrar",       "Borrar hogar: /borrar <chat_id>"),
     BotCommand("logs",         "Ultimas lineas del log (/logs 50)"),
     BotCommand("admins",       "Ver chat_ids con permiso de admin"),
     BotCommand("quitar_admin", "Quitar un admin: /quitar_admin <chat_id>"),
@@ -398,10 +435,20 @@ async def cmd_instancias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         1 for i in instancias if _estado_instancia(i["hbs"], esperados) == "verde"
     )
 
+    # En multi-tenant un proceso (= una instancia) atiende N hogares.
+    # Lo mostramos para que el admin no confunda "instancia" con "adulto".
+    n_hogares = len(hogar_mod.listar_hogares())
+
     lineas = [
         f"*🗂 Instancias detectadas: {len(instancias)}*",
-        f"_{cuenta_verdes} de {len(instancias)} en verde._\n",
+        f"_{cuenta_verdes} de {len(instancias)} en verde._",
     ]
+    if n_hogares > 0:
+        lineas.append(
+            f"_Atendiendo {n_hogares} hogar(es) multi-tenant — "
+            f"detalle en `/hogares`._"
+        )
+    lineas.append("")
 
     for i in instancias:
         est = _estado_instancia(i["hbs"], esperados)
@@ -410,7 +457,14 @@ async def cmd_instancias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         hb_f = i["hb_familiar"]
         ultimo = _hace(hb_a.get("last_seen") if hb_a else None)
         owner = (hb_a or {}).get("owner_chat_id")
-        owner_str = f"`{owner}`" if owner else "_(sin adulto registrado)_"
+        # En multi-tenant no hay un solo "owner" de la instancia: el proceso
+        # atiende a muchos hogares. Lo decimos explícito para no confundir.
+        if owner:
+            owner_str = f"`{owner}`"
+        elif n_hogares > 0:
+            owner_str = f"_(multi-tenant: {n_hogares} hogar/es — ver /hogares)_"
+        else:
+            owner_str = "_(sin adulto registrado)_"
 
         lineas.append(f"{icono} *{i['nombre_adulto']}*  ·  id `{i['id']}`")
         lineas.append(f"   • Adulto: {owner_str}")
@@ -466,6 +520,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     instancias = [_resumen_instancia(d) for d in descubrir_instancias()]
     esperados = _roles_esperados()
+    n_hogares = len(hogar_mod.listar_hogares())
 
     # Headline: peor estado global → emoji + frase
     estados_globales = [_estado_instancia(i["hbs"], esperados) for i in instancias]
@@ -476,8 +531,12 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     peor_global = _peor(estados_globales) if estados_globales else "ausente"
     icono_g = _SEMAFORO[peor_global]
+    sufijo_hogares = f" · {n_hogares} hogar(es)" if n_hogares > 0 else ""
     if peor_global == "verde" and pings_ok == pings_total:
-        headline = f"{icono_g} *Todo OK* — {len(instancias)} instancia(s), {pings_ok}/{pings_total} bots respondiendo."
+        headline = (
+            f"{icono_g} *Todo OK* — {len(instancias)} instancia(s){sufijo_hogares}, "
+            f"{pings_ok}/{pings_total} bots respondiendo."
+        )
     elif peor_global == "verde":
         headline = f"🟡 *Bots vivos pero la API de Telegram falló para alguno* ({pings_ok}/{pings_total} ok)."
     elif peor_global == "amarillo":
@@ -878,7 +937,13 @@ def _icono_salud(estado: str) -> str:
 
 async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Métricas operativas: volumen, errores, latencias, archivos. Sin contenido
-    de conversaciones (eso lo tiene el bot familiar con /aprendizajes y /stats)."""
+    de conversaciones (eso lo tiene el bot familiar con /aprendizajes y /stats).
+
+    En modo multi-tenant: primero muestra métricas del proceso (uptime, LLM,
+    que son globales — un solo Aikiu atiende a todos los hogares) y después
+    un bloque por hogar con los datos propios de cada uno (tráfico,
+    suscripciones, alertas, disco).
+    """
     if not _es_admin_autorizado(update.effective_chat.id):
         await _rechazar_silencioso(update, "no es admin")
         return
@@ -891,8 +956,15 @@ async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    hogares_mt = hogar_mod.listar_hogares()
+
     lineas: list[str] = ["*🔧 Métricas operativas*\n"]
 
+    # ─────────────────────────────────────────────────────────────────────
+    # PARTE A: Métricas POR INSTANCIA (= por proceso). Procesos y LLM son
+    # globales en multi-tenant: un solo aikiu atiende a todos los hogares,
+    # una sola cuota de Groq.
+    # ─────────────────────────────────────────────────────────────────────
     for i in instancias:
         d = i["dir"]
         nombre = i["nombre_adulto"]
@@ -914,21 +986,7 @@ async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lineas.append(f"   • Familiar arrancado {started_f}  ·  uptime {up_f}")
         lineas.append("")
 
-        # ── 2. Volumen de tráfico (count puro, sin contenido) ────────────
-        serie7d = _serie_mensajes_7d(d)
-        total_7d = sum(serie7d)
-        msg_hoy = serie7d[-1]
-        spark = _sparkline(serie7d)
-        lineas.append("📈 *Tráfico de mensajes*")
-        lineas.append(
-            f"   • Hoy: {msg_hoy}  ·  últimos 7d: {total_7d}  "
-            f"·  promedio {total_7d / 7:.1f}/día"
-        )
-        if spark:
-            lineas.append(f"   • `{spark}`  _(hace 6d → hoy)_")
-        lineas.append("")
-
-        # ── 3. LLM: errores y latencias (lo que importa para troubleshoot) ─
+        # ── 2. LLM: errores y latencias (a nivel proceso — cuota Groq compartida)
         r_hoy = usage_mod.resumir(d, dias=1)
         r_7d  = usage_mod.resumir(d, dias=7)
         err_hoy = r_hoy["errores"]
@@ -947,7 +1005,7 @@ async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             default=0,
         )
 
-        lineas.append("🤖 *LLM (Groq)*")
+        lineas.append("🤖 *LLM (Groq) — todos los hogares*")
         if llamadas_hoy:
             lineas.append(
                 f"   • Hoy: {llamadas_hoy} llamadas  ·  errores {err_hoy} ({pct_err_hoy:.1f}%)"
@@ -965,47 +1023,89 @@ async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lineas.append("   ⚠️ _Tasa de errores elevada — mirá /logs err_")
         lineas.append("")
 
-        # ── 4. Alertas distress (count operativo, sin contenido) ─────────
+    # ─────────────────────────────────────────────────────────────────────
+    # PARTE B: Métricas POR HOGAR (multi-tenant). Tráfico, suscripciones,
+    # alertas y disco son específicos de cada adulto.
+    # Si no hay hogares (instalación virgen o sin migrar), usamos el
+    # directorio de la primera instancia como fallback legacy.
+    # ─────────────────────────────────────────────────────────────────────
+    dirs_para_metricas_hogar: list[tuple[str, str, Path]] = []
+    if hogares_mt:
+        for cid in hogares_mt:
+            estado = hogar_mod.leer_state(cid)
+            nombre_h = (
+                estado.get("nombre_adulto_mayor")
+                or estado.get("nombre_adulto")
+                or f"hogar {cid}"
+            )
+            dirs_para_metricas_hogar.append(
+                (str(cid), nombre_h, hogar_mod.hogar_dir(cid))
+            )
+    else:
+        # Fallback legacy: la primera instancia es el "hogar".
+        primero = instancias[0]
+        dirs_para_metricas_hogar.append(
+            (primero["id"], primero["nombre_adulto"], primero["dir"])
+        )
+
+    if hogares_mt:
+        lineas.append(f"*🏠 Hogares multi-tenant: {len(hogares_mt)}*\n")
+
+    for id_h, nombre_h, d_h in dirs_para_metricas_hogar:
+        if hogares_mt:
+            lineas.append(f"*— {nombre_h} (`{id_h}`) —*")
+
+        # ── 3. Volumen de tráfico ────────────────────────────────────────
+        serie7d = _serie_mensajes_7d(d_h)
+        total_7d = sum(serie7d)
+        msg_hoy = serie7d[-1]
+        spark = _sparkline(serie7d)
+        lineas.append("📈 *Tráfico de mensajes*")
+        lineas.append(
+            f"   • Hoy: {msg_hoy}  ·  últimos 7d: {total_7d}  "
+            f"·  promedio {total_7d / 7:.1f}/día"
+        )
+        if spark:
+            lineas.append(f"   • `{spark}`  _(hace 6d → hoy)_")
+        lineas.append("")
+
+        # ── 4. Alertas distress ──────────────────────────────────────────
         alertas_7d = {1: 0, 2: 0, 3: 0}
-        for _, s in _stats_dias(d, 7):
+        for _, s in _stats_dias(d_h, 7):
             dist = s.get("distress", {})
             for nivel in (1, 2, 3):
                 alertas_7d[nivel] += int(dist.get(str(nivel), 0))
         total_alertas = sum(alertas_7d.values())
         if total_alertas:
-            lineas.append("🚨 *Alertas distress disparadas (7d)*")
+            lineas.append("🚨 *Alertas distress (7d)*")
             lineas.append(
                 f"   • Total: {total_alertas}  ·  "
                 f"🟡 {alertas_7d[1]} · 🟠 {alertas_7d[2]} · 🔴 {alertas_7d[3]}"
             )
             lineas.append("")
 
-        # ── 5. Suscripciones y configuración ─────────────────────────────
-        n_familiares = _contar_familiares(d)
-        owner_id = (hb_a or {}).get("owner_chat_id")
+        # ── 5. Suscripciones ─────────────────────────────────────────────
+        n_familiares = _contar_familiares(d_h)
         lineas.append("👥 *Suscripciones*")
-        lineas.append(
-            f"   • Adulto registrado: {'`' + str(owner_id) + '`' if owner_id else '_(sin owner)_'}"
-        )
-        lineas.append(f"   • Familiares suscriptos: {n_familiares}")
+        lineas.append(f"   • Familiares vinculados: {n_familiares}")
         lineas.append("")
 
-        # ── 6. Disco (tamaño de archivos persistentes) ───────────────────
-        tam_logs, n_logs = _tamano_logs(d)
-        tam_stats = (d / "stats.json").stat().st_size if (d / "stats.json").exists() else 0
-        tam_usage = (d / "usage.json").stat().st_size if (d / "usage.json").exists() else 0
-        tam_recep = (d / "receptividad.json").stat().st_size if (d / "receptividad.json").exists() else 0
+        # ── 6. Disco ─────────────────────────────────────────────────────
+        tam_logs, n_logs = _tamano_logs(d_h)
+        tam_stats = (d_h / "stats.json").stat().st_size if (d_h / "stats.json").exists() else 0
+        tam_recep = (d_h / "receptividad.json").stat().st_size if (d_h / "receptividad.json").exists() else 0
+        tam_perfil = (d_h / "perfil.md").stat().st_size if (d_h / "perfil.md").exists() else 0
         lineas.append("💾 *Disco*")
         lineas.append(f"   • logs/: {_formato_bytes(tam_logs)} en {n_logs} archivo(s)")
         lineas.append(
             f"   • stats: {_formato_bytes(tam_stats)}  ·  "
-            f"usage: {_formato_bytes(tam_usage)}  ·  "
+            f"perfil: {_formato_bytes(tam_perfil)}  ·  "
             f"receptividad: {_formato_bytes(tam_recep)}"
         )
         lineas.append("")
 
-        # ── 7. Salud de archivos críticos ────────────────────────────────
-        salud = _salud_archivos(d)
+        # ── 7. Salud de archivos ─────────────────────────────────────────
+        salud = _salud_archivos(d_h)
         problemas = [s for s in salud if s[1] != "ok"]
         if problemas:
             lineas.append("📂 *Archivos críticos*")
@@ -1017,6 +1117,177 @@ async def cmd_metricas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lineas.append("📂 *Archivos críticos:* 🟢 todos OK\n")
 
     await update.message.reply_text("\n".join(lineas), parse_mode="Markdown")
+
+
+# ---------------------------------------------------------------------------
+# /hogares  +  /borrar
+# ---------------------------------------------------------------------------
+
+def _info_hogar(chat_id: int) -> dict:
+    """Datos relevantes de un hogar para mostrar al admin."""
+    d = hogar_mod.hogar_dir(chat_id)
+    estado = hogar_mod.leer_state(chat_id)
+    fams = load_json(hogar_mod.familiares_path(chat_id), default=[])
+    stats = load_json(hogar_mod.stats_path(chat_id), default={})
+
+    ultimo_dia = sorted(stats.keys(), reverse=True)[0] if stats else None
+    msgs_ult = stats.get(ultimo_dia, {}).get("mensajes", 0) if ultimo_dia else 0
+
+    perfil_p = hogar_mod.perfil_path(chat_id)
+    perfil_kb = perfil_p.stat().st_size // 1024 if perfil_p.exists() else 0
+
+    nombre_raw = estado.get("nombre_adulto") or estado.get("nombre_adulto_mayor")
+    if nombre_raw:
+        nombre_md = f"*{_escape_md(nombre_raw)}*"
+    else:
+        nombre_md = "_(sin nombre)_"
+
+    return {
+        "chat_id": chat_id,
+        "dir": d,
+        "nombre_md": nombre_md,
+        "alta": estado.get("registered_at", "—"),
+        "migrated": estado.get("migrated_from_legacy", False),
+        "familiares": len(fams),
+        "ultimo_dia": ultimo_dia or "—",
+        "msgs_ultimo_dia": msgs_ult,
+        "perfil_kb": perfil_kb,
+    }
+
+
+async def cmd_hogares(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista los hogares multi-tenant registrados.
+
+    A diferencia de /instancias (que mira heartbeats de procesos),
+    /hogares mira el `instances/` del registry y muestra cada adulto que
+    tiene su carpeta creada — usalo para auditar quién está usando el
+    sistema y para decidir qué borrar."""
+    if not _es_admin_autorizado(update.effective_chat.id):
+        await _rechazar_silencioso(update, "no es admin")
+        return
+
+    ids = hogar_mod.listar_hogares()
+    if not ids:
+        await _reply_md_safe(
+            update.message,
+            "*🏠 Hogares*\n\nNo hay hogares registrados todavía.\n"
+            "_Cualquiera que mande /start al bot principal va a crear el suyo._",
+        )
+        return
+
+    lineas = [f"*🏠 Hogares registrados: {len(ids)}*\n"]
+    for cid in ids:
+        info = _info_hogar(cid)
+        marca_mig = " · _(migrado del legacy)_" if info["migrated"] else ""
+        lineas.append(f"{info['nombre_md']} — `{cid}`{marca_mig}")
+        lineas.append(f"   • Alta: {info['alta']}")
+        lineas.append(
+            f"   • Familiares vinculados: {info['familiares']}"
+        )
+        lineas.append(
+            f"   • Actividad ({info['ultimo_dia']}): {info['msgs_ultimo_dia']} mensajes"
+        )
+        if info["perfil_kb"]:
+            lineas.append(f"   • Perfil: {info['perfil_kb']} KB")
+        lineas.append("")
+
+    lineas.append("Para eliminar un hogar usá `/borrar <chat_id>` (pide confirmación).")
+    await _reply_md_safe(update.message, "\n".join(lineas))
+
+
+async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Borra el directorio de un hogar.
+
+    Flujo en dos pasos para evitar accidentes:
+    - `/borrar <chat_id>`           → muestra info y pide confirmación.
+    - `/borrar <chat_id> CONFIRMAR` → ejecuta el borrado físico (rm -rf).
+
+    El borrado NO se puede deshacer. Borra `instances/<chat_id>/`
+    completo: state, perfil, stats, logs, todo.
+    """
+    if not _es_admin_autorizado(update.effective_chat.id):
+        await _rechazar_silencioso(update, "no es admin")
+        return
+
+    args = context.args or []
+    if not args:
+        await _reply_md_safe(
+            update.message,
+            "Uso: `/borrar <chat_id>` (te muestro qué se borraría).\n"
+            "Después: `/borrar <chat_id> CONFIRMAR` para ejecutar.",
+        )
+        return
+
+    try:
+        objetivo = int(args[0])
+    except ValueError:
+        await _reply_md_safe(
+            update.message,
+            f"`{args[0]}` no es un chat_id válido (tiene que ser un número).",
+        )
+        return
+
+    if not hogar_mod.existe_hogar(objetivo):
+        await _reply_md_safe(
+            update.message,
+            f"No encontré un hogar con chat_id `{objetivo}`. "
+            f"Mirá la lista con `/hogares`.",
+        )
+        return
+
+    confirma = len(args) >= 2 and args[1].strip().upper() == "CONFIRMAR"
+    info = _info_hogar(objetivo)
+
+    if not confirma:
+        await _reply_md_safe(
+            update.message,
+            f"⚠️ *Vas a borrar el hogar `{objetivo}`*\n\n"
+            f"• Adulto: {info['nombre_md']}\n"
+            f"• Alta: {info['alta']}\n"
+            f"• Familiares vinculados: {info['familiares']}\n"
+            f"• Perfil: {info['perfil_kb']} KB\n"
+            f"• Directorio: `{info['dir']}`\n\n"
+            f"Esto borra TODO (state, perfil, stats, logs, familiares) y "
+            f"es irreversible. Si estás seguro:\n\n"
+            f"`/borrar {objetivo} CONFIRMAR`",
+        )
+        return
+
+    quien = update.effective_chat.id
+    if hogar_mod.borrar_hogar(objetivo):
+        # Limpieza de huérfanos derivados del borrado:
+        # - Invitaciones pendientes del hogar (códigos vivos que apuntaban
+        #   a un adulto que ya no existe).
+        # - Adulto activo en `_familiar_state.json` de cualquier familiar
+        #   que lo tuviera como default (lo reasignamos a otro vínculo).
+        codigos_purgados = invites_mod.purgar_de_hogar(objetivo)
+        familiares_reasignados = fam_state_mod.limpiar_hogar_borrado(objetivo)
+        log.warning(
+            f"[HOGAR BORRADO] chat_id={objetivo} borrado_por={quien} "
+            f"codigos_purgados={codigos_purgados} "
+            f"familiares_reasignados={familiares_reasignados} "
+            f"hora={datetime.now().isoformat(timespec='seconds')}"
+        )
+        extras = []
+        if codigos_purgados:
+            extras.append(
+                f"{codigos_purgados} código(s) de invitación pendiente(s) limpiados"
+            )
+        if familiares_reasignados:
+            extras.append(
+                f"{familiares_reasignados} familiar(es) reasignado(s) a otro adulto"
+            )
+        extras_txt = ("\n_" + "; ".join(extras) + "._") if extras else ""
+        await _reply_md_safe(
+            update.message,
+            f"✅ Listo, borré el hogar `{objetivo}` ({info['nombre_md']}).{extras_txt}\n"
+            f"_Si el adulto vuelve a mandar /start, se le crea uno nuevo desde cero._",
+        )
+    else:
+        await _reply_md_safe(
+            update.message,
+            f"❌ No pude borrar `{objetivo}`. Mirá los logs del admin.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1105,7 +1376,14 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # `aikiu.log` se escribe en `BASE_DIR/aikiu.log` (raíz del repo), porque
+    # es del proceso, no del hogar. En modo single-instance `d == BASE_DIR`
+    # y ambos paths coinciden. En modo multi-tenant con AIKIU_REGISTRY,
+    # `d` es `<registry>/<instance_id>/` (que no tiene el log) → fallback
+    # a BASE_DIR.
     log_path = d / "aikiu.log"
+    if not log_path.exists():
+        log_path = BASE_DIR / "aikiu.log"
 
     # Metadata del archivo
     if not log_path.exists():
@@ -1176,6 +1454,8 @@ async def main():
     app.add_handler(CommandHandler("llm", cmd_llm))
     app.add_handler(CommandHandler("metricas", cmd_metricas))
     app.add_handler(CommandHandler("instancias", cmd_instancias))
+    app.add_handler(CommandHandler("hogares", cmd_hogares))
+    app.add_handler(CommandHandler("borrar", cmd_borrar))
     app.add_handler(CommandHandler("logs", cmd_logs))
     app.add_handler(CommandHandler("admins", cmd_admins))
     app.add_handler(CommandHandler("quitar_admin", cmd_quitar_admin))

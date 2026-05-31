@@ -229,7 +229,7 @@ def test_aikiu_main_arranca_y_para(monkeypatch):
 
     run(aikiu.main())
     # Verificaciones
-    assert len(fake_app._handlers) == 2  # start + message handler
+    assert len(fake_app._handlers) == 3  # start + invitar + message handler
     assert "family_bot" in fake_app.bot_data
     sched_mock.start.assert_called_once()
     sched_mock.shutdown.assert_called_once()
@@ -287,8 +287,8 @@ def test_admin_main_arranca_sin_admins(monkeypatch):
     monkeypatch.setattr(admin_bot.asyncio, "Event", lambda: FakeEvent())
 
     run(admin_bot.main())
-    # Se registraron 10 handlers (10 commands)
-    assert len(fake_app._handlers) == 10
+    # Se registraron 12 handlers (10 originales + hogares + borrar)
+    assert len(fake_app._handlers) == 12
 
 
 def test_admin_main_con_admins(monkeypatch):
@@ -308,7 +308,7 @@ def test_admin_main_con_admins(monkeypatch):
     monkeypatch.setattr(admin_bot.asyncio, "Event", lambda: FakeEvent())
 
     run(admin_bot.main())
-    assert len(fake_app._handlers) == 10
+    assert len(fake_app._handlers) == 12
 
 
 def test_admin_main_publicar_comandos_falla(monkeypatch):

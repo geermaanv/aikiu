@@ -11,6 +11,7 @@ state.json
 admin_state.json
 stats.json
 receptividad.json
+tematica_activa.json
 usage.json
 usage.*.json
 heartbeat-*.json
@@ -27,4 +28,7 @@ andromarta/data/*
 !andromarta/data/.gitkeep
 *.session
 *.session-journal
+
+# Multi-tenant: datos por hogar (un directorio por adulto registrado)
+instances/
 

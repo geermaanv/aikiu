@@ -273,35 +273,44 @@ FAMILIAR_BOT_TOKEN=$familiarToken
 }
 
 # ============================================================================
-# 3. Perfil de la persona (configurar.py)
+# 3. Template global del perfil (configurar.py --template)
 # ============================================================================
-Write-Step 3 4 "Perfil de la persona"
+Write-Step 3 4 "Template del perfil"
+
+Write-Host "  En multi-tenant, cada adulto que mande /start arma su propio perfil"
+Write-Host "  desde el bot (wizard de onboarding por voz o texto). Este paso solo"
+Write-Host "  regenera el TEMPLATE neutro (perfil.md + config.yml de la raiz),"
+Write-Host "  que es el esqueleto que se usa hasta que el adulto se onboardea."
+Write-Host ""
 
 $reconfigProfile = $true
 if (Test-Path "$DIR\perfil.md") {
-    Write-Warn "Ya existe un perfil cargado (perfil.md)."
+    Write-Warn "Ya existe un template (perfil.md)."
     $reconfigProfile = Ask-YesNo "Queres rehacerlo?" $false
 }
 
 if ($reconfigProfile) {
-    Write-Host "  Te voy a hacer preguntas sobre la persona que va a usar el asistente"
-    Write-Host "  (nombre, gustos, familia, salud, etc.). En cada una podes apretar"
-    Write-Host "  Enter para aceptar el valor sugerido."
+    Write-Host "  Vas a poder dejar el template totalmente vacio (apretando Enter en"
+    Write-Host "  cada pregunta) o fijar defaults globales para hogares nuevos."
     Write-Host ""
     Read-Host "  Apreta Enter para arrancar el cuestionario" | Out-Null
 
     $env:PYTHONIOENCODING = "utf-8"
     try { chcp 65001 | Out-Null } catch { }
 
-    & $venvPython "$DIR\configurar.py"
+    & $venvPython "$DIR\configurar.py" --template
     if ($LASTEXITCODE -ne 0) {
         Write-Err "El cuestionario fue interrumpido. Podes volver a correrlo despues con:"
-        Write-Host "    .\venv\Scripts\python.exe configurar.py"
+        Write-Host "    .\venv\Scripts\python.exe configurar.py --template"
         exit 1
     }
 } else {
-    Write-Info "Manteniendo perfil existente."
+    Write-Info "Manteniendo template existente."
 }
+
+Write-Host ""
+Write-Host "  Tip: para reconfigurar el perfil de un hogar ya creado, usa:" -ForegroundColor Gray
+Write-Host "    .\venv\Scripts\python.exe configurar.py --chat-id <chat_id>" -ForegroundColor Gray
 
 # ============================================================================
 # 4. Listo - arrancar?
