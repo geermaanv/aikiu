@@ -1,6 +1,33 @@
----
-description: Mantener consistente el catálogo de modelos LLM en todo el repo
-alwaysApply: true
+# Documentación al día en cada push
+
+Antes de ejecutar `git push` (o cuando el usuario pida "push"), revisá si los cambios incluidos en los commits a empujar afectan la documentación. Si afectan, actualizá la docu en el mismo push (commit adicional o amend si corresponde) antes de empujar.
+
+## Qué revisar
+
+Mirá `git log origin/<branch>..HEAD` (o `git diff origin/<branch>..HEAD --stat`) y chequeá si los cambios tocan:
+
+| Si cambió... | Actualizá... |
+|---|---|
+| Comandos de bot, flujos de usuario, capacidades | `README.md` |
+| Variables de entorno nuevas o renombradas | `.env.example` **y** `README.md` (sección de configuración) |
+| Estructura del repo (archivos/carpetas nuevos relevantes) | `README.md` (sección "Estructura") |
+| Scripts de arranque (`start.sh`, `configurar.py`) | `README.md` (sección "Cómo correr") |
+| Funcionalidad planeada que ya quedó hecha | `ROADMAP.md` |
+| Endpoints/APIs públicas | `README.md` + docs específicas si existen |
+
+## Procedimiento
+
+1. **Antes** de `git push`, listá los archivos modificados desde la última vez que la rama está sincronizada con origin.
+2. Decidí si alguna docu queda desactualizada. Si dudás, preguntá al usuario antes de empujar.
+3. Si hay que actualizar: hacelo, agregá al commit pertinente (nuevo commit o amend si el commit es local y reciente, respetando las reglas de amend) y recién ahí pusheá.
+4. Si todo está al día, pusheá y mencionalo brevemente ("docu revisada, sin cambios necesarios").
+
+## Qué NO hacer
+
+- No inventes secciones de docu nuevas sin necesidad.
+- No agregues badges, screenshots o tablas decorativas no pedidas.
+- No toques `ROADMAP.md` para tachar items que el usuario no confirmó como completados.
+
 ---
 
 # Cambios en modelos LLM — actualizar todo el repo
@@ -48,7 +75,7 @@ Activá esta checklist cuando aparezca cualquiera de estas señales en lo que va
 - **No borres una entrada del catálogo** si todavía hay datos históricos en `usage.json` que la referencian; el admin las muestra como "no catalogadas" y eso ya está manejado, pero borrar reduce la trazabilidad.
 - **No hardcodees el nombre del modelo en `admin/bot.py`** para los avisos. Toda la lógica de límites y display del admin pasa por `core/llm_limits.py` — si necesitás algo nuevo, agregá un helper al módulo.
 
-## Estado actual (snapshot al crear esta regla)
+## Estado actual
 
 - Modelo de chat por default: `llama-3.3-70b-versatile`
 - Modelo de audio: `whisper-large-v3`
