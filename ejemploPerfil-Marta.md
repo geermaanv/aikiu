@@ -47,6 +47,8 @@ Sirve como referencia / inspiración para:
 - Tiene ojos secos y usa gotas para tratarlos
 
 ## Aprendizajes
+- Marta disfruta del otoño y lo considera una época hermosa del año. (23/05/2026)
+- Le gusta salir a caminar, especialmente en otoño. (23/05/2026)
 - Marta tiene un hijo llamado Roberto. (22/05/2026)
 - Marta tiene un nieto llamado Tomás. (22/05/2026)
 - Marta se cayó y se rompió la rodilla. (22/05/2026)
@@ -74,6 +76,9 @@ Sirve como referencia / inspiración para:
 - A Marta le encanta cocinar guisos además de empanadas. (23/05/2026)
 
 ## Ajustes sugeridos
+- Evita hacer preguntas innecesarias al final de una conversación cuando ya se ha respondido a la pregunta inicial. (23/05/2026)
+- Ten en cuenta la ubicación geográfica y la estación del año actual para evitar errores. (23/05/2026)
+- Profundiza más en los temas que Marta muestra interés, como el otoño y las caminatas, para mantener la conversación más enfocada y agradable. (23/05/2026)
 - No cambies de tema abruptamente cuando Marta esté hablando. (22/05/2026)
 - Ofrece apoyo emocional y validación a Marta en lugar de intentar cambiar de tema. (22/05/2026)
 - Evita hacer preguntas innecesarias o repetitivas a Marta. (22/05/2026)
