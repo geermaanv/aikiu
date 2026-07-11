@@ -510,14 +510,14 @@ def registrar_stats(distress_level: int, chat_id: Optional[int] = None):
     stats_path = _stats_path(chat_id)
     stats = load_json(stats_path)
 
-    dia = stats.setdefault(hoy, {
-        "mensajes": 0,
-        "primer_mensaje": hora,
-        "ultimo_mensaje": hora,
-        "distress": {"1": 0, "2": 0, "3": 0},
-    })
-    dia["mensajes"] += 1
+    # El día puede haber sido creado por otro código (ej. análisis nocturno)
+    # sin todas las claves — accedemos de forma defensiva, nunca con índice
+    # directo, para no romper el turno (y de paso la alerta).
+    dia = stats.setdefault(hoy, {})
+    dia["primer_mensaje"] = dia.get("primer_mensaje", hora)
+    dia["mensajes"] = dia.get("mensajes", 0) + 1
     dia["ultimo_mensaje"] = hora
+    dia.setdefault("distress", {"1": 0, "2": 0, "3": 0})
     if distress_level >= 1:
         dia["distress"][str(distress_level)] = dia["distress"].get(str(distress_level), 0) + 1
 
@@ -1552,11 +1552,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _ultima_actividad
     _ultima_actividad = datetime.now()
 
-    # Tareas en background (no bloquean la respuesta) — siempre con chat_id
-    registrar_log(texto, respuesta, chat_id=chat_id)
-    registrar_stats(distress_level, chat_id=chat_id)
-    create_background_task(clasificar_receptividad(texto, respuesta, chat_id=chat_id))
-
+    # ALERTA DE SEGURIDAD PRIMERO. Es lo más importante del bot: va antes que
+    # cualquier tarea cosmética (log, stats) para que un fallo en esas nunca
+    # impida enviar la alerta a la familia.
     if should_send_alert(distress_level, adulto_chat_id=chat_id):
         record_alert_sent(distress_level, adulto_chat_id=chat_id)
         family_bot = context.bot_data.get("family_bot")
@@ -1572,6 +1570,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ))
         else:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
+
+    # Tareas cosméticas (log, stats, receptividad) — blindadas: un fallo acá
+    # se registra pero NO rompe el turno ni afecta la alerta ya disparada.
+    try:
+        registrar_log(texto, respuesta, chat_id=chat_id)
+        registrar_stats(distress_level, chat_id=chat_id)
+        create_background_task(clasificar_receptividad(texto, respuesta, chat_id=chat_id))
+    except Exception as e:
+        log.warning(f"Tarea cosmética falló (no afecta la alerta): {e}")
 
 # ---------------------------------------------------------------------------
 # Mensajes proactivos

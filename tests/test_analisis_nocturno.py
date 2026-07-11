@@ -178,6 +178,24 @@ def test_registrar_stats_crea_entrada():
     assert data[hoy]["mensajes"] == 1
 
 
+def test_registrar_stats_no_rompe_con_dia_parcial():
+    """Bug de beta: si el día ya existe creado por otro código (análisis
+    nocturno) sin la clave 'mensajes', registrar_stats tiraba KeyError y
+    abortaba el turno — llevándose puesta la alerta de distress."""
+    import aikiu, json
+    hoy = date.today().strftime("%Y-%m-%d")
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        stats_path = Path(f.name)
+    stats_path.write_text(json.dumps({hoy: {"analisis_nocturno": {"aprendizajes_nuevos": 0}}}))
+    with patch("aikiu.STATS_PATH", stats_path), \
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
+        aikiu.registrar_stats(2)  # antes: KeyError 'mensajes'
+    data = json.loads(stats_path.read_text())[hoy]
+    assert data["mensajes"] == 1
+    assert data["distress"]["2"] == 1
+    assert "analisis_nocturno" in data  # no se pisó lo que ya había
+
+
 def test_registrar_stats_acumula_mensajes():
     import aikiu, json
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
