@@ -63,6 +63,16 @@ def test_normalizar_respuesta_nombre_strip():
     assert aikiu._normalizar_respuesta_onboarding("  Pedro  ", "nombre") == "Pedro"
 
 
+def test_inferir_genero():
+    assert aikiu._inferir_genero("Marta") == "F"
+    assert aikiu._inferir_genero("Rosa") == "F"
+    assert aikiu._inferir_genero("Pedro") == "M"
+    assert aikiu._inferir_genero("German") == "M"   # override (termina en 'n')
+    assert aikiu._inferir_genero("Juan") == "M"      # override
+    assert aikiu._inferir_genero("Carmen") == "F"    # override
+    assert aikiu._inferir_genero("") == "F"          # default
+
+
 def test_normalizar_nombre_extrae_de_frase_conversacional():
     # El bug reportado: "hola, soy german" se guardaba entero como nombre.
     assert aikiu._normalizar_respuesta_onboarding("hola, soy german", "nombre") == "German"

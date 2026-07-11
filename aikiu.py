@@ -419,14 +419,29 @@ async def generar_respuesta(
 
     messages.append({"role": "user", "content": texto_usuario})
 
+    # Género: el núcleo está redactado en femenino (la base tiende a mujeres
+    # mayores). Si el adulto es hombre, inyectamos una directiva fuerte para
+    # que GLM lo trate en masculino pese al núcleo. Para mujeres no hace falta.
+    genero = _genero_de(chat_id)
+    if genero == "M":
+        messages.append({
+            "role": "system",
+            "content": (
+                f"IMPORTANTE: {nombre} es un HOMBRE. Dirigite a él SIEMPRE en masculino "
+                "(adjetivos y participios: 'tranquilo', 'solo', 'cansado', 'querido', "
+                "'acostumbrado'; nunca en femenino). El texto del sistema usa ejemplos "
+                "en femenino porque están pensados para otra persona: adaptalos al masculino."
+            ),
+        })
+
     # Recordatorio por turno: el texto para el adulto nunca puede ir vacío,
-    # aunque ella cierre con un monosílabo. (La clasificación de angustia ya
-    # no se pide acá — la hace el agente vigía por separado.)
+    # aunque cierre con un monosílabo. (La clasificación de angustia ya no se
+    # pide acá — la hace el agente vigía por separado.)
     messages.append({
         "role": "system",
         "content": (
             f"Recordá: siempre respondé a {nombre} con al menos una frase cálida, "
-            "nunca con un mensaje vacío, aunque ella cierre con un monosílabo."
+            "nunca con un mensaje vacío, aunque cierre con un monosílabo."
         ),
     })
 
@@ -1262,6 +1277,39 @@ def _extraer_nombre(texto: str) -> str:
     return " ".join(w.capitalize() for w in palabras)
 
 
+# Nombres comunes que la heurística por terminación no acierta.
+_GENERO_OVERRIDE = {
+    "german": "M", "germán": "M", "juan": "M", "matías": "M", "matias": "M",
+    "tomás": "M", "tomas": "M", "andrés": "M", "andres": "M", "nicolás": "M",
+    "nicolas": "M", "joaquín": "M", "joaquin": "M", "agustín": "M", "agustin": "M",
+    "carmen": "F", "rosario": "F", "pilar": "F", "beatriz": "F", "isabel": "F",
+    "mercedes": "F", "dolores": "F", "soledad": "F", "raquel": "F",
+}
+
+
+def _inferir_genero(nombre: str) -> str:
+    """Infiere 'M' o 'F' del nombre. Heurística rioplatense: termina en 'a' → F,
+    en 'o' → M; con overrides para nombres comunes que no siguen la regla.
+    Default 'F' (la base de usuarios tiende a mujeres mayores). Editable a mano."""
+    if not nombre:
+        return "F"
+    primero = norm(nombre.split()[0])  # sin acentos, lower
+    if primero in _GENERO_OVERRIDE:
+        return _GENERO_OVERRIDE[primero]
+    if primero.endswith("a"):
+        return "F"
+    if primero.endswith("o"):
+        return "M"
+    return "F"
+
+
+def _genero_de(chat_id: Optional[int]) -> str:
+    """Género del adulto ('M'/'F') para adaptar el trato. Default 'F'."""
+    if chat_id is None:
+        return CONFIG.get("genero", "F") or "F"
+    return _config_hogar(chat_id).get("genero", "F") or "F"
+
+
 def _normalizar_respuesta_onboarding(valor: str, paso: str) -> str | list[str]:
     """Devuelve el valor a guardar para `paso` dada la respuesta `valor`.
 
@@ -1352,6 +1400,9 @@ def _finalizar_onboarding(chat_id: int) -> tuple[Path, str]:
 
     if nombre:
         estado["nombre_adulto_mayor"] = nombre
+        # Inferir género del nombre para adaptar el trato (editable a mano).
+        # No se pisa si ya venía seteado (ej. corregido por la familia).
+        estado.setdefault("genero", _inferir_genero(nombre))
     if datos["ciudad"]:
         estado["ciudad"] = datos["ciudad"]
     estado["perfil_completo"] = True

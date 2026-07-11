@@ -19,7 +19,7 @@ log = logging.getLogger("aikiu")
 def _distress_messages(nombre: str) -> dict[int, str]:
     return {
         1: f"🟡 {nombre} mencionó algo que podría indicar que no está del todo bien.",
-        2: f"🟠 {nombre} parece estar angustiada ahora mismo.",
+        2: f"🟠 {nombre} puede no estar bien en este momento.",
         3: f"🔴 ALERTA: {nombre} puede necesitar ayuda urgente.",
     }
 
