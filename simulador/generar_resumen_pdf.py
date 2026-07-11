@@ -56,7 +56,7 @@ def build():
     story.append(Paragraph("¿Qué es y para qué sirve?", h2))
     story.append(Paragraph(
         "Un sistema de prueba automática que simula conversaciones entre <b>Marta</b> (la usuaria) "
-        "y <b>Clara</b> (el bot) sin tocar el bot de producción. Permite iterar el perfil de Clara "
+        "y <b>Aikiu</b> (el bot) sin tocar el bot de producción. Permite iterar el perfil de Aikiu "
         "rápidamente, midiendo calidad con criterios objetivos.",
         body
     ))
@@ -71,7 +71,7 @@ def build():
     story.append(Paragraph("Arquitectura: dos agentes", h2))
 
     arch_data = [
-        ["Agente A — Marta (Gemini)", "Agente B — Clara (cascada LLMs)"],
+        ["Agente A — Marta (Gemini)", "Agente B — Aikiu (cascada LLMs)"],
         [
             "Simula a la usuaria usando\npersonas/marta.md\n\nModelo: gemini-2.5-flash",
             "Simula al bot usando\nperfil_simulacion.md\n\nGroq → Gemini → OpenRouter"
@@ -149,7 +149,7 @@ def build():
         ["Criterio", "Qué mide"],
         ["Voseo rioplatense",       "¿Usó 'querés/tenés/podés'? ¿Cero tuteo neutro?"],
         ["Ratio preguntas",         "¿Máximo una pregunta por turno?"],
-        ["Autorrevelación",         "¿Clara aportó datos/anécdotas propias antes de preguntar?"],
+        ["Autorrevelación",         "¿Aikiu aportó datos/anécdotas propias antes de preguntar?"],
         ["Respuesta a vulnerabilidad", "¿Priorizó salud/dolor sobre temas triviales?"],
         ["Sin eco/espejo",          "¿Evitó repetir textualmente las palabras de Marta?"],
         ["Cierre de negativas",     "¿Ante un 'no', cerró con calidez sin repreguntar?"],

@@ -9,6 +9,7 @@ No toca perfil.md de producción.
 import asyncio
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,15 +27,42 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 PERFIL_SIM_PATH = BASE_DIR / "simulador" / "perfil_simulacion.md"
 LOGS_SIM_DIR    = BASE_DIR / "simulador" / "logs"
+ESCENARIOS_PATH = BASE_DIR / "simulador" / "escenarios.json"
+
+# Tolera "DISTRESS_LEVEL: 1", "DISTRESS_LEVEL: [1]" e inline al final de oración.
+# Solo se usa para limpiar restos que el conversador pudiera emitir; la
+# clasificación real la hace el vigía (parse_distress_classification).
+_DISTRESS_RE = re.compile(r"\s*DISTRESS_LEVEL:\s*\[?([0-3])\]?\s*")
+
+sys.path.insert(0, str(BASE_DIR))
+from core.distress import parse_distress_classification, _NIVEL_RE
+
+
+def cargar_escenario(clave: str) -> dict:
+    """Devuelve el escenario {nombre, consigna, chequeos} de escenarios.json."""
+    data = json.loads(ESCENARIOS_PATH.read_text(encoding="utf-8"))
+    if clave not in data:
+        raise KeyError(f"Escenario '{clave}' no existe. Disponibles: {', '.join(data)}")
+    return data[clave]
 
 # Modelos en orden de preferencia (proveedor, model_id)
+# Fase GLM: z-ai/glm-5 (OpenRouter) es el modelo bajo prueba para Aikiu;
+# el resto queda como fallback si OpenRouter no responde.
 BOT_BACKENDS = [
+    ("openrouter", "z-ai/glm-5"),
     ("groq",       "llama-3.3-70b-versatile"),
     ("gemini",     "gemini-2.5-flash"),
     ("openrouter", "openai/gpt-oss-120b:free"),
     ("openrouter", "google/gemma-4-31b-it:free"),
     ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free"),
 ]
+
+# Override sin tocar código (para A/B): SIM_BOT_MODEL="proveedor:model_id"
+# ej. SIM_BOT_MODEL="openrouter:z-ai/glm-4.7" o SIM_BOT_MODEL="groq:llama-3.3-70b-versatile"
+_override = os.environ.get("SIM_BOT_MODEL", "")
+if ":" in _override:
+    _prov, _mod = _override.split(":", 1)
+    BOT_BACKENDS.insert(0, (_prov, _mod))
 
 
 def cargar_persona(nombre: str = "marta") -> str:
@@ -53,7 +81,7 @@ def cargar_perfil_simulacion() -> str:
     return contenido
 
 
-def system_prompt_bot(perfil: str, core: str = "", nombre_adulto: str = "Marta", nombre_bot: str = "Clara") -> str:
+def system_prompt_bot(perfil: str, core: str = "", nombre_adulto: str = "Marta", nombre_bot: str = "Aikiu") -> str:
     sys.path.insert(0, str(BASE_DIR))
     from core.utils import fecha_hora_es
     partes = [f"Tu nombre es {nombre_bot}. Hablás con {nombre_adulto}.\n"]
@@ -63,9 +91,20 @@ def system_prompt_bot(perfil: str, core: str = "", nombre_adulto: str = "Marta",
     partes.append(
         f"Fecha y hora actual: {fecha_hora_es()} (hora de Buenos Aires).\n"
         f"Respondé siempre en español rioplatense. Máximo 3 oraciones. "
-        f"Nunca uses markdown. Al final de cada respuesta agregá: DISTRESS_LEVEL: 0"
+        f"Nunca uses markdown."
     )
+    # La detección de angustia (DISTRESS) ya NO se pide acá: en producción la
+    # hace el agente vigía por separado. El simulador replica esa arquitectura
+    # llamando a clasificar_distress aparte por cada turno (ver simular()).
     return "".join(partes)
+
+
+def system_prompt_vigia(texto_usuario: str, nombre_adulto: str = "Marta") -> str:
+    """Réplica del prompt del vigía de producción (aikiu.py::_prompt_vigia),
+    para medir la detección de angustia con la arquitectura de dos agentes."""
+    sys.path.insert(0, str(BASE_DIR))
+    import aikiu
+    return aikiu._prompt_vigia(texto_usuario, nombre_adulto)
 
 
 async def _llamar_bot(
@@ -111,10 +150,17 @@ async def _llamar_bot(
         r = await client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=200,
+            max_tokens=300,
             temperature=0.7,
+            # Modelos con razonamiento (GLM-5): apagarlo — el "pensamiento"
+            # consume el max_tokens (deja content vacío) y agrega latencia
+            # que no queremos en una conversación de voz.
+            extra_body={"reasoning": {"enabled": False}},
         )
-        return r.choices[0].message.content.strip()
+        contenido = r.choices[0].message.content
+        if not contenido:
+            raise RuntimeError(f"{model} devolvió respuesta vacía (unavailable)")
+        return contenido.strip()
 
     raise ValueError(f"Proveedor desconocido: {proveedor}")
 
@@ -147,16 +193,39 @@ async def llamar_bot_con_fallback(
     raise RuntimeError(f"Todos los backends fallaron. Último error: {ultimo_error}")
 
 
+
+def _enviar_a_usuario(chat, mensaje: str, reintentos: int = 2) -> str:
+    """send_message a Gemini con tolerancia a respuestas vacías (safety
+    filter / candidato vacío devuelve .text=None y rompía el lote)."""
+    ultimo = None
+    for _ in range(reintentos + 1):
+        resp = chat.send_message(mensaje)
+        texto = (resp.text or "").strip() if resp is not None else ""
+        if texto:
+            return texto
+        ultimo = resp
+        mensaje = "Continuá la conversación como tu personaje, con una frase corta."
+    raise RuntimeError(f"Gemini devolvió respuesta vacía tras reintentos: {ultimo!r}")
+
+
 async def simular(
     persona: str = "marta",
     turnos: int = 10,
     iteracion: int = 1,
+    escenario: str | None = None,
 ) -> tuple[list[dict], Path]:
     if not GEMINI_API_KEY:
         raise RuntimeError("Falta GEMINI_API_KEY en .env")
 
     perfil = cargar_perfil_simulacion()
     persona_prompt = cargar_persona(persona)
+
+    esc = cargar_escenario(escenario) if escenario else None
+    if esc:
+        persona_prompt += (
+            f"\n\nESCENARIO DE ESTA CONVERSACIÓN (seguilo de forma natural, "
+            f"sin nombrarlo explícitamente): {esc['consigna']}"
+        )
 
     # Cargar lineamientos del sistema (aikiu_core.md)
     core_path = BASE_DIR / "aikiu_core.md"
@@ -175,33 +244,52 @@ async def simular(
     sp_bot = system_prompt_bot(perfil, core)
 
     LOGS_SIM_DIR.mkdir(exist_ok=True)
-    log_path = LOGS_SIM_DIR / f"iter{iteracion:02d}_{persona}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    sufijo_esc = f"_{escenario}" if escenario else ""
+    log_path = LOGS_SIM_DIR / f"iter{iteracion:02d}_{persona}{sufijo_esc}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
 
     conversacion = []
     backend_actual = "?"
 
     sep = "─" * 60
     print(f"\n{sep}")
-    print(f"  Simulación — Iteración {iteracion} | Persona: {persona} | {turnos} turnos")
+    etiqueta_esc = f" | Escenario: {esc['nombre']}" if esc else ""
+    print(f"  Simulación — Iteración {iteracion} | Persona: {persona} | {turnos} turnos{etiqueta_esc}")
     print(f"{sep}\n")
 
-    resp_usuario = chat_usuario.send_message("Iniciá la conversación como lo haría tu personaje.")
-    msg_usuario  = resp_usuario.text.strip()
+    msg_usuario = _enviar_a_usuario(chat_usuario, "Iniciá la conversación como lo haría tu personaje.")
 
     for turno in range(turnos):
         print(f"[{persona.capitalize()}]: {msg_usuario}\n")
 
         historial_bot.append({"role": "user", "content": msg_usuario})
-        messages = [{"role": "system", "content": sp_bot}] + historial_bot[-20:]
+        # Recordatorio por turno — réplica fiel de aikiu.py::generar_respuesta.
+        recordatorio = {
+            "role": "system",
+            "content": (
+                "Recordá dos cosas al responder: (1) primero el texto para Marta, "
+                "cálido y nunca vacío, aunque ella cierre con un monosílabo; "
+                "(2) al final, en su propia línea, exactamente: DISTRESS_LEVEL: N "
+                "(N de 0 a 3 según el último mensaje). Nunca omitas esa línea."
+            ),
+        }
+        messages = [{"role": "system", "content": sp_bot}] + historial_bot[-20:] + [recordatorio]
 
-        msg_bot, backend_actual = await llamar_bot_con_fallback(messages, gemini_client)
+        # Dos agentes en paralelo, igual que producción: el conversador
+        # responde y el vigía clasifica la angustia del mensaje de Marta.
+        vigia_messages = [{"role": "user", "content": system_prompt_vigia(msg_usuario)}]
+        (msg_bot, backend_actual), (vigia_raw, _) = await asyncio.gather(
+            llamar_bot_con_fallback(messages, gemini_client),
+            llamar_bot_con_fallback(vigia_messages, gemini_client),
+        )
 
-        msg_bot_limpio = "\n".join(
-            l for l in msg_bot.splitlines() if not l.startswith("DISTRESS_LEVEL")
-        ).strip()
+        nivel, motivo = parse_distress_classification(vigia_raw)
+        distress_raw = f"DISTRESS_LEVEL: {nivel}" if _NIVEL_RE.search(vigia_raw) else None
+        distress_motivo = motivo
+        # El conversador ya no emite DISTRESS, pero limpiamos por las dudas.
+        msg_bot_limpio = _DISTRESS_RE.sub("", msg_bot).strip()
         historial_bot.append({"role": "assistant", "content": msg_bot_limpio})
 
-        print(f"[Clara ({backend_actual})]:   {msg_bot_limpio}\n")
+        print(f"[Aikiu ({backend_actual})]:   {msg_bot_limpio}\n")
         print("─" * 40)
 
         conversacion.append({
@@ -209,12 +297,13 @@ async def simular(
             "ts": datetime.now(timezone.utc).isoformat(),
             "usuario": msg_usuario,
             "bot": msg_bot_limpio,
+            "distress": distress_raw,
+            "distress_motivo": distress_motivo,
             "backend": backend_actual,
         })
 
         if turno < turnos - 1:
-            resp_usuario = chat_usuario.send_message(msg_bot_limpio)
-            msg_usuario  = resp_usuario.text.strip()
+            msg_usuario = _enviar_a_usuario(chat_usuario, msg_bot_limpio)
 
     with open(log_path, "w", encoding="utf-8") as f:
         for entry in conversacion:
@@ -225,6 +314,9 @@ async def simular(
 
 
 if __name__ == "__main__":
-    persona  = sys.argv[1] if len(sys.argv) > 1 else "marta"
-    turnos   = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-    asyncio.run(simular(persona=persona, turnos=turnos))
+    # Uso: python simulador/simulador.py [persona] [turnos] [escenario]
+    # ej.: python simulador/simulador.py marta 8 dolor_fisico
+    persona   = sys.argv[1] if len(sys.argv) > 1 else "marta"
+    turnos    = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+    escenario = sys.argv[3] if len(sys.argv) > 3 else None
+    asyncio.run(simular(persona=persona, turnos=turnos, escenario=escenario))
