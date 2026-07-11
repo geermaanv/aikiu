@@ -63,6 +63,17 @@ def test_normalizar_respuesta_nombre_strip():
     assert aikiu._normalizar_respuesta_onboarding("  Pedro  ", "nombre") == "Pedro"
 
 
+def test_normalizar_nombre_extrae_de_frase_conversacional():
+    # El bug reportado: "hola, soy german" se guardaba entero como nombre.
+    assert aikiu._normalizar_respuesta_onboarding("hola, soy german", "nombre") == "German"
+    assert aikiu._normalizar_respuesta_onboarding("me llamo marta", "nombre") == "Marta"
+    assert aikiu._normalizar_respuesta_onboarding("german", "nombre") == "German"
+    assert aikiu._normalizar_respuesta_onboarding("soy maría josé", "nombre") == "María José"
+    assert aikiu._normalizar_respuesta_onboarding("MARTA", "nombre") == "Marta"
+    # Solo saludo/presentación sin nombre → vacío → el wizard re-pregunta.
+    assert aikiu._normalizar_respuesta_onboarding("hola soy", "nombre") == ""
+
+
 def test_normalizar_respuesta_no_se_es_vacio_en_campo_opcional():
     assert aikiu._normalizar_respuesta_onboarding("no sé", "edad") == ""
     assert aikiu._normalizar_respuesta_onboarding("no", "ciudad") == ""

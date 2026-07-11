@@ -1236,11 +1236,38 @@ async def _texto_desde_update(update: Update) -> str:
     return (msg.text or "").strip()
 
 
+# Saludos y frases de presentación que la gente antepone al nombre,
+# sobre todo hablando (voz): "hola, soy Marta", "me llamo Juan Carlos".
+_OB_NOMBRE_PREFIJOS = re.compile(
+    r"^\s*(hola|buenas|buen[oa]s?\s+d[ií]as?|buen\s+d[ií]a|buenas\s+tardes|buenas\s+noches|"
+    r"che|holis|qu[eé]\s+tal|me\s+llamo|mi\s+nombre\s+es|yo\s+soy|soy|me\s+dicen)\b[\s,.:]*",
+    re.IGNORECASE,
+)
+
+
+def _extraer_nombre(texto: str) -> str:
+    """Extrae el nombre de una respuesta conversacional.
+
+    'hola, soy german' → 'German'; 'me llamo maría josé' → 'María José'.
+    Saca saludos/presentaciones del inicio y se queda con las primeras
+    palabras (nombres compuestos), capitalizadas. Si no queda nada, "".
+    """
+    t = (texto or "").strip()
+    prev = None
+    while prev != t:
+        prev = t
+        t = _OB_NOMBRE_PREFIJOS.sub("", t, count=1).strip()
+    t = re.split(r"[,.\n;]", t)[0].strip()  # cortar en la primera cláusula
+    palabras = t.split()[:3]                # nombre + hasta 2 (compuestos)
+    return " ".join(w.capitalize() for w in palabras)
+
+
 def _normalizar_respuesta_onboarding(valor: str, paso: str) -> str | list[str]:
     """Devuelve el valor a guardar para `paso` dada la respuesta `valor`.
 
     - "no", "no sé", "nada" → vacío (campo opcional saltado).
     - `familiares` y `gustos` se parsean como lista (líneas o comas).
+    - `nombre` → se extrae de la frase (saca "hola, soy...").
     - resto → string strippeado.
     """
     if not valor or norm(valor) in _OB_NO_RESPUESTAS:
@@ -1254,6 +1281,8 @@ def _normalizar_respuesta_onboarding(valor: str, paso: str) -> str | list[str]:
             if item:
                 items.append(item)
         return items
+    if paso == "nombre":
+        return _extraer_nombre(valor)
     return valor.strip()
 
 
