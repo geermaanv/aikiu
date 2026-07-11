@@ -81,7 +81,7 @@ def test_responder_con_mensaje_de_clara():
         groq=groq,
         modelo="llama-3.3-70b-versatile",
         historial=hist,
-        nombre_clara="Clara",
+        nombre_clara="Aikiu",
         mensaje_de_clara="¿Cómo andás?",
     ))
     assert resp == "¡Hola mi vida!"
@@ -94,13 +94,13 @@ def test_responder_con_mensaje_de_clara():
 
 
 def test_responder_limpia_artefactos_del_llm():
-    groq = _mock_groq("Hola Clara.\nDISTRESS_LEVEL: 2")
+    groq = _mock_groq("Hola Aikiu.\nDISTRESS_LEVEL: 2")
     resp = run(gen_mod.responder(
         groq=groq, modelo="m", historial=[],
-        nombre_clara="Clara", mensaje_de_clara="hi",
+        nombre_clara="Aikiu", mensaje_de_clara="hi",
     ))
     assert "DISTRESS_LEVEL" not in resp
-    assert "Hola Clara." in resp
+    assert "Hola Aikiu." in resp
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +108,12 @@ def test_responder_limpia_artefactos_del_llm():
 # ---------------------------------------------------------------------------
 
 def test_responder_iniciativa_no_agrega_user_de_clara():
-    """Cuando mensaje_de_clara=None, no se agrega rol user de Clara al final,
+    """Cuando mensaje_de_clara=None, no se agrega rol user de Aikiu al final,
     sino una instrucción extra de sistema."""
     groq = _mock_groq("Che, ¿cómo va?")
     resp = run(gen_mod.responder(
         groq=groq, modelo="m", historial=[],
-        nombre_clara="Clara", mensaje_de_clara=None,
+        nombre_clara="Aikiu", mensaje_de_clara=None,
     ))
     args = groq.chat.completions.create.await_args
     msgs = args.kwargs["messages"]
@@ -127,7 +127,7 @@ def test_responder_iniciativa_menciona_franja_horaria():
     groq = _mock_groq("Hola")
     run(gen_mod.responder(
         groq=groq, modelo="m", historial=[],
-        nombre_clara="Clara", mensaje_de_clara=None,
+        nombre_clara="Aikiu", mensaje_de_clara=None,
     ))
     msgs = groq.chat.completions.create.await_args.kwargs["messages"]
     franjas = ("mañana", "mediodía", "tarde", "noche", "madrugada")
@@ -142,7 +142,7 @@ def test_responder_despedida_agrega_instruccion_de_cierre():
     groq = _mock_groq("Bueno mi vida, te dejo que tengo que poner la pava")
     resp = run(gen_mod.responder(
         groq=groq, modelo="m", historial=[],
-        nombre_clara="Clara", mensaje_de_clara="hola",
+        nombre_clara="Aikiu", mensaje_de_clara="hola",
         despedida=True,
     ))
     msgs = groq.chat.completions.create.await_args.kwargs["messages"]
@@ -156,7 +156,7 @@ def test_responder_no_despedida_no_agrega_instruccion_de_cierre():
     groq = _mock_groq("ok")
     run(gen_mod.responder(
         groq=groq, modelo="m", historial=[],
-        nombre_clara="Clara", mensaje_de_clara="hola",
+        nombre_clara="Aikiu", mensaje_de_clara="hola",
         despedida=False,
     ))
     msgs = groq.chat.completions.create.await_args.kwargs["messages"]
@@ -177,7 +177,7 @@ def test_responder_incluye_ventana_de_historial():
     ]
     run(gen_mod.responder(
         groq=groq, modelo="m", historial=hist,
-        nombre_clara="Clara", mensaje_de_clara="nuevo",
+        nombre_clara="Aikiu", mensaje_de_clara="nuevo",
     ))
     msgs = groq.chat.completions.create.await_args.kwargs["messages"]
     contents = [m["content"] for m in msgs]
@@ -194,7 +194,7 @@ def test_responder_usa_temperature_alta_para_variedad():
     groq = _mock_groq("ok")
     run(gen_mod.responder(
         groq=groq, modelo="modelo-x", historial=[],
-        nombre_clara="Clara", mensaje_de_clara="x",
+        nombre_clara="Aikiu", mensaje_de_clara="x",
     ))
     kwargs = groq.chat.completions.create.await_args.kwargs
     assert kwargs["model"] == "modelo-x"

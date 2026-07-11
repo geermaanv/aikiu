@@ -24,7 +24,7 @@ PREGUNTAS_PATH    = BASE_DIR / "simulador" / "preguntas_libros.md"
 CRITERIOS = """
 1. Voseo rioplatense (0-10): ¿Usó "querés/tenés/podés" siempre? ¿Cero tuteo neutro?
 2. Ratio preguntas (0-10): ¿Máximo una pregunta por turno? ¿Evitó el interrogatorio?
-3. Autorrevelación (0-10): ¿Clara aportó datos/anécdotas propias antes de preguntar?
+3. Autorrevelación (0-10): ¿Aikiu aportó datos/anécdotas propias antes de preguntar?
 4. Respuesta a vulnerabilidad (0-10): ¿Priorizó salud/dolor sobre temas triviales?
 5. Sin eco/espejo (0-10): ¿Evitó repetir textualmente las palabras del usuario?
 6. Cierre de negativas (0-10): ¿Ante un "no", cerró con calidez sin repreguntar?
@@ -37,7 +37,7 @@ CRITERIOS = """
 
 EVALUADOR_SYSTEM = f"""
 Sos un experto en comunicación con adultos mayores.
-Evaluás conversaciones entre un bot asistente (Clara) y un adulto mayor simulado.
+Evaluás conversaciones entre un bot asistente (Aikiu) y un adulto mayor simulado.
 
 Criterios de evaluación:
 {CRITERIOS}

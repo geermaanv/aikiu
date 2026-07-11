@@ -48,7 +48,7 @@ def test_debe_disparar_random_bajo_dispara():
 
 
 def test_debe_disparar_silencio_largo_aumenta_prob():
-    """2h+ sin Clara → prob_base se multiplica por 2.5 (con cap 0.9)."""
+    """2h+ sin Aikiu → prob_base se multiplica por 2.5 (con cap 0.9)."""
     # Estado con animo bajo → prob_base baja; con silencio > 2h se boostea
     with patch.object(scheduler_mod.estado_mod, "probabilidad_iniciativa", return_value=0.1), \
          patch.object(scheduler_mod.memoria_mod, "segundos_desde_ultimo_clara", return_value=10_000), \

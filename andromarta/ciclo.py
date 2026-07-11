@@ -1,9 +1,9 @@
 """
 Ciclo de conversación de Andromarta.
 
-Una "conversación" tiene tope de N turnos totales (Clara + Marta combinados).
+Una "conversación" tiene tope de N turnos totales (Aikiu + Marta combinados).
 Cuando se llega a ese tope, Marta cierra con un mensaje de despedida natural
-y queda en estado "cerrado": no responde más a Clara hasta que el scheduler
+y queda en estado "cerrado": no responde más a Aikiu hasta que el scheduler
 de iniciativa dispare un nuevo ciclo.
 
 Persistido en `andromarta/data/ciclo.json` para sobrevivir reinicios del bot.
@@ -28,7 +28,7 @@ from core.utils import load_json
 DATA_DIR = Path(__file__).parent / "data"
 CICLO_PATH = DATA_DIR / "ciclo.json"
 
-# Tope default de turnos por ciclo (Clara + Marta combinados).
+# Tope default de turnos por ciclo (Aikiu + Marta combinados).
 MAX_TURNOS_CICLO_DEFAULT = 15
 
 log = logging.getLogger("andromarta.ciclo")
@@ -98,7 +98,7 @@ def proxima_respuesta_es_despedida(estado: dict, max_turnos: int) -> bool:
     """
     True si la próxima respuesta de Marta haría que el total LLEGUE al tope.
 
-    Se llama DESPUÉS de haber sumado el turno entrante de Clara, por lo que
+    Se llama DESPUÉS de haber sumado el turno entrante de Aikiu, por lo que
     `turnos` ya refleja al mensaje recién recibido. La respuesta de Marta
     sumaría 1 más; si ese total == max_turnos, es el último mensaje del ciclo
     y debe ser despedida.

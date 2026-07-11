@@ -27,6 +27,26 @@ def parse_llm_response(raw_response: str) -> tuple[str, int]:
     return clean.strip(), distress_level
 
 
+_NIVEL_RE = re.compile(r"NIVEL:\s*([0-3])")
+
+
+def parse_distress_classification(raw: str) -> tuple[int, str]:
+    """
+    Parsea la salida del agente vigía (clasificador de distress separado).
+    Espera un texto con líneas 'NIVEL: N' y opcionalmente 'MOTIVO: ...'.
+    Retorna (nivel, motivo). Si no encuentra NIVEL, retorna (0, "") — nunca falla,
+    para que un vigía caído no dispare una falsa alarma ni rompa la respuesta.
+    """
+    match = _NIVEL_RE.search(raw)
+    nivel = int(match.group(1)) if match else 0
+    motivo = ""
+    for linea in raw.splitlines():
+        if linea.strip().upper().startswith("MOTIVO:"):
+            motivo = linea.split(":", 1)[1].strip()
+            break
+    return nivel, motivo
+
+
 def should_send_alert(distress_level: int, adulto_chat_id: Optional[int] = None) -> bool:
     """
     Retorna True si corresponde enviar alerta según cooldown.

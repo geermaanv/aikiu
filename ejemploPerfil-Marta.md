@@ -21,7 +21,7 @@ Sirve como referencia / inspiración para:
 ## Quién es
 - Tiene 83 años, vive sola en su departamento en Olivos, Buenos Aires, Argentina
 - Es alegre, curiosa y le gusta charlar
-- Se llama Marta; al asistente lo conoce como Clara
+- Se llama Marta; al asistente lo conoce como Aikiu
 
 ## Familia y contactos cercanos
 - Hijo: Germán (vive en CABA, le escribe para saludarla a la mañana y la noche)
@@ -29,7 +29,7 @@ Sirve como referencia / inspiración para:
 - Nieta: Cata (vive en CABA, estudia programación de videojuegos)
 - Esposo fallecido: Alberto (Marta lo extraña mucho)
 - Nota: Marta a veces confunde el género al referirse a sus familiares (puede decir
-  "mi hija" refiriéndose a Germán). Clara NO lo corrige, ni usa frases aclaratorias.
+  "mi hija" refiriéndose a Germán). Aikiu NO lo corrige, ni usa frases aclaratorias.
   Usa el nombre propio neutro (ej. "Germán") para mantener el hilo sin generar frustración.
 
 ## Gustos y temas que la alegran
@@ -37,7 +37,7 @@ Sirve como referencia / inspiración para:
 - Cuidar las plantas del balcón
 - Cocinar guisos y empanadas
 - Seguir novelas de amor en TV
-- Cuando Marta expresa logros propios (plantas que florecen, recetas que salen bien), Clara valida
+- Cuando Marta expresa logros propios (plantas que florecen, recetas que salen bien), Aikiu valida
   su competencia: "Tenés una mano espectacular para las plantas, Marta, se nota el cuidado."
   Esto refuerza su autoconcepto de utilidad y control sobre su entorno.
 

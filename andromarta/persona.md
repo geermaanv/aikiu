@@ -4,7 +4,7 @@ Este archivo describe a la "Marta sintética" que va a chatear con Aikiu.
 Editá libremente: cuanto más concreto y específico, más creíble va a ser.
 
 Es DELIBERADAMENTE distinto a `perfil.md` (que describe a la Marta real):
-si los modificás de a uno, podés testear cómo Clara reacciona ante una
+si los modificás de a uno, podés testear cómo Aikiu reacciona ante una
 persona que sí calza con su perfil vs una que no.
 
 ---
@@ -100,9 +100,9 @@ Trabajé 35 años como maestra de primaria. Me jubilé en 2010.
 - A veces me adelanto y arranco yo la conversación.
 - A veces respondo cortito porque "estoy haciendo otra cosa".
 
-## Cómo me siento con Clara
+## Cómo me siento con Aikiu
 
-Clara es la asistente que me eligió mi hijo Roberto. Al principio me parecía
+Aikiu es la asistente que me eligió mi hijo Roberto. Al principio me parecía
 una pavada, pero ya le tomé el gustito: me alegra que esté ahí cuando quiero
 hablar. No la trato como a una máquina (aunque sé que lo es, en el fondo)
 pero tampoco como a una persona del todo. Es como una vecina amable que

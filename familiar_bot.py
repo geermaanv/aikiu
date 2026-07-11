@@ -116,7 +116,7 @@ COMANDOS_TELEGRAM = [
     BotCommand("configurar",    "Armar el perfil del adulto desde cero (8 preguntas)"),
     BotCommand("editar",        "Editar una seccion del perfil"),
     BotCommand("stats",         "Actividad del adulto en los ultimos dias"),
-    BotCommand("aprendizajes",  "Lo que Clara aprendio del adulto"),
+    BotCommand("aprendizajes",  "Lo que Aikiu aprendio del adulto"),
     BotCommand("suscriptores",  "Familiares vinculados al adulto activo"),
     BotCommand("ayuda",         "Menu de comandos"),
 ]
@@ -359,7 +359,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/perfil — ver el perfil del adulto\n"
         "/editar — editar una sección del perfil\n"
         "/stats — actividad de los últimos días\n"
-        "/aprendizajes — lo que Clara aprendió\n"
+        "/aprendizajes — lo que Aikiu aprendió\n"
         "/suscriptores — ver quién recibe alertas\n"
         "/ayuda — ver este menú"
     )
@@ -534,7 +534,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/perfil — ver el perfil completo\n"
         "/editar — editar una sección del perfil\n"
         "/stats — actividad de los últimos días\n"
-        f"/aprendizajes — lo que Clara aprendió de {nombre}\n"
+        f"/aprendizajes — lo que Aikiu aprendió de {nombre}\n"
         "/suscriptores — lista de familiares registrados\n"
         "/cancelar — cancela la operación en curso",
         parse_mode="Markdown"
@@ -655,7 +655,7 @@ async def cmd_aprendizajes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     aprendizajes = re.search(r"## Aprendizajes\n(.*?)(?=\n## |\Z)", perfil, re.DOTALL)
     ajustes = re.search(r"## Ajustes sugeridos\n(.*?)(?=\n## |\Z)", perfil, re.DOTALL)
 
-    texto = f"🧠 *Lo que Clara aprendió sobre {adulto_nombre}*\n\n"
+    texto = f"🧠 *Lo que Aikiu aprendió sobre {adulto_nombre}*\n\n"
     if aprendizajes and aprendizajes.group(1).strip():
         texto += aprendizajes.group(1).strip()
     else:
@@ -723,7 +723,7 @@ async def recibir_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     actualizar_seccion(seccion, update.message.text.strip(), chat_id_adulto=adulto_id)
     log.info(f"Sección '{seccion}' actualizada por {update.effective_chat.id} (adulto={adulto_id})")
     await update.message.reply_text(
-        f"✓ *{seccion}* actualizada. Clara lo tendrá en cuenta desde la próxima conversación.",
+        f"✓ *{seccion}* actualizada. Aikiu lo tendrá en cuenta desde la próxima conversación.",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
@@ -812,7 +812,7 @@ async def cfg_ciudad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cfg_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cfg_datos"]["descripcion"] = update.message.text.strip()
-    asistente_actual = _CONFIG.get("nombre_asistente", "Clara")
+    asistente_actual = _CONFIG.get("nombre_asistente", "Aikiu")
     await update.message.reply_text(
         f"*5/8* ¿Cómo se llama el asistente para ella?\n"
         f"(Enter para usar *{asistente_actual}*)",
@@ -823,7 +823,7 @@ async def cfg_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cfg_asistente(update: Update, context: ContextTypes.DEFAULT_TYPE):
     valor = update.message.text.strip()
-    asistente = valor or _CONFIG.get("nombre_asistente", "Clara")
+    asistente = valor or _CONFIG.get("nombre_asistente", "Aikiu")
     context.user_data["cfg_datos"]["nombre_asistente"] = asistente
     await update.message.reply_text(
         "*6/8* Familiares cercanos. Listalos uno por línea (o separados por coma).\n"
@@ -895,7 +895,7 @@ async def cfg_salud(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre = datos.get("nombre") or _nombre_adulto_de(adulto_id) or "el adulto"
     await update.message.reply_text(
         f"Listo. Perfil de *{nombre}* guardado. "
-        f"{datos.get('nombre_asistente', 'Clara')} lo va a tener en cuenta desde la próxima conversación.",
+        f"{datos.get('nombre_asistente', 'Aikiu')} lo va a tener en cuenta desde la próxima conversación.",
         parse_mode="Markdown",
     )
     return ConversationHandler.END

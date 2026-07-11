@@ -15,12 +15,12 @@ Abrí [`index.html`](./index.html) en cualquier navegador moderno. El demo arran
 | # | Escena | Duración | Lo que muestra |
 |---|---|---|---|
 | 0 | Intro | 3.2 s | Logo `aikiu` + tagline |
-| 1 | El hijo | 5.2 s | Germán abre el bot familiar (`Clara · familiar`) y manda `/mensaje` |
-| 2 | Clara responde | 4.2 s | Bot pide: *"Enviá tu mensaje para Rosa (texto o nota de voz)"* |
+| 1 | El hijo | 5.2 s | Germán abre el bot familiar (`Aikiu · familiar`) y manda `/mensaje` |
+| 2 | Aikiu responde | 4.2 s | Bot pide: *"Enviá tu mensaje para Rosa (texto o nota de voz)"* |
 | 3 | El audio | 5.5 s | Germán graba: *"¿Cómo amaneciste, ma? Acordate de los remedios. Te quiero."* |
 | 4 | Entregado | 5.2 s | Bot confirma: *"Listo, le mandé a Rosa..."* |
 | 5 | Transición | 2.4 s | *Mientras tanto...* |
-| 6 | La abuela | 5.8 s | Rosa recibe la nota de voz con la voz de Clara |
+| 6 | La abuela | 5.8 s | Rosa recibe la nota de voz con la voz de Aikiu |
 | 7 | Mensaje emocional | 4.2 s | *Sabés que está bien.* |
 | 8 | Outro / CTA | 5.0 s | Logo + `github.com/geermaanv/aikiu` |
 
@@ -34,12 +34,12 @@ Los strings del bot son **exactamente** los del código fuente:
 | `"Enviá tu mensaje para Rosa (texto o nota de voz). /cancelar para salir."` | `familiar_bot.py:290` |
 | `"Germán te manda a decir: ..."` | `familiar_bot.py:331` |
 | `"Listo, le mandé a Rosa: ..."` | `familiar_bot.py:344` |
-| `"Buenos días Rosa, soy Clara. Hoy en Olivos hay X grados. ¿Cómo amaneciste hoy?"` | `aikiu.py:451` (`saludo_matutino`) |
+| `"Buenos días Rosa, soy Aikiu. Hoy en Olivos hay X grados. ¿Cómo amaneciste hoy?"` | `aikiu.py:451` (`saludo_matutino`) |
 
 Nombres usados (todos vienen del repo):
 
 - **Rosa** — adulto mayor (hardcoded en strings del bot familiar)
-- **Clara** — asistente (`config.yml::nombre_asistente`)
+- **Aikiu** — asistente (`config.yml::nombre_asistente`)
 - **Germán** — hijo (`perfil.md`, sección Familia)
 - **Olivos** — ciudad (`config.yml::ciudad`)
 

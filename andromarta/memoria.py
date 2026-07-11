@@ -1,14 +1,14 @@
 """
 Memoria conversacional de Andromarta.
 
-Mantiene el historial de turnos con Clara persistido a disco para que
+Mantiene el historial de turnos con Aikiu persistido a disco para que
 Andromarta no pierda contexto al reiniciar el script.
 
 Formato del historial: lista de {role, content, ts} donde:
-- role="user" → mensaje de Clara (lo que recibimos)
+- role="user" → mensaje de Aikiu (lo que recibimos)
 - role="assistant" → mensaje de Andromarta (lo que generamos y enviamos)
 
-Es contraintuitivo (Clara como "user" y Andromarta como "assistant"), pero es
+Es contraintuitivo (Aikiu como "user" y Andromarta como "assistant"), pero es
 lo correcto desde la perspectiva del LLM que está actuando como Andromarta.
 """
 
@@ -58,7 +58,7 @@ def ultimo_turno(historial: list[dict]) -> dict | None:
 
 
 def segundos_desde_ultimo_clara(historial: list[dict]) -> int | None:
-    """Segundos desde el último mensaje recibido de Clara, o None si no hay."""
+    """Segundos desde el último mensaje recibido de Aikiu, o None si no hay."""
     for turno in reversed(historial):
         if turno["role"] == "user":
             try:

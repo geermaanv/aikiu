@@ -1,5 +1,5 @@
 """
-Tests que verifican las reglas de comportamiento de Clara:
+Tests que verifican las reglas de comportamiento de Aikiu:
 - Nunca da consejos médicos
 - DISTRESS_LEVEL nunca llega al texto que ve Marta
 """
@@ -26,9 +26,15 @@ def cargar_perfil_y_core() -> str:
     """Devuelve el contenido combinado de perfil.md y aikiu_core.md para verificar reglas."""
     return cargar_perfil() + "\n" + cargar_core()
 
-def construir_prompt(perfil: str, asistente: str = "Clara", nombre: str = "Marta") -> str:
+def construir_prompt(perfil: str, asistente: str = "Aikiu", nombre: str = "Marta") -> str:
     from aikiu import construir_system_prompt
     return construir_system_prompt(perfil, cargar_core(), asistente, nombre)
+
+def prompt_vigia(nombre: str = "Marta") -> str:
+    """Prompt del agente vigía (clasificador de distress). Los criterios de
+    angustia viven acá desde que se separó el vigía del conversador."""
+    from aikiu import _prompt_vigia
+    return _prompt_vigia("(mensaje de prueba)", nombre)
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +52,7 @@ def test_perfil_indica_derivar_al_medico():
     """La regla debe indicar explícitamente derivar al médico."""
     contenido = cargar_perfil_y_core()
     assert "médico" in contenido, (
-        "aikiu_core.md o perfil.md deben mencionar que Clara debe derivar al médico"
+        "aikiu_core.md o perfil.md deben mencionar que Aikiu debe derivar al médico"
     )
 
 def test_perfil_cubre_caidas():
@@ -95,12 +101,12 @@ def test_system_prompt_incluye_perfil_completo():
     perfil = cargar_perfil()
     prompt = construir_prompt(perfil)
     # Una línea característica del perfil que no debería desaparecer
-    assert "Lo que nunca debe hacer Clara" in prompt
+    assert "Lo que nunca debe hacer Aikiu" in prompt
 
 def test_system_prompt_sin_perfil_igual_funciona():
     """Sin perfil cargado, el prompt aún tiene instrucciones básicas."""
     prompt = construir_prompt(perfil="")
-    assert "Clara" in prompt
+    assert "Aikiu" in prompt
     assert "Marta" in prompt
 
 
@@ -144,35 +150,35 @@ def test_antihallucinacion_usa_palabra_explicitamente():
 # ---------------------------------------------------------------------------
 
 def test_distress_criterios_mencionan_estado_propio():
-    """El prompt debe aclarar que el nivel ≥1 aplica solo cuando Marta describe su estado."""
-    prompt = construir_prompt(perfil="")
+    """El prompt del vigía debe aclarar que el nivel ≥1 aplica solo cuando Marta describe su estado."""
+    prompt = prompt_vigia()
     assert "su propio estado" in prompt.lower() or "estado emocional" in prompt.lower()
 
 def test_distress_nivel0_incluye_preguntas_neutrales():
     """Nivel 0 debe cubrir explícitamente preguntas informativas y saludos."""
-    prompt = construir_prompt(perfil="")
+    prompt = prompt_vigia()
     assert "pregunta" in prompt.lower() and ("neutral" in prompt.lower() or "informativa" in prompt.lower() or "saludo" in prompt.lower())
 
 def test_distress_instruccion_evalua_solo_mensaje_actual():
-    """El prompt debe indicar que el nivel se evalúa solo sobre el mensaje actual."""
-    prompt = construir_prompt(perfil="")
+    """El prompt del vigía debe indicar que el nivel se evalúa solo sobre el mensaje actual."""
+    prompt = prompt_vigia()
     assert "únicamente" in prompt.lower() or "solo" in prompt.lower()
     assert "último mensaje" in prompt.lower() or "mensaje actual" in prompt.lower()
 
 def test_distress_nivel1_requiere_palabras_explicitas():
     """Nivel 1 debe requerir expresión emocional explícita, no inferida."""
-    prompt = construir_prompt(perfil="")
+    prompt = prompt_vigia()
     assert "explícit" in prompt.lower() or "clara" in prompt.lower()
     assert "me siento sola" in prompt.lower() or "estoy triste" in prompt.lower()
 
 def test_distress_criterio_conservador():
-    """El prompt debe instruir a ser conservador ante la duda."""
-    prompt = construir_prompt(perfil="")
+    """El prompt del vigía debe instruir a ser conservador ante la duda."""
+    prompt = prompt_vigia()
     assert "conservador" in prompt.lower() or "duda" in prompt.lower()
 
 def test_distress_ignorar_historial_ante_emergencia_previa():
-    """El prompt debe indicar que hay que ignorar historial aunque antes haya habido emergencia."""
-    prompt = construir_prompt(perfil="")
+    """El prompt del vigía debe indicar que hay que ignorar historial aunque antes haya habido emergencia."""
+    prompt = prompt_vigia()
     assert "emergencia" in prompt.lower()
     # El prompt debe decir explícitamente que un saludo posterior es nivel 0
     assert "saludo" in prompt.lower()
@@ -243,7 +249,7 @@ def test_marta_no_ve_distress_en_emergencia():
     assert nivel == 3
 
 def test_marta_recibe_respuesta_integra_sin_distress():
-    """El texto de Clara llega completo, solo se elimina la línea de control."""
+    """El texto de Aikiu llega completo, solo se elimina la línea de control."""
     raw = "Hola Marta, ¿cómo estás hoy?\nEspero que hayas dormido bien.\nDISTRESS_LEVEL: 0"
     texto, _ = parse_llm_response(raw)
     assert "Hola Marta" in texto

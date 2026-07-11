@@ -98,7 +98,7 @@ def test_e2e_dos_adultos_hacen_start_hogares_separados():
     update_marta = _fake_update_aikiu(1001, first_name="Marta")
     update_pepe = _fake_update_aikiu(2002, first_name="Pepe")
     ctx = _fake_context_aikiu()
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_start(update_marta, ctx))
         run(aikiu.cmd_start(update_pepe, ctx))
 
@@ -480,7 +480,7 @@ def _setup_dos_hogares_con_overrides():
     estado_marta = hogar_mod.leer_state(1001)
     estado_marta.update({
         "nombre_adulto_mayor": "Marta",
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "ciudad": "Olivos",
         "voz_tts": "es-AR-ElenaNeural",
     })
@@ -544,7 +544,7 @@ def test_e2e_saludo_matutino_fanout_usa_overrides_de_cada_hogar(monkeypatch):
     assert len(textos) == 2
     por_hogar = dict(textos)
     assert "Marta" in por_hogar[1001]
-    assert "Clara" in por_hogar[1001]
+    assert "Aikiu" in por_hogar[1001]
     assert "Pepe" in por_hogar[2002]
     assert "Sofi" in por_hogar[2002]
 
@@ -565,7 +565,7 @@ def test_e2e_analisis_nocturno_fanout_procesa_logs_de_cada_hogar(monkeypatch):
     (hogar_mod.logs_dir(1001) / f"{hoy}.md").parent.mkdir(parents=True, exist_ok=True)
     (hogar_mod.logs_dir(2002) / f"{hoy}.md").parent.mkdir(parents=True, exist_ok=True)
     (hogar_mod.logs_dir(1001) / f"{hoy}.md").write_text(
-        "10:00\n- Marta: me gusta el tango\n- Clara: hermoso\n", encoding="utf-8",
+        "10:00\n- Marta: me gusta el tango\n- Aikiu: hermoso\n", encoding="utf-8",
     )
     (hogar_mod.logs_dir(2002) / f"{hoy}.md").write_text(
         "10:00\n- Pepe: me gusta el rock\n- Sofi: bárbaro\n", encoding="utf-8",
@@ -628,7 +628,7 @@ def test_e2e_verificar_inactividad_fanout_aislado_por_hogar(monkeypatch):
 
     with patch("aikiu.CONFIG", {
         "nombre_adulto_mayor": "",
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "alerta_inactividad": {"activa": True, "horas_umbral": 4, "checks": ["11:30"]},
     }):
         run(aikiu.verificar_inactividad(app))

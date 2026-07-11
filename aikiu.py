@@ -20,7 +20,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot, BotCommand, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import AsyncGroq
-from core.distress import parse_llm_response, should_send_alert, record_alert_sent
+from openai import AsyncOpenAI
+from core.distress import (
+    parse_llm_response, parse_distress_classification,
+    should_send_alert, record_alert_sent,
+)
 from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias
@@ -45,6 +49,12 @@ from typing import Optional
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
+# mtime de perfil.md / aikiu_core.md al momento de la última lectura.
+# Permite el hot-reload: si el archivo cambió en disco, se recarga en CONFIG
+# sin reiniciar el bot (ver _refrescar_config_desde_disco).
+_config_mtimes: dict = {}
+
+
 def cargar_config():
     with open(BASE_DIR / "config.yml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -59,16 +69,46 @@ def cargar_config():
     perfil_path = BASE_DIR / cfg.get("perfil", "perfil.md")
     if perfil_path.exists():
         cfg["_perfil"] = perfil_path.read_text(encoding="utf-8")
+        _config_mtimes["_perfil"] = perfil_path.stat().st_mtime
     else:
         cfg["_perfil"] = ""
     core_path = BASE_DIR / "aikiu_core.md"
     if core_path.exists():
         cfg["_core"] = core_path.read_text(encoding="utf-8")
+        _config_mtimes["_core"] = core_path.stat().st_mtime
     else:
         cfg["_core"] = ""
     return cfg
 
 CONFIG = cargar_config()
+
+
+def _refrescar_config_desde_disco() -> None:
+    """
+    Hot-reload de perfil.md (legacy) y aikiu_core.md: si el archivo cambió
+    en disco desde la última lectura (mtime distinto), recarga el contenido
+    en CONFIG. Así los aprendizajes del análisis nocturno y las ediciones
+    del bot familiar entran al system prompt sin reiniciar el bot.
+
+    Un CONFIG["_perfil"] / CONFIG["_core"] pisado en memoria (tests) se
+    respeta mientras el archivo no cambie, porque el mtime no varía.
+    """
+    rutas = {
+        "_perfil": BASE_DIR / CONFIG.get("perfil", "perfil.md"),
+        "_core": BASE_DIR / "aikiu_core.md",
+    }
+    for clave, path in rutas.items():
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if _config_mtimes.get(clave) != mtime:
+            try:
+                CONFIG[clave] = path.read_text(encoding="utf-8")
+                _config_mtimes[clave] = mtime
+                log.info(f"Hot-reload: {path.name} recargado en {clave}")
+            except OSError as e:
+                log.warning(f"Hot-reload: no pude releer {path.name}: {e}")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -154,8 +194,8 @@ def _nombre_adulto_de(chat_id: Optional[int]) -> str:
 
 def _nombre_asistente_de(chat_id: Optional[int]) -> str:
     if chat_id is None:
-        return CONFIG.get("nombre_asistente", "Clara")
-    return _config_hogar(chat_id).get("nombre_asistente", "Clara")
+        return CONFIG.get("nombre_asistente", "Aikiu")
+    return _config_hogar(chat_id).get("nombre_asistente", "Aikiu")
 
 
 def _ciudad_de(chat_id: Optional[int]) -> str:
@@ -190,7 +230,33 @@ def _asegurar_hogar(chat_id: int, *, nombre_tg: Optional[str] = None) -> bool:
     )
     return True
 
+# Cliente Groq: siempre necesario para STT (Whisper large-v3). También hace
+# de LLM de chat cuando proveedor_llm == "groq".
 groq = AsyncGroq(api_key=CONFIG["groq_api_key"])
+
+# Cliente OpenRouter (OpenAI-compatible): LLM de chat cuando
+# proveedor_llm == "openrouter". La key puede faltar si el proveedor es groq;
+# main() valida la combinación al arranque.
+openrouter = AsyncOpenAI(
+    api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+    base_url="https://openrouter.ai/api/v1",
+)
+
+
+async def _chat_create(**kwargs):
+    """
+    Punto único de acceso al LLM de chat. Despacha según CONFIG["proveedor_llm"]
+    ("groq" por default, compat con instalaciones y tests existentes).
+
+    Con OpenRouter apaga el razonamiento de los modelos que lo traen (GLM-5):
+    el "pensamiento" consume el max_tokens (deja content vacío) y agrega una
+    latencia que la conversación de voz no tolera.
+    """
+    if CONFIG.get("proveedor_llm", "groq") == "openrouter":
+        kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
+        return await openrouter.chat.completions.create(**kwargs)
+    return await groq.chat.completions.create(**kwargs)
+
 
 # Referencia fuerte a tasks en background para evitar que el GC los cancele
 _background_tasks: set = set()
@@ -250,23 +316,9 @@ def construir_system_prompt(perfil: str, core: str, asistente: str, nombre: str)
         f"- No tenés información sobre mensajes de familiares. Solo si {nombre} pregunta\n"
         "  específicamente si alguien le escribió o mandó un mensaje, respondé:\n"
         "  'No recibí ningún mensaje para vos hoy.' Nunca inventes ni supongas.\n"
-        "Al final de CADA respuesta agregá exactamente esta línea (solo la línea, sin texto extra):\n"
-        "DISTRESS_LEVEL: [0-3]\n"
-        f"IMPORTANTE: evaluá el nivel basándote ÚNICAMENTE en el último mensaje de {nombre}.\n"
-        "Ignorá los mensajes anteriores de la conversación. Si el mensaje actual es un\n"
-        "saludo, pregunta informativa o conversación normal, el nivel ES 0 aunque antes\n"
-        "haya habido una emergencia.\n"
-        "Ser conservador: ante la duda entre dos niveles, asignar el más bajo.\n"
-        f"Criterios (solo cuando {nombre} describe su propio estado en el mensaje actual):\n"
-        "- 0: saludo, pregunta informativa, conversación cotidiana; cualquier mensaje ambiguo\n"
-        f"- 1: {nombre} usa palabras explícitas como 'me siento sola', 'estoy triste', 'lloré',\n"
-        "     'no pude dormir', 'extraño a alguien' — requiere expresión emocional clara\n"
-        f"- 2: {nombre} llora, dice que está muy mal, tiene dolor físico persistente,\n"
-        "     está confundida o desorientada, repite lo mismo sin darse cuenta,\n"
-        "     dice 'soy una carga', menciona una caída reciente\n"
-        "- 3: emergencia activa: no puede moverse, dolor de pecho, no puede respirar,\n"
-        "     pide ayuda urgente, caída que acaba de ocurrir\n"
-        "Nunca omitas esta línea. Si no hay señales en el mensaje actual, escribí DISTRESS_LEVEL: 0.\n"
+        # La detección de angustia (DISTRESS) ya NO vive acá: la hace el agente
+        # vigía (clasificar_distress), una llamada separada. El conversador solo
+        # conversa. Ver handle_message.
     )
     return "".join(partes)
 
@@ -302,6 +354,7 @@ async def generar_respuesta(
     historial: list,
     chat_id: Optional[int] = None,
 ) -> str:
+    _refrescar_config_desde_disco()
     if chat_id is None:
         asistente = CONFIG["nombre_asistente"]
         nombre    = CONFIG["nombre_adulto_mayor"]
@@ -366,8 +419,19 @@ async def generar_respuesta(
 
     messages.append({"role": "user", "content": texto_usuario})
 
+    # Recordatorio por turno: el texto para el adulto nunca puede ir vacío,
+    # aunque ella cierre con un monosílabo. (La clasificación de angustia ya
+    # no se pide acá — la hace el agente vigía por separado.)
+    messages.append({
+        "role": "system",
+        "content": (
+            f"Recordá: siempre respondé a {nombre} con al menos una frase cálida, "
+            "nunca con un mensaje vacío, aunque ella cierre con un monosílabo."
+        ),
+    })
+
     async with usage_mod.timed_chat(modelo) as t:
-        response = await groq.chat.completions.create(
+        response = await _chat_create(
             model=modelo,
             messages=messages,
             max_tokens=300,
@@ -460,6 +524,65 @@ def registrar_stats(distress_level: int, chat_id: Optional[int] = None):
     write_json_atomic(stats_path, stats)
 
 
+def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
+    """Prompt del agente vigía (clasificador de distress). Función pura,
+    separada para poder testear los criterios sin llamar al LLM."""
+    return (
+        f"Sos un evaluador de riesgo emocional. Leé ÚNICAMENTE este último mensaje "
+        f"de {nombre} (una persona mayor) y clasificá su nivel de angustia según su "
+        f"propio estado. No conversás, solo clasificás.\n\n"
+        f"Mensaje actual de {nombre}: {texto_usuario}\n\n"
+        f"Respondé EXACTAMENTE dos líneas:\n"
+        f"NIVEL: (un dígito 0-3)\n"
+        f"MOTIVO: (frase corta que le sirva a la familia, ej: 'mencionó una caída y dolor de cadera')\n\n"
+        f"Criterios (evaluá solo lo que {nombre} dice de su propio estado en este mensaje actual;\n"
+        f"un saludo o pregunta neutra es nivel 0 aunque antes haya habido una emergencia):\n"
+        f"- 0: saludo, pregunta informativa, charla cotidiana, o cualquier mensaje ambiguo o sin señal\n"
+        f"- 1: dice explícitamente y con palabras claras 'me siento sola', 'estoy triste', 'no pude dormir', que extraña a alguien\n"
+        f"- 2: llora, dice que está muy mal, dolor físico persistente, confusión/desorientación, "
+        f"menciona una caída (aunque haya pasado), dice 'soy una carga'\n"
+        f"- 3: emergencia activa ahora: no puede moverse, dolor de pecho, no puede respirar, pide ayuda urgente\n"
+        f"Sé conservador: ante la duda entre dos niveles, elegí el más bajo."
+    )
+
+
+async def clasificar_distress(
+    texto_usuario: str,
+    chat_id: Optional[int] = None,
+) -> tuple[int, str]:
+    """
+    Agente vigía: llamada LLM separada y especializada que clasifica el nivel
+    de angustia del ÚLTIMO mensaje del adulto. Corre en paralelo con la
+    conversación (ver handle_message), así no agrega latencia a la respuesta.
+
+    Separado del agente conversador a propósito: pedirle al mismo modelo que
+    converse cálido Y se autotaguee con un token estructurado hacía que
+    omitiera la clasificación ~65% de las veces. El vigía, sin la carga de
+    "ser cálido", clasifica de forma confiable.
+
+    Retorna (nivel 0-3, motivo breve). Ante cualquier fallo retorna (0, "")
+    para no bloquear la respuesta ni disparar falsas alarmas.
+    """
+    nombre = _nombre_adulto_de(chat_id)
+    prompt = _prompt_vigia(texto_usuario, nombre)
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
+    try:
+        async with usage_mod.timed_chat(modelo) as t:
+            r = await _chat_create(
+                model=modelo,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=40,
+                temperature=0.1,
+            )
+            t.set_usage(r.usage)
+        nivel, motivo = parse_distress_classification(r.choices[0].message.content or "")
+        log.info(f"[chat_id={chat_id}] Vigía: nivel={nivel} motivo='{motivo}'")
+        return nivel, motivo
+    except Exception as e:
+        log.warning(f"clasificar_distress falló: {e}")
+        return 0, ""
+
+
 async def clasificar_receptividad(
     texto_usuario: str,
     respuesta_bot: str,
@@ -481,7 +604,7 @@ async def clasificar_receptividad(
     modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
         async with usage_mod.timed_chat(modelo) as t:
-            r = await groq.chat.completions.create(
+            r = await _chat_create(
                 model=modelo,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=30,
@@ -704,7 +827,7 @@ AJUSTES_CONVERSACION:
     modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
         async with usage_mod.timed_chat(modelo) as t:
-            r = await groq.chat.completions.create(
+            r = await _chat_create(
                 model=modelo,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=400,
@@ -801,7 +924,7 @@ _VERBOS_INDAGACION_MEDICA = re.compile(
 )
 
 def _filtrar_instrucciones_medicas(instrucciones: list[str]) -> list[str]:
-    """Elimina instrucciones que le piden a Clara indagar en síntomas al día siguiente."""
+    """Elimina instrucciones que le piden a Aikiu indagar en síntomas al día siguiente."""
     filtradas = [i for i in instrucciones if not _VERBOS_INDAGACION_MEDICA.search(i)]
     removidas = len(instrucciones) - len(filtradas)
     if removidas:
@@ -955,7 +1078,7 @@ async def _ajustes_a_instrucciones(ajustes: list[str], asistente: str) -> list[s
     modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
     try:
         async with usage_mod.timed_chat(modelo) as t:
-            r = await groq.chat.completions.create(
+            r = await _chat_create(
                 model=modelo,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
@@ -1187,7 +1310,7 @@ def _finalizar_onboarding(chat_id: int) -> tuple[Path, str]:
         "edad": progreso.get("edad", ""),
         "ciudad": progreso.get("ciudad", ""),
         "descripcion": "",
-        "nombre_asistente": estado.get("nombre_asistente") or CONFIG.get("nombre_asistente", "Clara"),
+        "nombre_asistente": estado.get("nombre_asistente") or CONFIG.get("nombre_asistente", "Aikiu"),
         "familiares": progreso.get("familiares") or [],
         "gustos": progreso.get("gustos") or [],
         "salud": [],
@@ -1219,7 +1342,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nuevo = _asegurar_hogar(chat_id, nombre_tg=nombre_tg)
     estado = hogar_mod.leer_state(chat_id) or {}
-    asistente = _nombre_asistente_de(chat_id) or "Clara"
+    asistente = _nombre_asistente_de(chat_id) or "Aikiu"
 
     if _onboarding_pendiente(estado):
         nombre_visible = nombre_tg or _nombre_adulto_de(chat_id) or ""
@@ -1264,7 +1387,7 @@ async def _ob_recibir(update: Update, context: ContextTypes.DEFAULT_TYPE, paso: 
     if siguiente_estado is None:
         perfil_path, nombre = _finalizar_onboarding(chat_id)
         log.info(f"[ONBOARDING] completado chat_id={chat_id} → {perfil_path}")
-        asistente = _nombre_asistente_de(chat_id) or "Clara"
+        asistente = _nombre_asistente_de(chat_id) or "Aikiu"
         cierre = (
             f"Listo{', ' + nombre if nombre else ''}. Ya está. "
             f"Soy {asistente} y voy a estar acá cuando me necesites. "
@@ -1317,7 +1440,7 @@ async def cmd_saltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if idx_actual + 1 >= len(_OB_PASOS):
         perfil_path, nombre = _finalizar_onboarding(chat_id)
         log.info(f"[ONBOARDING] completado tras /saltar chat_id={chat_id} → {perfil_path}")
-        asistente = _nombre_asistente_de(chat_id) or "Clara"
+        asistente = _nombre_asistente_de(chat_id) or "Aikiu"
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
@@ -1335,7 +1458,7 @@ async def cmd_cancelar_onboarding(update: Update, context: ContextTypes.DEFAULT_
     """Aborta el wizard. El perfil queda neutro hasta que vuelva /start o
     el familiar use /configurar."""
     chat_id = update.effective_chat.id
-    asistente = _nombre_asistente_de(chat_id) or "Clara"
+    asistente = _nombre_asistente_de(chat_id) or "Aikiu"
     await context.bot.send_message(
         chat_id=chat_id,
         text=(
@@ -1373,11 +1496,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         texto = update.message.text.strip()
 
-    # Generar respuesta y separar nivel de distress
+    # Dos agentes en paralelo: el conversador genera la respuesta y el vigía
+    # clasifica la angustia del mensaje de Marta. Ambos parten del mismo texto,
+    # así el vigía no agrega latencia a la respuesta.
     historial = historiales.setdefault(chat_id, [])
-    raw = await generar_respuesta(texto, historial, chat_id=chat_id)
-    respuesta, distress_level = parse_llm_response(raw)
-    log.info(f"[chat_id={chat_id}] LLM: '{respuesta}' | distress={distress_level}")
+    raw, (distress_level, distress_motivo) = await asyncio.gather(
+        generar_respuesta(texto, historial, chat_id=chat_id),
+        clasificar_distress(texto, chat_id=chat_id),
+    )
+    # parse_llm_response limpia cualquier línea DISTRESS residual que el
+    # conversador pudiera emitir; el nivel autoritativo viene del vigía.
+    respuesta, _ = parse_llm_response(raw)
+    log.info(f"[chat_id={chat_id}] LLM: '{respuesta}' | distress={distress_level} (vigía)")
 
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
@@ -1409,6 +1539,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bot_response=respuesta,
                 family_bot=family_bot,
                 adulto_chat_id=chat_id,
+                motivo=distress_motivo,
             ))
         else:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
@@ -1627,7 +1758,7 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
 # Solo exponemos comandos utiles fuera de un flujo de conversacion: /saltar y
 # /cancelar viven adentro del onboarding y no tiene sentido ofrecerlos siempre.
 COMANDOS_TELEGRAM = [
-    BotCommand("start",   "Iniciar o reiniciar la conversacion con Clara"),
+    BotCommand("start",   "Iniciar o reiniciar la conversacion con Aikiu"),
     BotCommand("invitar", "Generar codigo para vincular un familiar"),
 ]
 
@@ -1636,6 +1767,16 @@ async def main():
     log.info("=" * 50)
     log.info("Aikiu iniciando (multi-tenant)")
     log.info("=" * 50)
+
+    # Validación del proveedor LLM: si el chat va por OpenRouter, la key
+    # tiene que estar. Se chequea acá (arranque) y no al importar, para
+    # que los tests y el CI no necesiten la variable.
+    if CONFIG.get("proveedor_llm", "groq") == "openrouter" and not os.environ.get("OPENROUTER_API_KEY", "").strip():
+        raise RuntimeError(
+            "proveedor_llm es 'openrouter' pero falta OPENROUTER_API_KEY en .env "
+            "(o cambiá proveedor_llm a 'groq' en config.yml)"
+        )
+    log.info(f"LLM de chat: {CONFIG.get('proveedor_llm', 'groq')} / {CONFIG.get('modelo_llm')}")
 
     # Migración automática del layout legacy single-tenant al multi-tenant.
     # Idempotente: si ya hay hogares en instances/, no hace nada.

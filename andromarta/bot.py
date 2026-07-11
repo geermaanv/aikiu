@@ -74,7 +74,7 @@ SESSION          = os.environ.get(
     str(ANDROMARTA_DIR / "data" / "andromarta.session"),
 ).strip()
 AIKIU_USERNAME   = os.environ.get("ANDROMARTA_AIKIU_USERNAME", "").strip().lstrip("@")
-NOMBRE_CLARA     = os.environ.get("ANDROMARTA_NOMBRE_CLARA", "Clara").strip()
+NOMBRE_CLARA     = os.environ.get("ANDROMARTA_NOMBRE_CLARA", "Aikiu").strip()
 MODELO           = os.environ.get("ANDROMARTA_MODELO", "llama-3.3-70b-versatile").strip()
 VOZ_TTS          = os.environ.get("ANDROMARTA_VOZ_TTS", "es-AR-ElenaNeural").strip()
 VOZ_PROB         = float(os.environ.get("ANDROMARTA_VOZ_PROB", "0.4"))
@@ -82,7 +82,7 @@ GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
 # Default: SIN ritmo humano (responde sin esperas). Poner "1" para simular
 # pausas de lectura/tipeo como una persona mayor real.
 RITMO_HUMANO     = os.environ.get("ANDROMARTA_RITMO_HUMANO", "0").strip() == "1"
-# Tope de turnos por ciclo de conversación (Clara + Marta combinados). Al llegar
+# Tope de turnos por ciclo de conversación (Aikiu + Marta combinados). Al llegar
 # al tope, Marta manda un mensaje de despedida y deja de responder hasta que
 # el scheduler de iniciativa dispare un nuevo ciclo.
 try:
@@ -90,7 +90,7 @@ try:
 except ValueError:
     MAX_TURNOS_CICLO = 15
 if MAX_TURNOS_CICLO < 2:
-    MAX_TURNOS_CICLO = 2  # mínimo razonable: 1 de Clara + 1 de Marta
+    MAX_TURNOS_CICLO = 2  # mínimo razonable: 1 de Aikiu + 1 de Marta
 
 
 def _validar_config() -> None:
@@ -145,7 +145,7 @@ async def _transcribir(ogg_path: Path) -> str:
                 response_format="text",
             )
     texto = result.strip() if isinstance(result, str) else result.text.strip()
-    log.info(f"STT (Clara dijo): '{texto}'")
+    log.info(f"STT (Aikiu dijo): '{texto}'")
     return texto
 
 
@@ -218,7 +218,7 @@ async def _enviar_respuesta(texto: str, prefiere_voz: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handlers de Telethon — cuando Clara escribe / habla
+# Handlers de Telethon — cuando Aikiu escribe / habla
 # ---------------------------------------------------------------------------
 
 async def _on_clara_msg(event: events.NewMessage.Event) -> None:
@@ -232,7 +232,7 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
     estado_ciclo = ciclo_mod.cargar()
     if ciclo_mod.esta_cerrado(estado_ciclo):
         log.info(
-            f"Mensaje de Clara ignorado: ciclo cerrado "
+            f"Mensaje de Aikiu ignorado: ciclo cerrado "
             f"({estado_ciclo.get('turnos', 0)} turnos). "
             f"Esperando que el scheduler abra un nuevo ciclo."
         )
@@ -244,7 +244,7 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
     try:
         if es_voz:
             with tempfile.TemporaryDirectory() as tmp:
-                ogg = Path(tmp) / "clara.ogg"
+                ogg = Path(tmp) / "aikiu.ogg"
                 await msg.download_media(file=str(ogg))
                 texto_clara = await _transcribir(ogg)
         else:
@@ -257,7 +257,7 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
         log.info("Mensaje entrante sin texto utilizable, ignoro")
         return
 
-    log.info(f"Clara → Andromarta ({'voz' if es_voz else 'texto'}): '{texto_clara}'")
+    log.info(f"Aikiu → Andromarta ({'voz' if es_voz else 'texto'}): '{texto_clara}'")
 
     historial = memoria_mod.cargar_historial()
     memoria_mod.agregar_turno(historial, "user", texto_clara)
@@ -286,7 +286,7 @@ async def _on_clara_msg(event: events.NewMessage.Event) -> None:
     memoria_mod.agregar_turno(historial, "assistant", respuesta)
     estado_ciclo = ciclo_mod.registrar_turno(estado_ciclo)
 
-    # Si Clara mandó voz, hay más chance de que Marta también responda en voz
+    # Si Aikiu mandó voz, hay más chance de que Marta también responda en voz
     prefiere_voz = es_voz or random.random() < VOZ_PROB
     await _enviar_respuesta(respuesta, prefiere_voz=prefiere_voz)
 
@@ -377,7 +377,7 @@ async def run() -> None:
         f"Ctrl+C para detener."
     )
 
-    # Marca el último mensaje "de Clara" como ahora para que el scheduler no
+    # Marca el último mensaje "de Aikiu" como ahora para que el scheduler no
     # dispare iniciativa inmediatamente al arrancar
     historial = memoria_mod.cargar_historial()
     if not historial:

@@ -90,7 +90,7 @@ DEFAULTS_TEMPLATE = {
     "edad": "",
     "ciudad": "",
     "descripcion": "",
-    "nombre_asistente": "Clara",
+    "nombre_asistente": "Aikiu",
     "familiares": [],
     "gustos": [],
     "salud": [],
@@ -159,7 +159,7 @@ def generar_perfil(datos: dict) -> str:
     edad = (datos.get("edad") or "").strip()
     ciudad = (datos.get("ciudad") or "").strip()
     descripcion = (datos.get("descripcion") or "").strip()
-    nombre_asistente = (datos.get("nombre_asistente") or "Clara").strip()
+    nombre_asistente = (datos.get("nombre_asistente") or "Aikiu").strip()
     familiares = datos.get("familiares") or ["(completar con los familiares cercanos)"]
     gustos = datos.get("gustos") or ["(completar con sus gustos)"]
     salud = datos.get("salud") or ["Sin notas cargadas"]
@@ -227,7 +227,7 @@ def _wizard_cli(defaults: dict) -> dict:
     )
     nombre_asistente = preguntar(
         "¿Cómo se llama el asistente para ella?",
-        defaults.get("nombre_asistente", "Clara"),
+        defaults.get("nombre_asistente", "Aikiu"),
     )
 
     # 2 · Familia
@@ -356,7 +356,7 @@ def _main_template():
 
     _actualizar_config_global(
         datos["nombre"] or "",
-        datos["nombre_asistente"] or "Clara",
+        datos["nombre_asistente"] or "Aikiu",
     )
 
     print()
@@ -385,7 +385,7 @@ def _main_hogar(chat_id: int):
     defaults = {
         "nombre": estado.get("nombre_adulto_mayor") or estado.get("nombre_adulto") or "",
         "ciudad": estado.get("ciudad", ""),
-        "nombre_asistente": estado.get("nombre_asistente", "Clara"),
+        "nombre_asistente": estado.get("nombre_asistente", "Aikiu"),
     }
 
     print()

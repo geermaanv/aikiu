@@ -46,7 +46,7 @@ def test_regex_no_matchea_sin_temperatura():
 
 _CONFIG_BASE = {
     "nombre_adulto_mayor": "Marta",
-    "nombre_asistente": "Clara",
+    "nombre_asistente": "Aikiu",
     "ciudad": "Olivos, Buenos Aires",
     "chat_id": "123",
     "voz_tts": "es-AR-ElenaNeural",
@@ -72,7 +72,7 @@ def test_saludo_incluye_temperatura_cuando_clima_ok():
     saludo = _run_saludo(clima_ok)
     assert "20 grados" in saludo
     assert "Marta" in saludo
-    assert "Clara" in saludo
+    assert "Aikiu" in saludo
 
 def test_saludo_sin_clima_usa_fallback():
     textos = []
