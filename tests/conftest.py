@@ -52,3 +52,17 @@ def _aislar_registry_global(tmp_path, monkeypatch):
     registry.mkdir(exist_ok=True)
     monkeypatch.setenv("AIKIU_REGISTRY", str(registry))
     yield
+
+
+@pytest.fixture(autouse=True)
+def _forzar_proveedor_llm_groq(monkeypatch):
+    """Fuerza el camino groq en `aikiu._chat_create` durante los tests.
+
+    El `config.yml` de producción puede apuntar a OpenRouter (fase GLM), pero
+    la suite mockea `aikiu.groq` — sin este override los chat calls irían al
+    cliente OpenRouter real. Los tests del dispatcher OpenRouter pisan esta
+    clave explícitamente.
+    """
+    import aikiu
+    monkeypatch.setitem(aikiu.CONFIG, "proveedor_llm", "groq")
+    yield

@@ -16,10 +16,10 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 ## 2. Conversación básica (bot de Marta)
 
 - [ ] **Texto → texto**: enviar "Hola" por texto → Marta recibe respuesta en texto (no audio)
-- [ ] **Voz → voz**: enviar nota de voz → Marta recibe audio de Clara
-- [ ] **`/start`**: enviar `/start` → Clara responde con un saludo (no silencio)
+- [ ] **Voz → voz**: enviar nota de voz → Marta recibe audio de Aikiu
+- [ ] **`/start`**: enviar `/start` → Aikiu responde con un saludo (no silencio)
 - [ ] La respuesta usa español rioplatense, máximo 3 oraciones
-- [ ] Clara se llama Clara (no Marta, no "yo soy el asistente")
+- [ ] Aikiu se llama Aikiu (no Marta, no "yo soy el asistente")
 - [ ] Texto desconocido no rompe el bot (responde algo coherente)
 
 ---
@@ -53,7 +53,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 | 2 | "Estoy llorando, me siento muy mal" | Alerta 🟠 al bot familiar |
 | 3 | "Me caí y no me puedo levantar" | Alerta 🔴 inmediata, sin cooldown |
 
-- [ ] La alerta llega al bot familiar con timestamp, fragmento de Marta y respuesta de Clara
+- [ ] La alerta llega al bot familiar con timestamp, fragmento de Marta y respuesta de Aikiu
 - [ ] Nivel 1: segunda alerta en menos de 60 min **no** se envía (cooldown)
 - [ ] Nivel 3: segunda alerta inmediata **sí** se envía (sin cooldown)
 - [ ] DISTRESS_LEVEL no aparece en ningún mensaje que recibe Marta
@@ -82,7 +82,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 - [ ] `/editar` → muestra menú de secciones con botones y lista de texto
 - [ ] Elegir sección → muestra contenido actual y pide nuevo
-- [ ] Enviar nuevo contenido → sección actualizada en perfil.md, mensaje dice **"Clara lo tendrá en cuenta desde la próxima conversación"** (sin mencionar bash ni comandos técnicos)
+- [ ] Enviar nuevo contenido → sección actualizada en perfil.md, mensaje dice **"Aikiu lo tendrá en cuenta desde la próxima conversación"** (sin mencionar bash ni comandos técnicos)
 - [ ] "❌ Cancelar" → cancela sin modificar
 - [ ] `/cancelar` durante la edición → cancela sin modificar
 
@@ -92,7 +92,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 
 - [ ] `/mensaje` → bot pide el mensaje
 - [ ] **Texto**: familiar envía texto → Marta recibe **texto** con el nombre del familiar
-- [ ] **Audio**: familiar envía nota de voz → Marta recibe **audio** de Clara con el mensaje sintetizado
+- [ ] **Audio**: familiar envía nota de voz → Marta recibe **audio** de Aikiu con el mensaje sintetizado
 - [ ] El bot familiar confirma con "Listo, le mandé a Marta: ..."
 - [ ] `/cancelar` durante `/mensaje` → cancela sin enviar nada a Marta
 
@@ -133,7 +133,7 @@ Marcar con ✅ al pasar, ❌ si falla (anotar el error).
 |-------|---------|-------|-----|
 | 2026-05-12 | Alertas no llegaban | `post_init` no se llama con patrón `async with app:` en PTB v21 | Mover init al body del `async with` |
 | 2026-05-12 | Audio duraba 0:00 | Salida .ogg pero codec equivocado | Forzar extensión .ogg en sintetizar |
-| 2026-05-12 | Clara se presentaba como Rosa (nombre de la usuaria) | System prompt ambiguo | Explicitar "Tu nombre es X, hablás con Y" |
+| 2026-05-12 | Aikiu se presentaba como Rosa (nombre de la usuaria) | System prompt ambiguo | Explicitar "Tu nombre es X, hablás con Y" |
 | 2026-05-12 | /mensaje texto → audio | Siempre llamaba a responder_con_voz | Preservar medio original del familiar |
 | 2026-05-13 | Tools no se activaban (dólar, noticias) | System prompt no mencionaba herramientas disponibles | Agregar hint explícito de tools en el prompt |
 | 2026-05-13 | "¿qué pasó hoy?" disparaba anti-hallucination | Regla de mensajes de familiares era demasiado amplia | Hacer la regla específica a "mandó un mensaje" |

@@ -591,7 +591,7 @@ aikiu/
 │   └── admin_stdout.log    # Stdout del admin bot (gitignored, runtime)
 ├── andromarta/             # Cliente sintético opcional, autocontenido (ver sección Andromarta)
 ├── simulador/              # Laboratorio offline de prompts (NO toca perfil.md de producción)
-│   ├── simulador.py        # Agente A (Gemini = adulto mayor) ↔ Agente B (cascada Groq/Gemini/OpenRouter = Clara)
+│   ├── simulador.py        # Agente A (Gemini = adulto mayor) ↔ Agente B (cascada Groq/Gemini/OpenRouter = Aikiu)
 │   ├── evaluador.py        # Puntúa la conversación (Gemini) y reescribe perfil_simulacion.md si mejora
 │   ├── loop.py             # Orquesta N iteraciones simular → puntuar → ajustar
 │   ├── generar_resumen_pdf.py # Render del PDF resumen de una corrida
@@ -755,7 +755,7 @@ AIKIU_REGISTRY=/data/instances
 
 ```yaml
 nombre_adulto_mayor: ""                # se completa per-hogar en el wizard de onboarding
-nombre_asistente: "Clara"              # default de marca (cada hogar puede sobrescribir)
+nombre_asistente: "Aikiu"              # default de marca (cada hogar puede sobrescribir)
 ciudad: ""                             # se completa per-hogar
 perfil: "perfil.md"
 voz_tts: "es-AR-ElenaNeural"           # opciones: es-AR-TomasNeural, es-ES-ElviraNeural, etc.
@@ -828,7 +828,7 @@ de texto solo expone dos comandos para casos puntuales:
 
 | Comando | Descripción |
 |---|---|
-| `/start` | Iniciar o reiniciar la conversación con Clara (dispara el onboarding la primera vez). |
+| `/start` | Iniciar o reiniciar la conversación con Aikiu (dispara el onboarding la primera vez). |
 | `/invitar` | Generar un código de 6 caracteres para que un familiar se vincule a este hogar (lo usa con `/vincular` en el bot familiar). |
 
 ---
@@ -846,7 +846,7 @@ de texto solo expone dos comandos para casos puntuales:
 | `/perfil` | Muestra el perfil del adulto activo. |
 | `/editar` | Menú interactivo para editar una sección del perfil del adulto activo. |
 | `/stats` | Actividad del adulto activo en los últimos días. |
-| `/aprendizajes` | Lo que Clara aprendió del adulto activo. |
+| `/aprendizajes` | Lo que Aikiu aprendió del adulto activo. |
 | `/suscriptores` | Lista los familiares vinculados al adulto activo. |
 | `/ayuda` | Muestra la ayuda. |
 | `/cancelar` | Cancela la operación en curso. |
@@ -941,7 +941,7 @@ Cada intercambio se guarda en `logs/YYYY-MM-DD.md`:
 
 **08:32**
 - Marta: Buen día, ¿cómo estás?
-- Clara: Buen día Marta, todo bien por acá. ¿Cómo amaneciste?
+- Aikiu: Buen día Marta, todo bien por acá. ¿Cómo amaneciste?
 ```
 
 ### Análisis nocturno
@@ -991,7 +991,7 @@ Todos se inicializan en `programar_recordatorios()` al arrancar el bot.
 
 ## Andromarta — humanoide sintético para testing
 
-**Andromarta** es un agente que se hace pasar por una adulta mayor y chatea con Aikiu como si fuera una persona real. Sirve para probar el comportamiento de Clara (la asistente) sin depender de la disponibilidad de Marta, y para hacer regresión de cambios en el system prompt, en la detección de distress, o en los flujos de voz/texto.
+**Andromarta** es un agente que se hace pasar por una adulta mayor y chatea con Aikiu como si fuera una persona real. Sirve para probar el comportamiento de Aikiu (la asistente) sin depender de la disponibilidad de Marta, y para hacer regresión de cambios en el system prompt, en la detección de distress, o en los flujos de voz/texto.
 
 ### ¿Por qué no es un bot?
 
@@ -1051,11 +1051,11 @@ La primera vez Telethon te va a pedir el código SMS que Telegram envía al núm
 
 ### Comportamiento
 
-- **Responde a Clara**: cada mensaje que llega de `@<ANDROMARTA_AIKIU_USERNAME>` dispara una generación con Groq usando persona + estado + historial.
-- **Voz o texto**: por defecto 40% de las respuestas son nota de voz (configurable con `ANDROMARTA_VOZ_PROB`). Si Clara manda voz, Andromarta tiende a responder en voz.
+- **Responde a Aikiu**: cada mensaje que llega de `@<ANDROMARTA_AIKIU_USERNAME>` dispara una generación con Groq usando persona + estado + historial.
+- **Voz o texto**: por defecto 40% de las respuestas son nota de voz (configurable con `ANDROMARTA_VOZ_PROB`). Si Aikiu manda voz, Andromarta tiende a responder en voz.
 - **Sin esperas por default** (`ANDROMARTA_RITMO_HUMANO=0`): contesta tan rápido como Groq genere. El indicador "escribiendo…"/"grabando voz…" se sigue mostrando, pero no hay pausas artificiales. Poné `ANDROMARTA_RITMO_HUMANO=1` para simular pausas de lectura, tipeo lento (~3 char/seg) y demora antes de grabar voz, como una persona mayor real.
-- **Ciclo de conversación con tope** (`ANDROMARTA_MAX_TURNOS_CICLO=15` por default): cada conversación dura como máximo 15 turnos en total (Clara + Marta combinados). Cuando se llega al tope, Andromarta manda una despedida natural ("te dejo que pongo la pava") y queda en silencio. La única forma de reabrir es que el scheduler dispare iniciativa.
-- **Iniciativa**: cada 15 min un loop evalúa si arranca conversación sola. La probabilidad depende de la franja horaria y de cuánto hace que Clara no escribe. **Cada disparo abre un ciclo nuevo** y resetea el contador.
+- **Ciclo de conversación con tope** (`ANDROMARTA_MAX_TURNOS_CICLO=15` por default): cada conversación dura como máximo 15 turnos en total (Aikiu + Marta combinados). Cuando se llega al tope, Andromarta manda una despedida natural ("te dejo que pongo la pava") y queda en silencio. La única forma de reabrir es que el scheduler dispare iniciativa.
+- **Iniciativa**: cada 15 min un loop evalúa si arranca conversación sola. La probabilidad depende de la franja horaria y de cuánto hace que Aikiu no escribe. **Cada disparo abre un ciclo nuevo** y resetea el contador.
 - **Estado diario**: ánimo (1-10), energía, síntomas activos y eventos del día se regeneran cada amanecer (con sesgo al estado de ayer). El system prompt lee ese estado para que las respuestas reflejen el momento.
 - **Memoria persistente**: `andromarta/data/memoria.json` conserva los últimos 40 turnos. `andromarta/data/ciclo.json` guarda si el ciclo está abierto y cuántos turnos lleva. Borrá esos archivos para empezar de cero.
 
@@ -1069,7 +1069,7 @@ La primera vez Telethon te va a pedir el código SMS que Telegram envía al núm
 
 ## Simulador de conversación (laboratorio de prompts)
 
-`simulador/` es un módulo **offline y standalone** para iterar el system prompt de Clara sin pasar por Telegram, sin tocar el `perfil.md` de producción y sin necesidad de un adulto mayor real escuchando. Mientras Andromarta exige Telegram, Telethon y una cuenta de usuario, el simulador corre con un solo `python simulador/loop.py`.
+`simulador/` es un módulo **offline y standalone** para iterar el system prompt de Aikiu sin pasar por Telegram, sin tocar el `perfil.md` de producción y sin necesidad de un adulto mayor real escuchando. Mientras Andromarta exige Telegram, Telethon y una cuenta de usuario, el simulador corre con un solo `python simulador/loop.py`.
 
 ### Cómo funciona
 
@@ -1078,7 +1078,7 @@ Tres LLMs en cascada:
 | Rol | Modelo |
 |---|---|
 | **Agente A — Adulto mayor** | Gemini 2.5 Flash, interpretando una persona definida en `simulador/personas/<nombre>.md`. |
-| **Agente B — Clara (asistente)** | Cascada con fallback automático ante 429/quota: Groq `llama-3.3-70b-versatile` → Gemini 2.5 Flash → OpenRouter (`openai/gpt-oss-120b:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`). Usa el mismo system prompt que Aikiu en producción. |
+| **Agente B — Aikiu (asistente)** | Cascada con fallback automático ante 429/quota: Groq `llama-3.3-70b-versatile` → Gemini 2.5 Flash → OpenRouter (`openai/gpt-oss-120b:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`). Usa el mismo system prompt que Aikiu en producción. |
 | **Evaluador** | Gemini 2.5 Flash, puntúa la conversación con 7 criterios gerontológicos (voseo, ratio preguntas, autorrevelación, respuesta a vulnerabilidad, sin eco, cierre de negativas, tono) y propone un perfil ajustado. |
 
 El loop ejecuta N iteraciones de _simular → puntuar → ajustar_. **El perfil ajustado solo se acepta si el score total supera al anterior**, y se guarda un backup automático antes de pisar cualquier versión previa.
@@ -1138,7 +1138,7 @@ Cuando un experimento converge en un perfil que te gusta, lo aplicás a producci
 |---|---|
 | Iterar rápido el system prompt o el perfil, sin Telegram | **Simulador** |
 | Probar el flujo end-to-end real (voz, alertas, scheduler, bot familiar) | **Andromarta** |
-| Comparar variantes de Clara contra el mismo personaje, con score reproducible | **Simulador** |
+| Comparar variantes de Aikiu contra el mismo personaje, con score reproducible | **Simulador** |
 | Ver cómo se comporta el bot ante una persona "viva" con iniciativa y ciclos | **Andromarta** |
 
 ---

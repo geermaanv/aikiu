@@ -87,8 +87,12 @@ async def notify_family(
     bot_response: str,
     family_bot: Bot,
     adulto_chat_id: Optional[int] = None,
+    motivo: str = "",
 ) -> None:
     """Envía alerta a todos los familiares asociados al adulto indicado.
+
+    `motivo` es el resumen del agente vigía (por qué se disparó la alerta);
+    si viene vacío, la alerta sale igual sin esa línea (compat).
 
     Si `adulto_chat_id` es None, se usa el `familiares.json` legacy en raíz
     (compat con tests viejos / single-tenant).
@@ -96,9 +100,11 @@ async def notify_family(
     nombre = _nombre_adulto_de(adulto_chat_id)
     timestamp = datetime.now().strftime("%H:%M")
     header = _distress_messages(nombre)[distress_level]
+    motivo_linea = f"*Por qué se avisa:* {motivo}\n\n" if motivo else ""
     text = (
         f"{header}\n\n"
         f"🕐 {timestamp}\n\n"
+        f"{motivo_linea}"
         f"*{nombre} dijo:* {adulto_message[:200]}\n\n"
         f"*Aikiu respondió:* {bot_response[:200]}"
     )

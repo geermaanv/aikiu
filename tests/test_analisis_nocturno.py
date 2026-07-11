@@ -92,7 +92,7 @@ def test_escribe_aprendizajes_nuevos():
          tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_perfil:
 
         log_path = Path(tmp_logs) / f"{hoy}.md"
-        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola Marta\n\n")
+        log_path.write_text("**10:00**\n- Marta: hola\n- Aikiu: hola Marta\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n- Dato viejo (01/01/2026)\n")
         tmp_perfil.flush()
         tmp_perfil.close()  # Windows: liberar el handle antes del os.replace atómico
@@ -100,7 +100,7 @@ def test_escribe_aprendizajes_nuevos():
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
              patch("aikiu.PERFIL_PATH", perfil_path), \
-             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu", "modelo_llm": "llama-3.3-70b-versatile"}), \
              patch("aikiu.groq", _mock_groq(respuesta_llm)):
             run(aikiu.analisis_nocturno())
 
@@ -116,7 +116,7 @@ def test_no_escribe_si_ninguno():
          tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_perfil:
 
         log_path = Path(tmp_logs) / f"{hoy}.md"
-        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
+        log_path.write_text("**10:00**\n- Marta: hola\n- Aikiu: hola\n\n")
         contenido_original = "# Perfil\n\n## Aprendizajes\n- Dato viejo (01/01/2026)\n"
         tmp_perfil.write(contenido_original)
         tmp_perfil.flush()
@@ -124,7 +124,7 @@ def test_no_escribe_si_ninguno():
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
              patch("aikiu.PERFIL_PATH", perfil_path), \
-             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu", "modelo_llm": "llama-3.3-70b-versatile"}), \
              patch("aikiu.groq", _mock_groq(respuesta_llm)):
             run(aikiu.analisis_nocturno())
 
@@ -143,7 +143,7 @@ def test_escribe_ajustes_sugeridos():
          tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_perfil:
 
         log_path = Path(tmp_logs) / f"{hoy}.md"
-        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
+        log_path.write_text("**10:00**\n- Marta: hola\n- Aikiu: hola\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
         tmp_perfil.flush()
         tmp_perfil.close()  # Windows: liberar el handle antes del os.replace atómico
@@ -151,7 +151,7 @@ def test_escribe_ajustes_sugeridos():
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
              patch("aikiu.PERFIL_PATH", perfil_path), \
-             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu", "modelo_llm": "llama-3.3-70b-versatile"}), \
              patch("aikiu.groq", _mock_groq(respuesta_llm)):
             run(aikiu.analisis_nocturno())
 
@@ -170,7 +170,7 @@ def test_registrar_stats_crea_entrada():
         stats_path = Path(f.name)
     stats_path.unlink()  # que no exista aún
     with patch("aikiu.STATS_PATH", stats_path), \
-         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         aikiu.registrar_stats(0)
     data = json.loads(stats_path.read_text())
     hoy = date.today().strftime("%Y-%m-%d")
@@ -184,7 +184,7 @@ def test_registrar_stats_acumula_mensajes():
         stats_path = Path(f.name)
     stats_path.unlink()
     with patch("aikiu.STATS_PATH", stats_path), \
-         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         aikiu.registrar_stats(0)
         aikiu.registrar_stats(0)
         aikiu.registrar_stats(1)
@@ -200,7 +200,7 @@ def test_registrar_stats_no_registra_distress_0():
         stats_path = Path(f.name)
     stats_path.unlink()
     with patch("aikiu.STATS_PATH", stats_path), \
-         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+         patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         aikiu.registrar_stats(0)
     data = json.loads(stats_path.read_text())
     hoy = date.today().strftime("%Y-%m-%d")
@@ -216,7 +216,7 @@ def test_analisis_nocturno_actualiza_stats():
          tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_stats:
 
         log_path = Path(tmp_logs) / f"{hoy}.md"
-        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
+        log_path.write_text("**10:00**\n- Marta: hola\n- Aikiu: hola\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
         tmp_perfil.flush()
         tmp_perfil.close()  # Windows: liberar handle antes del os.replace atómico
@@ -227,7 +227,7 @@ def test_analisis_nocturno_actualiza_stats():
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
              patch("aikiu.PERFIL_PATH", Path(tmp_perfil.name)), \
              patch("aikiu.STATS_PATH", stats_path), \
-             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu", "modelo_llm": "llama-3.3-70b-versatile"}), \
              patch("aikiu.groq", _mock_groq(respuesta_llm)):
             run(aikiu.analisis_nocturno())
 
@@ -247,13 +247,13 @@ def test_fallo_llm_no_rompe():
          tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_perfil:
 
         log_path = Path(tmp_logs) / f"{hoy}.md"
-        log_path.write_text("**10:00**\n- Marta: hola\n- Clara: hola\n\n")
+        log_path.write_text("**10:00**\n- Marta: hola\n- Aikiu: hola\n\n")
         tmp_perfil.write("# Perfil\n\n## Aprendizajes\n")
         tmp_perfil.flush()
         perfil_path = Path(tmp_perfil.name)
 
         with patch("aikiu.LOGS_DIR", Path(tmp_logs)), \
              patch("aikiu.PERFIL_PATH", perfil_path), \
-             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara", "modelo_llm": "llama-3.3-70b-versatile"}), \
+             patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu", "modelo_llm": "llama-3.3-70b-versatile"}), \
              patch("aikiu.groq", groq_roto):
             run(aikiu.analisis_nocturno())  # no debe lanzar excepción

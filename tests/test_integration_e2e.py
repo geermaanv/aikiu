@@ -81,7 +81,7 @@ def test_e2e_tofu_y_mensaje_genera_alerta_a_familiar(monkeypatch):
     familiar_bot.guardar_familiares([{"chat_id": 999, "nombre": "Germán"}])
     monkeypatch.setattr(aikiu, "CONFIG", {
         "nombre_adulto_mayor": "Marta",
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "_perfil": "",
         "modelo_llm": "llama-3.3-70b-versatile",
     })
@@ -108,13 +108,19 @@ def test_e2e_tofu_y_mensaje_genera_alerta_a_familiar(monkeypatch):
     update_msg.message.voice = None
     update_msg.message.text = "me siento muy sola hoy"
 
-    # Mock Groq: respuesta DISTRESS_LEVEL: 2
+    # Mock del agente conversador (Groq): responde a Marta.
     fake_groq = MagicMock()
     completion = MagicMock()
     completion.choices = [MagicMock()]
-    completion.choices[0].message.content = "Estoy acá, Marta.\nDISTRESS_LEVEL: 2"
+    completion.choices[0].message.content = "Estoy acá, Marta."
     completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
     fake_groq.chat.completions.create = AsyncMock(return_value=completion)
+
+    # Mock del agente vigía: clasifica nivel 2 (arquitectura de dos agentes).
+    monkeypatch.setattr(
+        aikiu, "clasificar_distress",
+        AsyncMock(return_value=(2, "dice que se siente muy sola")),
+    )
 
     # Aislar usage
     from pathlib import Path as P
@@ -155,6 +161,8 @@ def test_e2e_tofu_y_mensaje_genera_alerta_a_familiar(monkeypatch):
     alerta = family_bot.send_message.await_args
     assert alerta.kwargs["chat_id"] == 999
     assert "Marta" in alerta.kwargs["text"]
+    # El motivo del vigía viaja en la alerta a la familia
+    assert "se siente muy sola" in alerta.kwargs["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +190,7 @@ def test_e2e_andromarta_ciclo_completo(monkeypatch):
     monkeypatch.setattr(andro_bot, "RITMO_HUMANO", False)
     monkeypatch.setattr(andro_bot, "VOZ_PROB", 0.0)
     monkeypatch.setattr(andro_bot, "MAX_TURNOS_CICLO", 4)
-    # max=4: iniciativa(1) + clara(2) + marta(3) + clara(4=tope) → marta cierra
+    # max=4: iniciativa(1) + aikiu(2) + marta(3) + aikiu(4=tope) → marta cierra
     import random
     monkeypatch.setattr(random, "random", lambda: 0.99)
 
@@ -200,13 +208,13 @@ def test_e2e_andromarta_ciclo_completo(monkeypatch):
     assert ciclo_mod.cargar()["abierto"] is True
     assert ciclo_mod.cargar()["turnos"] == 1
 
-    # 2. Llega mensaje de Clara
+    # 2. Llega mensaje de Aikiu
     event1 = MagicMock()
     event1.message = MagicMock(text="hola Marta", voice=None)
     run(andro_bot._on_clara_msg(event1))
-    assert ciclo_mod.cargar()["turnos"] == 3  # 1 + clara(2) + marta(3)
+    assert ciclo_mod.cargar()["turnos"] == 3  # 1 + aikiu(2) + marta(3)
 
-    # 3. Llega otro mensaje de Clara → marta despedida y cierra
+    # 3. Llega otro mensaje de Aikiu → marta despedida y cierra
     event2 = MagicMock()
     event2.message = MagicMock(text="qué hacés?", voice=None)
     run(andro_bot._on_clara_msg(event2))
@@ -349,7 +357,7 @@ def test_e2e_analisis_nocturno_actualiza_perfil_y_stats(monkeypatch, tmp_path):
     # Log del día con un síntoma
     aikiu.LOGS_DIR.mkdir(exist_ok=True)
     (aikiu.LOGS_DIR / f"{hoy}.md").write_text(
-        "**10:00**\n- Marta: hoy me duele la rodilla\n- Clara: cuidate\n",
+        "**10:00**\n- Marta: hoy me duele la rodilla\n- Aikiu: cuidate\n",
         encoding="utf-8",
     )
     # Perfil inicial
@@ -365,7 +373,7 @@ def test_e2e_analisis_nocturno_actualiza_perfil_y_stats(monkeypatch, tmp_path):
     ]), encoding="utf-8")
 
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "modelo_llm": "llama-3.3-70b-versatile"})
 
     # Mock Groq:
@@ -506,7 +514,7 @@ def test_e2e_mensaje_normal_sin_distress_no_alerta(monkeypatch):
     from core import hogar as hogar_mod
     hogar_mod.crear_hogar(42)
     monkeypatch.setattr(aikiu, "CONFIG", {
-        "nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+        "nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
         "_perfil": "", "modelo_llm": "m",
     })
     update = MagicMock()

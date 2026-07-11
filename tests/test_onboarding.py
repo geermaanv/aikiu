@@ -49,7 +49,7 @@ def _config_neutro():
     """El template neutro tiene nombre_adulto_mayor='' — emulamos eso."""
     with patch("aikiu.CONFIG", {
         "nombre_adulto_mayor": "",
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "modelo_llm": "llama-3.3-70b-versatile",
     }):
         yield
@@ -138,7 +138,7 @@ def test_cmd_start_hogar_con_perfil_completo_no_arranca_wizard():
     ctx.bot.send_message.assert_awaited_once()
     msg = ctx.bot.send_message.await_args.kwargs.get("text", "")
     assert "Marta" in msg
-    assert "Clara" in msg
+    assert "Aikiu" in msg
     assert "1/5" not in msg  # NO arranca el wizard
 
 

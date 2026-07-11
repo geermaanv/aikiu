@@ -532,7 +532,7 @@ def test_wizard_configurar_flujo_completo_persiste_perfil_y_state():
     update = _fake_update(chat_id=42, text="Tranquilo, le gusta el dominó")
     estado = run(familiar_bot.cfg_descripcion(update, ctx))
     assert estado == familiar_bot.CFG_ASISTENTE
-    # 5/8 asistente (vacío → default Clara)
+    # 5/8 asistente (vacío → default Aikiu)
     update = _fake_update(chat_id=42, text="Sofi")
     estado = run(familiar_bot.cfg_asistente(update, ctx))
     assert estado == familiar_bot.CFG_FAMILIA
@@ -578,7 +578,7 @@ def test_wizard_configurar_asistente_vacio_usa_default_clara():
         _fake_update(chat_id=42, text=""), ctx
     ))
     assert estado == familiar_bot.CFG_FAMILIA
-    assert ctx.user_data["cfg_datos"]["nombre_asistente"] == "Clara"
+    assert ctx.user_data["cfg_datos"]["nombre_asistente"] == "Aikiu"
 
 
 def test_wizard_configurar_edad_guion_queda_vacia():

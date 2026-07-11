@@ -397,7 +397,7 @@ def test_on_clara_msg_despedida_cierra_ciclo(monkeypatch):
     client, entity = _fake_client_y_entity()
     monkeypatch.setattr(andro_bot, "client", client)
     monkeypatch.setattr(andro_bot, "aikiu_entity", entity)
-    # Max 2 turnos: el mensaje de Clara llega y la respuesta de Marta lo lleva al tope
+    # Max 2 turnos: el mensaje de Aikiu llega y la respuesta de Marta lo lleva al tope
     monkeypatch.setattr(andro_bot, "MAX_TURNOS_CICLO", 2)
     monkeypatch.setattr(andro_bot, "RITMO_HUMANO", False)
     monkeypatch.setattr(andro_bot, "VOZ_PROB", 0.0)

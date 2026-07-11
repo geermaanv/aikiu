@@ -81,7 +81,7 @@ def test_transcribir_resultado_objeto_con_text(tmp_path):
 def test_generar_respuesta_basica():
     fake_groq = _mock_groq("Hola Marta")
     cfg = {
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "nombre_adulto_mayor": "Marta",
         "_perfil": "",
         "modelo_llm": "llama-3.3-70b-versatile",
@@ -93,7 +93,7 @@ def test_generar_respuesta_basica():
 
 def test_generar_respuesta_inyecta_datos_externos_si_pre_route_devuelve_algo():
     fake_groq = _mock_groq("Hace 18 grados")
-    cfg = {"nombre_asistente": "Clara", "nombre_adulto_mayor": "Marta", "_perfil": "",
+    cfg = {"nombre_asistente": "Aikiu", "nombre_adulto_mayor": "Marta", "_perfil": "",
            "modelo_llm": "m", "ciudad": "Buenos Aires"}
     with patch("aikiu.CONFIG", cfg), patch("aikiu.groq", fake_groq), \
          patch("aikiu.consultar_clima", new=AsyncMock(return_value="Temperatura 18°C")):
@@ -107,7 +107,7 @@ def test_generar_respuesta_inyecta_datos_externos_si_pre_route_devuelve_algo():
 def test_generar_respuesta_inyecta_temas_a_evitar(tmp_path, monkeypatch):
     """Si _temas_a_evitar devuelve algo, lo mete como instrucción."""
     fake_groq = _mock_groq("ok")
-    cfg = {"nombre_asistente": "Clara", "nombre_adulto_mayor": "Marta", "_perfil": "",
+    cfg = {"nombre_asistente": "Aikiu", "nombre_adulto_mayor": "Marta", "_perfil": "",
            "modelo_llm": "m"}
     with patch("aikiu.CONFIG", cfg), patch("aikiu.groq", fake_groq), \
          patch("aikiu._temas_a_evitar", return_value=["tango", "política"]):
@@ -119,7 +119,7 @@ def test_generar_respuesta_inyecta_temas_a_evitar(tmp_path, monkeypatch):
 
 def test_generar_respuesta_inyecta_temas_preferidos():
     fake_groq = _mock_groq("ok")
-    cfg = {"nombre_asistente": "Clara", "nombre_adulto_mayor": "Marta", "_perfil": "",
+    cfg = {"nombre_asistente": "Aikiu", "nombre_adulto_mayor": "Marta", "_perfil": "",
            "modelo_llm": "m"}
     with patch("aikiu.CONFIG", cfg), patch("aikiu.groq", fake_groq), \
          patch("aikiu._temas_a_evitar", return_value=[]), \
@@ -132,7 +132,7 @@ def test_generar_respuesta_inyecta_temas_preferidos():
 
 def test_generar_respuesta_filtra_preferidos_que_aparecen_en_evitar():
     fake_groq = _mock_groq("ok")
-    cfg = {"nombre_asistente": "Clara", "nombre_adulto_mayor": "Marta", "_perfil": "",
+    cfg = {"nombre_asistente": "Aikiu", "nombre_adulto_mayor": "Marta", "_perfil": "",
            "modelo_llm": "m"}
     with patch("aikiu.CONFIG", cfg), patch("aikiu.groq", fake_groq), \
          patch("aikiu._temas_a_evitar", return_value=["tango"]), \
@@ -153,20 +153,20 @@ def test_generar_respuesta_filtra_preferidos_que_aparecen_en_evitar():
 def test_registrar_log_crea_archivo_y_encabezado(tmp_path, monkeypatch):
     monkeypatch.setattr(aikiu, "LOGS_DIR", tmp_path / "logs")
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"})
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"})
     aikiu.registrar_log("hola", "buenas")
     files = list((tmp_path / "logs").glob("*.md"))
     assert files
     contenido = files[0].read_text(encoding="utf-8")
     assert "Conversaciones" in contenido
     assert "Marta: hola" in contenido
-    assert "Clara: buenas" in contenido
+    assert "Aikiu: buenas" in contenido
 
 
 def test_registrar_log_appende_si_existe(tmp_path, monkeypatch):
     monkeypatch.setattr(aikiu, "LOGS_DIR", tmp_path / "logs")
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"})
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"})
     aikiu.registrar_log("uno", "uno-r")
     aikiu.registrar_log("dos", "dos-r")
     files = list((tmp_path / "logs").glob("*.md"))
@@ -229,7 +229,7 @@ def test_cmd_start_crea_hogar_y_responde():
     from core import hogar as hogar_mod
     update = _fake_update(chat_id=42)
     ctx = _fake_context()
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_start(update, ctx))
     assert hogar_mod.existe_hogar(42)
     ctx.bot.send_message.assert_awaited_once()
@@ -242,7 +242,7 @@ def test_cmd_start_segundo_chat_id_tambien_crea_su_hogar():
     update2 = _fake_update(chat_id=999)
     ctx1 = _fake_context()
     ctx2 = _fake_context()
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_start(update1, ctx1))
         run(aikiu.cmd_start(update2, ctx2))
     assert hogar_mod.existe_hogar(42)
@@ -258,7 +258,7 @@ def test_cmd_invitar_genera_codigo_y_responde():
     update = _fake_update(chat_id=42)
     ctx = _fake_context()
     ctx.args = []
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_invitar(update, ctx))
     assert hogar_mod.existe_hogar(42)
     ctx.bot.send_message.assert_awaited_once()
@@ -279,7 +279,7 @@ def test_cmd_invitar_falla_si_storage_revienta(monkeypatch):
     ctx = _fake_context()
     ctx.args = []
     monkeypatch.setattr(invites_mod, "generar_codigo", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_invitar(update, ctx))
     ctx.bot.send_message.assert_awaited_once()
     msg = ctx.bot.send_message.await_args.kwargs.get("text", "")
@@ -291,7 +291,7 @@ def test_cmd_start_hogar_existente_responde():
     hogar_mod.crear_hogar(42)
     update = _fake_update(chat_id=42)
     ctx = _fake_context()
-    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara"}):
+    with patch("aikiu.CONFIG", {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu"}):
         run(aikiu.cmd_start(update, ctx))
     ctx.bot.send_message.assert_awaited_once()
 
@@ -310,7 +310,7 @@ def test_handle_message_chat_id_nuevo_se_da_de_alta_y_responde(monkeypatch):
     ctx = _fake_context()
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="ok\nDISTRESS_LEVEL: 0"))
@@ -327,11 +327,11 @@ def test_handle_message_texto_responde(monkeypatch):
     state_mod.registrar_owner(42)
     update = _fake_update(chat_id=42)
     update.message.voice = None
-    update.message.text = "hola Clara"
+    update.message.text = "hola Aikiu"
     ctx = _fake_context()
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="Hola Marta\nDISTRESS_LEVEL: 0"))
@@ -359,7 +359,7 @@ def test_handle_message_voz_responde_voz(monkeypatch):
     ctx = _fake_context()
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "transcribir", AsyncMock(return_value="hola en voz"))
     monkeypatch.setattr(aikiu, "generar_respuesta",
@@ -384,7 +384,7 @@ def test_handle_message_voz_vacia_pide_repetir(monkeypatch):
     update.message.text = ""
     ctx = _fake_context()
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m", "voz_tts": "es-AR"})
     monkeypatch.setattr(aikiu, "transcribir", AsyncMock(return_value=""))
     monkeypatch.setattr(aikiu, "responder_con_voz", AsyncMock())
@@ -408,7 +408,7 @@ def test_handle_message_distress_envia_alerta(monkeypatch):
     ctx.bot_data = {"family_bot": family_bot}
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="Entiendo Marta\nDISTRESS_LEVEL: 1"))
@@ -443,7 +443,7 @@ def test_handle_message_distress_sin_family_bot_no_explota(monkeypatch):
     ctx.bot_data = {}  # sin family_bot
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
-                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+                        {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="x\nDISTRESS_LEVEL: 1"))
@@ -525,7 +525,7 @@ def test_ajustes_a_instrucciones_vacio():
     """Sin ajustes, devuelve [] sin llamar al LLM."""
     fake_groq = _mock_groq("no debería usarse")
     with patch("aikiu.groq", fake_groq):
-        assert run(aikiu._ajustes_a_instrucciones([], "Clara")) == []
+        assert run(aikiu._ajustes_a_instrucciones([], "Aikiu")) == []
     fake_groq.chat.completions.create.assert_not_awaited()
 
 
@@ -534,7 +534,7 @@ def test_ajustes_a_instrucciones_convierte():
     with patch("aikiu.groq", fake_groq), \
          patch("aikiu.CONFIG", {"modelo_llm": "m"}):
         out = run(aikiu._ajustes_a_instrucciones(
-            ["A veces saluda de la misma forma", "Tutea de más"], "Clara"
+            ["A veces saluda de la misma forma", "Tutea de más"], "Aikiu"
         ))
     assert "No saludes" in out[0]
     assert len(out) == 2
@@ -544,14 +544,14 @@ def test_ajustes_a_instrucciones_falla_llm_devuelve_originales():
     fake_groq = MagicMock()
     fake_groq.chat.completions.create = AsyncMock(side_effect=Exception("down"))
     with patch("aikiu.groq", fake_groq), patch("aikiu.CONFIG", {"modelo_llm": "m"}):
-        out = run(aikiu._ajustes_a_instrucciones(["a", "b"], "Clara"))
+        out = run(aikiu._ajustes_a_instrucciones(["a", "b"], "Aikiu"))
     assert out == ["a", "b"]
 
 
 def test_ajustes_a_instrucciones_llm_sin_guiones_devuelve_originales():
     fake_groq = _mock_groq("texto sin guiones")
     with patch("aikiu.groq", fake_groq), patch("aikiu.CONFIG", {"modelo_llm": "m"}):
-        out = run(aikiu._ajustes_a_instrucciones(["a"], "Clara"))
+        out = run(aikiu._ajustes_a_instrucciones(["a"], "Aikiu"))
     assert out == ["a"]
 
 

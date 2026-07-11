@@ -6,6 +6,24 @@ servidor propio. Corre en cualquier Mac con Python.
 
 ---
 
+## Objetivo norte (definido 10/07/2026)
+
+Una sola métrica decide si Aikiu funciona: **que la usuaria real (Marta)
+inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
+
+- Se mide sobre ventana móvil de 14 días, con datos de `stats.json`.
+- Cuenta solo lo iniciado por ella (no las respuestas al saludo matutino).
+- No se despliega con la usuaria real hasta lograr un funcionamiento natural
+  (validado en simulador y/o beta) — la primera impresión no se repite.
+- Fase actual de modelo: **GLM-5** (`z-ai/glm-5` vía OpenRouter, razonamiento
+  apagado). El bot de producción sigue en Groq/Llama hasta validar en simulador.
+- La periferia (multi-tenant, admin, website, inversores) queda congelada
+  hasta que la métrica norte muestre retención real.
+- Circuito de conocimiento (KB gerontológica → perfil): **manual**, sin
+  automatizar mientras se está aprendiendo qué funciona.
+
+---
+
 ## Funcionalidad actual
 
 ### Conversación
@@ -20,7 +38,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - El familiar define: quién es la persona, familia, gustos, salud, reglas del bot
 - Temas sensibles (guerras, política): da una oración breve y neutral, redirige
   al bienestar de la persona sin mentir ni profundizar
-- Nombre del asistente configurable (hoy: Clara)
+- Nombre del asistente configurable (hoy: Aikiu)
 - No da consejos médicos: ante síntomas o dudas de medicación, siempre deriva
   al médico con calidez
 - Caídas recientes, dolor físico y "soy una carga": manejo explícito con
@@ -36,14 +54,14 @@ servidor propio. Corre en cualquier Mac con Python.
 - Los criterios de nivel ≥1 solo aplican cuando Marta describe su propio estado
   emocional o físico — preguntas neutras o saludos son siempre nivel 0
 - Si el nivel supera 0, el bot familiar recibe una alerta automática con
-  timestamp, fragmento de lo que dijo Marta y lo que respondió Clara
+  timestamp, fragmento de lo que dijo Marta y lo que respondió Aikiu
 - Cooldown por nivel: 60 min (nivel 1), 30 min (nivel 2), sin cooldown (nivel 3)
 - Si el LLM omite la línea DISTRESS_LEVEL, el sistema asume 0 y no falla
 - Módulos separados: `core/distress.py` (parsing + cooldown) y `core/alerts.py` (envío)
 
 ### Memoria y registro
 - **Log diario**: cada intercambio queda registrado en `logs/YYYY-MM-DD.md`
-  con hora, lo que dijo Marta y lo que respondió Clara
+  con hora, lo que dijo Marta y lo que respondió Aikiu
 - **Análisis nocturno** (hora configurable, default 23:30): un job lee el log del día
   completo y hace un solo LLM call que:
   - Extrae aprendizajes nuevos sobre Marta comparando contra los ya existentes en `perfil.md`
@@ -51,7 +69,7 @@ servidor propio. Corre en cualquier Mac con Python.
   - Detecta patrones problemáticos de la conversación (respuestas cortadas, preguntas
     innecesarias, temas evitados) y sugiere ajustes
   - Escribe los aprendizajes en `## Aprendizajes` y los ajustes en `## Ajustes sugeridos`
-    de `perfil.md`, que Clara lee en la próxima conversación
+    de `perfil.md`, que Aikiu lee en la próxima conversación
   - Reemplaza el enfoque anterior (un LLM call extra por cada mensaje) — menos ruido,
     mejor calidad, sin costo por turno
   - Prompt estricto: el LLM compara cada dato contra los aprendizajes existentes antes
@@ -65,7 +83,7 @@ servidor propio. Corre en cualquier Mac con Python.
   - Base de datos lista para un futuro dashboard familiar
 
 ### Recordatorios proactivos (scheduler)
-- Saludo diario con fecha, temperatura y feriados: cada mañana Clara saluda a Marta
+- Saludo diario con fecha, temperatura y feriados: cada mañana Aikiu saluda a Marta
   diciendo el día de la semana y la fecha (por ej. "Hoy es miércoles 20 de mayo"),
   la temperatura actual de la ciudad y, si corresponde, si es feriado en Argentina
   (via date.nager.at). Si alguna API falla, el saludo se envía igual con los datos
@@ -77,7 +95,7 @@ servidor propio. Corre en cualquier Mac con Python.
 - Segundo bot de Telegram para toda la familia — no requiere configuración por familiar
 - Cualquier familiar manda `/start` y queda suscripto automáticamente
 - `/nombre [nombre]` — registra cómo te conoce Marta (usado en el puente familiar)
-- `/mensaje` — **puente familiar**: el familiar envía texto o audio y Clara se lo
+- `/mensaje` — **puente familiar**: el familiar envía texto o audio y Aikiu se lo
   transmite a Marta preservando el medio (texto → texto, voz → voz sintetizada).
   Usa el nombre registrado con `/nombre`, no el username de Telegram
 - `/perfil` — muestra el perfil completo actual
@@ -108,8 +126,8 @@ servidor propio. Corre en cualquier Mac con Python.
 - Función: `verificar_inactividad()` en `aikiu.py` + `notify_inactividad()` en `core/alerts.py`
 
 ### Calidad conversacional (Estrategias activas)
-- **Estrategia 1 — Iniciativa proactiva**: reglas explícitas en el perfil para que Clara
-  no solo reaccione. Cuando la conversación se frena, Clara aporta un dato, anécdota
+- **Estrategia 1 — Iniciativa proactiva**: reglas explícitas en el perfil para que Aikiu
+  no solo reaccione. Cuando la conversación se frena, Aikiu aporta un dato, anécdota
   o curiosidad antes de preguntar. Máximo una pregunta por respuesta; ante respuestas
   cortas de cierre ("nada", "no sé"), cambia de tema sin insistir.
 - **Estrategia 2 — Blacklist de receptividad**: tras cada intercambio, un LLM call
@@ -117,7 +135,7 @@ servidor propio. Corre en cualquier Mac con Python.
   temas con baja receptividad en las últimas 48h se excluyen automáticamente del
   siguiente turno. Los temas con alta receptividad se inyectan como sugerencia de
   iniciativa, tomados del ranking nocturno. Historial en `receptividad.json`.
-- **Estrategia 3 — Matriz de rol dinámica**: si DISTRESS_LEVEL es 0, Clara puede
+- **Estrategia 3 — Matriz de rol dinámica**: si DISTRESS_LEVEL es 0, Aikiu puede
   usar humor liviano; si es ≥1, bloquea el humor completamente y activa modo
   contención hasta que Marta esté estable.
 

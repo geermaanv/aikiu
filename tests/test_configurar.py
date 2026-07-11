@@ -109,7 +109,7 @@ def test_main_genera_perfil_y_actualiza_config(tmp_path, monkeypatch):
     config_path = tmp_path / "config.yml"
     config_path.write_text(
         'nombre_adulto_mayor: "Marta"\n'
-        'nombre_asistente: "Clara"\n'
+        'nombre_asistente: "Aikiu"\n'
         'perfil: "perfil.md"\n',
         encoding="utf-8",
     )
@@ -164,7 +164,7 @@ def test_main_genera_perfil_y_actualiza_config(tmp_path, monkeypatch):
 def test_main_sin_familiares_pone_placeholder(tmp_path, monkeypatch):
     config_path = tmp_path / "config.yml"
     config_path.write_text(
-        'nombre_adulto_mayor: "Marta"\nnombre_asistente: "Clara"\nperfil: "perfil.md"\n',
+        'nombre_adulto_mayor: "Marta"\nnombre_asistente: "Aikiu"\nperfil: "perfil.md"\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(configurar, "BASE_DIR", tmp_path)
@@ -223,8 +223,8 @@ def test_generar_perfil_solo_nombre_no_explota():
     assert "- Ana" in perfil
     # No imprime "X años" si no hay edad
     assert "años" not in perfil
-    # Asistente por defecto: Clara
-    assert "Al asistente lo conoce como Clara" in perfil
+    # Asistente por defecto: Aikiu
+    assert "Al asistente lo conoce como Aikiu" in perfil
 
 
 def test_generar_perfil_sin_edad_pero_con_ciudad():
@@ -281,7 +281,7 @@ def test_main_template_sin_nombre_genera_esqueleto(tmp_path, monkeypatch):
     """--template con Enter en todas las preguntas genera el esqueleto neutro."""
     config_path = tmp_path / "config.yml"
     config_path.write_text(
-        'nombre_adulto_mayor: ""\nnombre_asistente: "Clara"\nperfil: "perfil.md"\n',
+        'nombre_adulto_mayor: ""\nnombre_asistente: "Aikiu"\nperfil: "perfil.md"\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(configurar, "BASE_DIR", tmp_path)

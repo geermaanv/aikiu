@@ -97,7 +97,7 @@ def test_alertar_sintomas_envio_falla(monkeypatch, tmp_path):
     app = MagicMock()
     app.bot_data = {"family_bot": family_bot}
     monkeypatch.setattr(aikiu, "CONFIG", {"nombre_adulto_mayor": "Marta",
-                                          "nombre_asistente": "Clara"})
+                                          "nombre_asistente": "Aikiu"})
     with patch("core.alerts.cargar_suscriptores", return_value=[999]):
         run(aikiu._alertar_sintomas_persistentes(app, "hoy también me duele la rodilla"))
     family_bot.send_message.assert_awaited_once()
@@ -195,7 +195,7 @@ class FakeApp:
 def test_aikiu_main_arranca_y_para(monkeypatch):
     monkeypatch.setattr(aikiu, "CONFIG", {
         "nombre_adulto_mayor": "Marta",
-        "nombre_asistente": "Clara",
+        "nombre_asistente": "Aikiu",
         "bot_token": "real:token",
         "modelo_llm": "m",
     })
@@ -237,7 +237,7 @@ def test_aikiu_main_arranca_y_para(monkeypatch):
 
 def test_aikiu_main_sin_familiar_token(monkeypatch):
     monkeypatch.setattr(aikiu, "CONFIG", {
-        "nombre_adulto_mayor": "Marta", "nombre_asistente": "Clara",
+        "nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
         "bot_token": "real:token", "modelo_llm": "m",
     })
     fake_app = FakeApp()

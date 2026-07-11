@@ -119,7 +119,7 @@ ANDROMARTA_API_ID=12345678
 ANDROMARTA_API_HASH=tu_api_hash_largo_de_letras_y_numeros
 ANDROMARTA_PHONE=+5491138...
 ANDROMARTA_AIKIU_USERNAME=aikiu_test_TUNOMBRE_bot
-ANDROMARTA_NOMBRE_CLARA=Clara
+ANDROMARTA_NOMBRE_CLARA=Aikiu
 ANDROMARTA_MODELO=llama-3.3-70b-versatile
 ANDROMARTA_VOZ_TTS=es-AR-ElenaNeural
 ANDROMARTA_VOZ_PROB=0.4
@@ -134,7 +134,7 @@ Detalles:
 - **`ANDROMARTA_AIKIU_USERNAME`**: el username del bot de prueba que creaste, **sin la arroba**.
 - **`ANDROMARTA_VOZ_PROB`**: probabilidad de que Andromarta responda con audio en vez de texto. `0` = solo texto. `1` = solo audio. `0.4` = más o menos 4 de cada 10.
 - **`ANDROMARTA_RITMO_HUMANO`**: `0` (default) hace que Andromarta responda al toque, sin esperas de "lectura" ni de "tipeo". Poné `1` si querés que simule los tiempos de una persona mayor real (pausa antes de leer, tipeo lento, demora antes de grabar la nota de voz).
-- **`ANDROMARTA_MAX_TURNOS_CICLO`**: cuántos mensajes en total (sumando los de Clara y los de Andromarta) puede tener una "conversación" antes de que Andromarta se despida y se calle. Default: `15`. Después de la despedida, queda esperando a que el scheduler decida volver a arrancar otra conversación (ver más abajo).
+- **`ANDROMARTA_MAX_TURNOS_CICLO`**: cuántos mensajes en total (sumando los de Aikiu y los de Andromarta) puede tener una "conversación" antes de que Andromarta se despida y se calle. Default: `15`. Después de la despedida, queda esperando a que el scheduler decida volver a arrancar otra conversación (ver más abajo).
 
 Guardá el archivo y cerralo.
 
@@ -214,7 +214,7 @@ Estos números están hardcodeados en `andromarta/bot.py` (funciones `_pausa_lec
 
 Controlado por: **`ANDROMARTA_MAX_TURNOS_CICLO`** (en `andromarta/.env`). Default: `15`.
 
-Cada "conversación" tiene un tope de mensajes **contando los de Clara y los de Andromarta juntos**. Cuando la respuesta de Andromarta sería la que llega al tope, manda una despedida natural (algo como "bueno mi vida, te dejo que voy a poner la pava, hablamos más tarde") y queda en silencio: si Clara le sigue escribiendo, **no contesta**. La única manera de reabrir es que el sorteo de iniciativa decida arrancar una conversación nueva (ver punto 3).
+Cada "conversación" tiene un tope de mensajes **contando los de Aikiu y los de Andromarta juntos**. Cuando la respuesta de Andromarta sería la que llega al tope, manda una despedida natural (algo como "bueno mi vida, te dejo que voy a poner la pava, hablamos más tarde") y queda en silencio: si Aikiu le sigue escribiendo, **no contesta**. La única manera de reabrir es que el sorteo de iniciativa decida arrancar una conversación nueva (ver punto 3).
 
 | Si ponés... | Pasa esto |
 |---|---|
@@ -235,7 +235,7 @@ Está en `andromarta/scheduler.py`, línea con `INTERVALO_CHECK_SEG = 60 * 15` (
 
 #### b) A partir de cuánto silencio Andromarta se "aburre"
 
-Mismo archivo, línea `SILENCIO_DISPARADOR_SEG = 60 * 60 * 2` (= 2 horas). Si Clara llevaba más de ese tiempo sin escribir, la probabilidad de que Andromarta dispare iniciativa se multiplica por 2,5 (cap en 90%). Bajarlo (ej. `60 * 30` = media hora) la hace más insistente; subirlo, más tranquila.
+Mismo archivo, línea `SILENCIO_DISPARADOR_SEG = 60 * 60 * 2` (= 2 horas). Si Aikiu llevaba más de ese tiempo sin escribir, la probabilidad de que Andromarta dispare iniciativa se multiplica por 2,5 (cap en 90%). Bajarlo (ej. `60 * 30` = media hora) la hace más insistente; subirlo, más tranquila.
 
 #### c) Probabilidad base según la hora del día
 
@@ -255,7 +255,7 @@ Cada vez que dispara iniciativa en el mismo día, la probabilidad se reduce a la
 
 Con los defaults: a media tarde (probabilidad 25%) y sin haber disparado todavía hoy, **en promedio Andromarta arranca conversación sola cada ~60 minutos** (porque cada 15 min hay un 25% de chance: 1/0.25 = 4 sorteos = 60 min). Si llevás 2 horas sin escribirle, ese promedio cae a ~25 minutos.
 
-### 4. Cuánto pasa entre que Clara manda voz y Andromarta la transcribe
+### 4. Cuánto pasa entre que Aikiu manda voz y Andromarta la transcribe
 
 Esto no es configurable: depende de lo que tarde Groq Whisper en procesar el audio (típicamente 1–3 segundos para audios de hasta 30 s).
 

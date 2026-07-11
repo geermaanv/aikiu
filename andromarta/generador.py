@@ -78,7 +78,7 @@ async def responder(
         })
 
     if despedida:
-        # Va DESPUÉS del mensaje de Clara (o de la instrucción de iniciativa)
+        # Va DESPUÉS del mensaje de Aikiu (o de la instrucción de iniciativa)
         # para que pese más a la hora de generar la respuesta.
         messages.append({
             "role": "system",

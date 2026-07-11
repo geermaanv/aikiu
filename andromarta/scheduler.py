@@ -4,7 +4,7 @@ Scheduler de iniciativa para Andromarta.
 Cada N minutos evalúa si corresponde que Andromarta arranque la conversación
 sola. Probabilidad depende de:
 - La franja horaria (ver estado.probabilidad_iniciativa).
-- Cuánto hace que no habla con Clara (más tiempo → más chance).
+- Cuánto hace que no habla con Aikiu (más tiempo → más chance).
 - Si ya disparó iniciativa hoy y muchas veces, se reduce la probabilidad.
 
 El loop es asíncrono y se acopla al loop de Telethon.
@@ -23,7 +23,7 @@ from andromarta import memoria as memoria_mod
 log = logging.getLogger("andromarta.scheduler")
 
 INTERVALO_CHECK_SEG = 60 * 15  # cada 15 minutos evalúa
-SILENCIO_DISPARADOR_SEG = 60 * 60 * 2  # 2 horas sin Clara → más ganas de hablar
+SILENCIO_DISPARADOR_SEG = 60 * 60 * 2  # 2 horas sin Aikiu → más ganas de hablar
 
 # Disparador asincrónico que el script principal le pasa al loop. Recibe
 # nada y devuelve nada (o awaitable). Lo definimos como Callable explícito.
@@ -38,7 +38,7 @@ def _debe_disparar() -> tuple[bool, str]:
     historial = memoria_mod.cargar_historial()
     silencio = memoria_mod.segundos_desde_ultimo_clara(historial)
 
-    # Boost si hace mucho que Clara no escribe (Marta se aburre)
+    # Boost si hace mucho que Aikiu no escribe (Marta se aburre)
     if silencio is not None and silencio > SILENCIO_DISPARADOR_SEG:
         prob = min(0.9, prob_base * 2.5)
         motivo = f"silencio={silencio//3600}h boost"

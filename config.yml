@@ -14,10 +14,10 @@
 
 # --- Identidad por defecto ---
 # Vacío → cada hogar usa lo que cargó en el wizard de onboarding.
-# El nombre del asistente ("Clara") es el default de marca y se puede
+# El nombre del asistente ("Aikiu") es el default de marca y se puede
 # personalizar por hogar.
 nombre_adulto_mayor: ""
-nombre_asistente: "Clara"
+nombre_asistente: "Aikiu"
 ciudad: ""
 
 # --- Perfil del asistente ---
@@ -29,7 +29,12 @@ perfil: "perfil.md"
 voz_tts: "es-AR-ElenaNeural"
 
 # --- Modelo LLM ---
-modelo_llm: "llama-3.3-70b-versatile"
+# proveedor_llm: "openrouter" (requiere OPENROUTER_API_KEY en .env)
+#                o "groq" (usa GROQ_API_KEY, que igual es obligatoria
+#                para la transcripción de voz con Whisper).
+# Fase GLM: z-ai/glm-5 vía OpenRouter, con razonamiento apagado.
+proveedor_llm: "openrouter"
+modelo_llm: "z-ai/glm-5"
 
 # --- Saludo diario ---
 saludo_diario:
