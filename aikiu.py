@@ -1576,18 +1576,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         texto = update.message.text.strip()
 
-    # Dos agentes en paralelo: el conversador genera la respuesta y el vigía
-    # clasifica la angustia del mensaje de Marta. Ambos parten del mismo texto,
-    # así el vigía no agrega latencia a la respuesta.
+    # Camino de la respuesta: SOLO el conversador. El vigía (clasificación de
+    # angustia) NO va acá — corría en paralelo pero las dos llamadas a
+    # OpenRouter se peleaban y sumaban ~12s. Ahora el vigía corre en background
+    # después de responder, así el usuario espera solo una llamada.
     historial = historiales.setdefault(chat_id, [])
-    raw, (distress_level, distress_motivo) = await asyncio.gather(
-        generar_respuesta(texto, historial, chat_id=chat_id),
-        clasificar_distress(texto, chat_id=chat_id),
-    )
+    raw = await generar_respuesta(texto, historial, chat_id=chat_id)
     # parse_llm_response limpia cualquier línea DISTRESS residual que el
-    # conversador pudiera emitir; el nivel autoritativo viene del vigía.
+    # conversador pudiera emitir (el nivel real lo pone el vigía en background).
     respuesta, _ = parse_llm_response(raw)
-    log.info(f"[chat_id={chat_id}] LLM: '{respuesta}' | distress={distress_level} (vigía)")
+    log.info(f"[chat_id={chat_id}] LLM: '{respuesta}'")
 
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
@@ -1603,31 +1601,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _ultima_actividad
     _ultima_actividad = datetime.now()
 
-    # ALERTA DE SEGURIDAD PRIMERO. Es lo más importante del bot: va antes que
-    # cualquier tarea cosmética (log, stats) para que un fallo en esas nunca
-    # impida enviar la alerta a la familia.
+    # Vigía + alerta + stats: todo en background, sin bloquear la respuesta.
+    family_bot = context.bot_data.get("family_bot")
+    create_background_task(
+        _evaluar_distress_y_extras(texto, respuesta, chat_id, family_bot)
+    )
+
+
+async def _evaluar_distress_y_extras(texto, respuesta, chat_id, family_bot):
+    """Corre el vigía (clasificación de angustia), dispara la alerta si
+    corresponde, y registra stats/log/receptividad. Todo en background: nada
+    de esto bloquea la respuesta al usuario. La alerta es lo prioritario."""
+    distress_level, distress_motivo = await clasificar_distress(texto, chat_id=chat_id)
+
+    # Alerta de seguridad PRIMERO — antes que las tareas cosméticas.
     if should_send_alert(distress_level, adulto_chat_id=chat_id):
         record_alert_sent(distress_level, adulto_chat_id=chat_id)
-        family_bot = context.bot_data.get("family_bot")
         if family_bot:
             log.info(f"Enviando alerta nivel {distress_level} a suscriptores del hogar {chat_id}")
-            create_background_task(notify_family(
+            await notify_family(
                 distress_level=distress_level,
                 adulto_message=texto,
                 bot_response=respuesta,
                 family_bot=family_bot,
                 adulto_chat_id=chat_id,
                 motivo=distress_motivo,
-            ))
+            )
         else:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
 
-    # Tareas cosméticas (log, stats, receptividad) — blindadas: un fallo acá
-    # se registra pero NO rompe el turno ni afecta la alerta ya disparada.
+    # Tareas cosméticas — blindadas: un fallo acá no afecta la alerta.
     try:
         registrar_log(texto, respuesta, chat_id=chat_id)
         registrar_stats(distress_level, chat_id=chat_id)
-        create_background_task(clasificar_receptividad(texto, respuesta, chat_id=chat_id))
+        await clasificar_receptividad(texto, respuesta, chat_id=chat_id)
     except Exception as e:
         log.warning(f"Tarea cosmética falló (no afecta la alerta): {e}")
 
