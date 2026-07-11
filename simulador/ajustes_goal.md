@@ -221,6 +221,42 @@ trabó el goal loop en la banda 8.4–8.6.
 
 ---
 
+## Experimento de poda de reglas — DEDUP (11/07/2026, juez: Claude Opus 4.8)
+
+Objetivo: adelgazar aikiu_core.md sin perder comportamiento. Método: GLM-5
+hizo triaje (redundancias + categorías, NO "¿qué borrarías?"); consenso de 3
+pasadas mostró que la opinión de GLM sobre removibilidad es ruidosa (48
+candidatas, solo 4 en las 3 pasadas) → NO se poda por opinión del modelo, se
+poda por redundancia verificable + test empírico.
+
+- **Baseline (92 reglas)** ≈ 8.4, detección de angustia funcionando (vigía).
+- **Podado (76 reglas, −16)** ≈ 8.4 — calidad equivalente.
+
+Verificación por comportamiento (no solo score): en el lote podado siguen
+firmes TODAS las conductas de las reglas fusionadas —
+  · médico una sola vez ante dolor (caida, dolor_fisico, familiar_fallecido) ✓
+  · anti-invención de clima/dólar ✓
+  · noticias sensibles → redirigir ✓ (4 reglas colapsadas en 1)
+  · sin edadismo, sin positividad tóxica ✓
+  · cero respuestas vacías, vigía emite en todos los turnos ✓
+  · "vivo en el teléfono" (límite de vida interior) ✓
+
+16 reglas quitadas, todas cubiertas por una hermana que quedó (3 ejemplos
+ilustrativos + 13 duplicados absorbidos en su representante). Ninguna regla de
+seguridad ni técnica gerontológica desapareció; solo se fusionó texto.
+
+Único matiz observado (dentro del ruido de GLM turno a turno, NO atribuible a
+la poda porque la regla sigue intacta): en `confusion` la sugerencia del
+médico ante la mano dolorida disparó dos veces (t3 y t4) en vez de una.
+
+**Conclusión**: la poda conservadora es segura → mergeable. Los ~12 grupos
+borderline (voseo 6/7, accidentes 55/56, familia 60/61, tema 76/77, PAV
+médica 46) quedan para una 2da pasada más cuidadosa si se quiere bajar a ~66.
+
+Logs: simulador/logs/BASELINE_*.jsonl y PODADO_*.jsonl.
+
+---
+
 ## CIERRE DEL GOAL LOOP — meseta declarada (11/07/2026, juez: Claude Fable 5)
 
 **Historial**: 7.8 → 8.6 → 7.8 → 7.7 → 8.4. Tres iteraciones sin superar el
