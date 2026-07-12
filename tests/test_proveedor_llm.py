@@ -73,3 +73,63 @@ def test_generar_respuesta_usa_openrouter(monkeypatch):
     assert texto.startswith("Hola Marta")
     fake_or.chat.completions.create.assert_awaited()
     fake_groq.chat.completions.create.assert_not_awaited()
+
+
+# --- P0: resiliencia (nunca dejar al usuario colgado) ---
+
+def test_chat_create_fallback_a_groq_si_openrouter_falla(monkeypatch):
+    monkeypatch.setitem(aikiu.CONFIG, "proveedor_llm", "openrouter")
+    fake_or = MagicMock()
+    fake_or.chat.completions.create = AsyncMock(side_effect=RuntimeError("OR down"))
+    fake_groq = _mock_client("resp groq")
+    with patch("aikiu.openrouter", fake_or), patch("aikiu.groq", fake_groq):
+        r = _run(aikiu._chat_create(model="z-ai/glm-5", messages=[], max_tokens=10))
+    assert r.choices[0].message.content == "resp groq"
+    # cayó al modelo de respaldo de Groq
+    assert fake_groq.chat.completions.create.await_args.kwargs["model"] == "llama-3.3-70b-versatile"
+
+
+def test_generar_respuesta_nunca_vacia_si_llm_falla(monkeypatch):
+    with patch.object(aikiu, "_chat_create", AsyncMock(side_effect=RuntimeError("todo mal"))):
+        r = _run(aikiu.generar_respuesta("hola", historial=[]))
+    assert r  # nunca vacío
+    assert "trabó" in r.lower()
+
+
+def test_generar_respuesta_maneja_content_none(monkeypatch):
+    fake = _mock_client(None)  # GLM a veces devuelve content=None
+    with patch("aikiu.groq", fake):
+        r = _run(aikiu.generar_respuesta("hola", historial=[]))
+    assert r  # frase de respaldo, no crash
+
+
+def test_on_error_avisa_al_usuario():
+    upd = MagicMock(); upd.effective_chat.id = 42
+    ctx = MagicMock(); ctx.error = RuntimeError("boom"); ctx.bot.send_message = AsyncMock()
+    _run(aikiu.on_error(upd, ctx))
+    ctx.bot.send_message.assert_awaited_once()
+    assert "cables" in ctx.bot.send_message.await_args.kwargs["text"].lower()
+
+
+# --- P1: historial persistente y podado ---
+
+def test_historial_persiste_y_se_poda(monkeypatch, tmp_path):
+    p = tmp_path / "historial.json"
+    monkeypatch.setattr(aikiu, "_historial_path", lambda cid: p)
+    monkeypatch.setattr(aikiu, "historiales", {})
+    h = aikiu._get_historial(999)
+    h.append({"role": "user", "content": "me gusta el tango"})
+    h.append({"role": "assistant", "content": "a mí también"})
+    aikiu._persistir_historial(999, h)
+    # 'reinicio': la caché en RAM se limpia, se rehidrata de disco
+    aikiu.historiales.clear()
+    h2 = aikiu._get_historial(999)
+    assert h2[-2:] == [
+        {"role": "user", "content": "me gusta el tango"},
+        {"role": "assistant", "content": "a mí también"},
+    ]
+    # poda al máximo
+    for i in range(60):
+        h2.append({"role": "user", "content": str(i)})
+    aikiu._persistir_historial(999, h2)
+    assert len(h2) == aikiu._HISTORIAL_MAX

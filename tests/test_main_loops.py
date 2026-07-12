@@ -185,6 +185,8 @@ class FakeApp:
         self._handlers = []
     def add_handler(self, h):
         self._handlers.append(h)
+    def add_error_handler(self, h):
+        self._error_handler = h
     async def initialize(self): pass
     async def start(self): pass
     async def stop(self): pass

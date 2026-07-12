@@ -110,13 +110,41 @@ def _refrescar_config_desde_disco() -> None:
             except OSError as e:
                 log.warning(f"Hot-reload: no pude releer {path.name}: {e}")
 
+from logging.handlers import RotatingFileHandler
+
+
+class _RedactarToken(logging.Filter):
+    """Reemplaza el token del bot en los logs. El logger de httpx registra
+    cada getUpdates con el token en texto plano — miles de veces. Si se
+    comparten logs (a un inversor, en un issue), el token viajaba adentro."""
+    _re = re.compile(r"(bot)\d{6,}:[\w-]{20,}")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # El token puede estar en msg o en los args (httpx pone la URL en args).
+        if isinstance(record.msg, str):
+            record.msg = self._re.sub(r"\1<REDACTED>", record.msg)
+        if record.args:
+            record.args = tuple(
+                self._re.sub(r"\1<REDACTED>", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+
+# Rotación: aikiu.log llegaba a decenas de MB y crecía sin límite.
+# 5 MB por archivo, 3 backups → tope de ~20 MB.
+_file_handler = RotatingFileHandler(
+    BASE_DIR / "aikiu.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+)
+_redactar = _RedactarToken()
+_file_handler.addFilter(_redactar)
+_stream_handler = logging.StreamHandler()
+_stream_handler.addFilter(_redactar)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(BASE_DIR / "aikiu.log", encoding="utf-8"),
-    ],
+    handlers=[_stream_handler, _file_handler],
 )
 log = logging.getLogger("aikiu")
 
@@ -247,6 +275,14 @@ openrouter = AsyncOpenAI(
 )
 
 
+# Timeout por llamada al LLM de chat. El default del SDK es 10 min: si
+# OpenRouter se cuelga, el adulto esperaría eternamente. 20s es de sobra
+# para una respuesta de 300 tokens y corta rápido ante un hipo del proveedor.
+_LLM_TIMEOUT_S = 20
+# Modelo de respaldo en Groq si OpenRouter falla o tarda (rápido y siempre up).
+_FALLBACK_MODELO = "llama-3.3-70b-versatile"
+
+
 async def _chat_create(**kwargs):
     """
     Punto único de acceso al LLM de chat. Despacha según CONFIG["proveedor_llm"]
@@ -255,11 +291,30 @@ async def _chat_create(**kwargs):
     Con OpenRouter apaga el razonamiento de los modelos que lo traen (GLM-5):
     el "pensamiento" consume el max_tokens (deja content vacío) y agrega una
     latencia que la conversación de voz no tolera.
+
+    Si OpenRouter falla o supera el timeout, cae automáticamente a Groq/Llama
+    para que el adulto reciba SIEMPRE una respuesta. Nunca deja al usuario
+    colgado por un problema del proveedor.
     """
-    if CONFIG.get("proveedor_llm", "groq") == "openrouter":
-        kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
-        return await openrouter.chat.completions.create(**kwargs)
-    return await groq.chat.completions.create(**kwargs)
+    proveedor = CONFIG.get("proveedor_llm", "groq")
+    if proveedor == "openrouter":
+        or_kwargs = dict(kwargs)
+        or_kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
+        try:
+            return await asyncio.wait_for(
+                openrouter.chat.completions.create(**or_kwargs),
+                timeout=_LLM_TIMEOUT_S,
+            )
+        except Exception as e:
+            log.warning(f"OpenRouter falló ({type(e).__name__}: {str(e)[:80]}) → fallback a Groq/{_FALLBACK_MODELO}")
+            groq_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
+            groq_kwargs["model"] = _FALLBACK_MODELO
+            return await asyncio.wait_for(
+                groq.chat.completions.create(**groq_kwargs), timeout=_LLM_TIMEOUT_S
+            )
+    return await asyncio.wait_for(
+        groq.chat.completions.create(**kwargs), timeout=_LLM_TIMEOUT_S
+    )
 
 
 # Referencia fuerte a tasks en background para evitar que el GC los cancele
@@ -449,16 +504,24 @@ async def generar_respuesta(
         ),
     })
 
-    async with usage_mod.timed_chat(modelo) as t:
-        response = await _chat_create(
-            model=modelo,
-            messages=messages,
-            max_tokens=300,
-            temperature=0.7,
-        )
-        t.set_usage(response.usage)
+    try:
+        async with usage_mod.timed_chat(modelo) as t:
+            response = await _chat_create(
+                model=modelo,
+                messages=messages,
+                max_tokens=300,
+                temperature=0.7,
+            )
+            t.set_usage(response.usage)
+        respuesta = (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        log.warning(f"generar_respuesta: el LLM falló ({type(e).__name__}: {str(e)[:80]})")
+        respuesta = ""
 
-    respuesta = response.choices[0].message.content.strip()
+    # Nunca devolver vacío: si el LLM falló o vino sin contenido, una frase
+    # cálida de respaldo. Marta siempre recibe algo, jamás silencio.
+    if not respuesta:
+        respuesta = "Perdoná, se me trabó la palabra por un momento. ¿Me lo contás de nuevo?"
     log.info(f"LLM raw: '{respuesta}'")
     return respuesta
 
@@ -466,7 +529,38 @@ async def generar_respuesta(
 # Estado de conversación e inactividad
 # ---------------------------------------------------------------------------
 
+# Caché en RAM del historial por hogar. Se hidrata de disco la primera vez
+# (ver _get_historial) para que la conversación sobreviva a reinicios.
 historiales: dict[int, list] = {}
+
+# Cuántos mensajes (user+assistant) se conservan. 40 = ~20 turnos. Acota el
+# crecimiento en RAM/disco y el tamaño del prompt.
+_HISTORIAL_MAX = 40
+
+
+def _historial_path(chat_id: Optional[int]) -> Path:
+    if chat_id is None:
+        return BASE_DIR / "historial.json"
+    return hogar_mod.historial_path(chat_id)
+
+
+def _get_historial(chat_id: Optional[int]) -> list:
+    """Devuelve el historial del hogar, hidratándolo de disco la primera vez.
+    Así la conversación no se pierde al reiniciar el bot."""
+    key = chat_id if chat_id is not None else 0
+    if key not in historiales:
+        historiales[key] = load_json(_historial_path(chat_id), default=[]) or []
+    return historiales[key]
+
+
+def _persistir_historial(chat_id: Optional[int], historial: list) -> None:
+    """Poda a los últimos _HISTORIAL_MAX mensajes y escribe a disco."""
+    if len(historial) > _HISTORIAL_MAX:
+        del historial[:-_HISTORIAL_MAX]
+    try:
+        write_json_atomic(_historial_path(chat_id), historial)
+    except OSError as e:
+        log.warning(f"No pude persistir el historial de {chat_id}: {e}")
 
 # Multi-tenant: una última actividad por hogar. El global `_ultima_actividad`
 # se mantiene como espejo del último mensaje recibido entre TODOS los hogares
@@ -557,11 +651,16 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
         f"Criterios (evaluá solo lo que {nombre} dice de su propio estado en este mensaje actual;\n"
         f"un saludo o pregunta neutra es nivel 0 aunque antes haya habido una emergencia):\n"
         f"- 0: saludo, pregunta informativa, charla cotidiana, o cualquier mensaje ambiguo o sin señal\n"
-        f"- 1: dice explícitamente y con palabras claras 'me siento sola', 'estoy triste', 'no pude dormir', que extraña a alguien\n"
-        f"- 2: llora, dice que está muy mal, dolor físico persistente, confusión/desorientación, "
-        f"menciona una caída (aunque haya pasado), dice 'soy una carga'\n"
+        f"- 1: expresa soledad, tristeza, que no durmió o que extraña a alguien; O menciona un "
+        f"golpe, tropezón o dolor físico reciente aunque lo minimice ('me golpeé', 'me pegué', "
+        f"'me duele un poco') — la familia debe enterarse aunque {nombre} le reste importancia\n"
+        f"- 2: llora, dice que está muy mal, dolor físico que PERSISTE, se repite o empeora "
+        f"('me sigue doliendo', 'cada vez peor'), confusión/desorientación, menciona una CAÍDA "
+        f"(aunque haya pasado), dice 'soy una carga'\n"
         f"- 3: emergencia activa ahora: no puede moverse, dolor de pecho, no puede respirar, pide ayuda urgente\n"
-        f"Sé conservador: ante la duda entre dos niveles, elegí el más bajo."
+        f"El dolor o daño físico se clasifica como FÍSICO, no como 'malestar anímico'. "
+        f"Ante la duda entre dos niveles, elegí el más bajo — salvo que haya un golpe, caída "
+        f"o dolor, donde conviene el más alto (mejor avisar de más que de menos ante lo físico)."
     )
 
 
@@ -1552,6 +1651,22 @@ async def cmd_cancelar_onboarding(update: Update, context: ContextTypes.DEFAULT_
     )
     return ConversationHandler.END
 
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Error handler global. Ante cualquier excepción no atrapada en un handler,
+    lo registra y le manda al adulto una frase cálida en vez de dejarlo en
+    silencio. El silencio mata la confianza más que una respuesta imperfecta."""
+    log.error("Excepción no atrapada en un handler", exc_info=context.error)
+    try:
+        chat_id = getattr(getattr(update, "effective_chat", None), "id", None)
+        if chat_id is not None:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Uy, se me cruzaron los cables un segundo. ¿Me lo repetís?",
+            )
+    except Exception as e:
+        log.warning(f"on_error no pudo avisar al usuario: {e}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if not chat_id_autorizado(chat_id):
@@ -1584,7 +1699,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # angustia) NO va acá — corría en paralelo pero las dos llamadas a
     # OpenRouter se peleaban y sumaban ~12s. Ahora el vigía corre en background
     # después de responder, así el usuario espera solo una llamada.
-    historial = historiales.setdefault(chat_id, [])
+    historial = _get_historial(chat_id)
     raw = await generar_respuesta(texto, historial, chat_id=chat_id)
     # parse_llm_response limpia cualquier línea DISTRESS residual que el
     # conversador pudiera emitir (el nivel real lo pone el vigía en background).
@@ -1593,6 +1708,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
+    _persistir_historial(chat_id, historial)  # sobrevive a reinicios, podado
 
     if is_voice:
         await responder_con_voz(context, chat_id, respuesta)
@@ -1915,6 +2031,7 @@ async def main():
     app.add_handler(onboarding_conv)
     app.add_handler(CommandHandler("invitar", cmd_invitar))
     app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
+    app.add_error_handler(on_error)
 
     async with app:
         # post_init equivalente — en el patrón async-with, PTB no llama post_init automáticamente

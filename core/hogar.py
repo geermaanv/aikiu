@@ -218,6 +218,10 @@ def familiares_path(chat_id: int | str) -> Path:
     return hogar_dir(chat_id) / FAMILIARES_FILENAME
 
 
+def historial_path(chat_id: int | str) -> Path:
+    return hogar_dir(chat_id) / "historial.json"
+
+
 def logs_dir(chat_id: int | str) -> Path:
     return hogar_dir(chat_id) / LOGS_DIRNAME
 

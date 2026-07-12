@@ -166,10 +166,12 @@ def test_distress_instruccion_evalua_solo_mensaje_actual():
     assert "último mensaje" in prompt.lower() or "mensaje actual" in prompt.lower()
 
 def test_distress_nivel1_requiere_palabras_explicitas():
-    """Nivel 1 debe requerir expresión emocional explícita, no inferida."""
-    prompt = prompt_vigia()
-    assert "explícit" in prompt.lower() or "clara" in prompt.lower()
-    assert "me siento sola" in prompt.lower() or "estoy triste" in prompt.lower()
+    """Nivel 1 cubre malestar emocional Y golpes/dolor físico reciente aunque
+    la usuaria lo minimice (calibración tras el beta — antes quedaban en 0)."""
+    prompt = prompt_vigia().lower()
+    assert "soledad" in prompt or "triste" in prompt      # emocional
+    assert "golpe" in prompt or "dolor físico reciente" in prompt  # físico minimizado
+    assert "minimice" in prompt or "reste importancia" in prompt
 
 def test_distress_criterio_conservador():
     """El prompt del vigía debe instruir a ser conservador ante la duda."""

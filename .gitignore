@@ -32,3 +32,5 @@ andromarta/data/*
 # Multi-tenant: datos por hogar (un directorio por adulto registrado)
 instances/
 
+historial.json
+*.log.*
