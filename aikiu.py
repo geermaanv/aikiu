@@ -110,13 +110,41 @@ def _refrescar_config_desde_disco() -> None:
             except OSError as e:
                 log.warning(f"Hot-reload: no pude releer {path.name}: {e}")
 
+from logging.handlers import RotatingFileHandler
+
+
+class _RedactarToken(logging.Filter):
+    """Reemplaza el token del bot en los logs. El logger de httpx registra
+    cada getUpdates con el token en texto plano — miles de veces. Si se
+    comparten logs (a un inversor, en un issue), el token viajaba adentro."""
+    _re = re.compile(r"(bot)\d{6,}:[\w-]{20,}")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # El token puede estar en msg o en los args (httpx pone la URL en args).
+        if isinstance(record.msg, str):
+            record.msg = self._re.sub(r"\1<REDACTED>", record.msg)
+        if record.args:
+            record.args = tuple(
+                self._re.sub(r"\1<REDACTED>", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+
+# Rotación: aikiu.log llegaba a decenas de MB y crecía sin límite.
+# 5 MB por archivo, 3 backups → tope de ~20 MB.
+_file_handler = RotatingFileHandler(
+    BASE_DIR / "aikiu.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+)
+_redactar = _RedactarToken()
+_file_handler.addFilter(_redactar)
+_stream_handler = logging.StreamHandler()
+_stream_handler.addFilter(_redactar)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(BASE_DIR / "aikiu.log", encoding="utf-8"),
-    ],
+    handlers=[_stream_handler, _file_handler],
 )
 log = logging.getLogger("aikiu")
 
@@ -623,11 +651,16 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
         f"Criterios (evaluá solo lo que {nombre} dice de su propio estado en este mensaje actual;\n"
         f"un saludo o pregunta neutra es nivel 0 aunque antes haya habido una emergencia):\n"
         f"- 0: saludo, pregunta informativa, charla cotidiana, o cualquier mensaje ambiguo o sin señal\n"
-        f"- 1: dice explícitamente y con palabras claras 'me siento sola', 'estoy triste', 'no pude dormir', que extraña a alguien\n"
-        f"- 2: llora, dice que está muy mal, dolor físico persistente, confusión/desorientación, "
-        f"menciona una caída (aunque haya pasado), dice 'soy una carga'\n"
+        f"- 1: expresa soledad, tristeza, que no durmió o que extraña a alguien; O menciona un "
+        f"golpe, tropezón o dolor físico reciente aunque lo minimice ('me golpeé', 'me pegué', "
+        f"'me duele un poco') — la familia debe enterarse aunque {nombre} le reste importancia\n"
+        f"- 2: llora, dice que está muy mal, dolor físico que PERSISTE, se repite o empeora "
+        f"('me sigue doliendo', 'cada vez peor'), confusión/desorientación, menciona una CAÍDA "
+        f"(aunque haya pasado), dice 'soy una carga'\n"
         f"- 3: emergencia activa ahora: no puede moverse, dolor de pecho, no puede respirar, pide ayuda urgente\n"
-        f"Sé conservador: ante la duda entre dos niveles, elegí el más bajo."
+        f"El dolor o daño físico se clasifica como FÍSICO, no como 'malestar anímico'. "
+        f"Ante la duda entre dos niveles, elegí el más bajo — salvo que haya un golpe, caída "
+        f"o dolor, donde conviene el más alto (mejor avisar de más que de menos ante lo físico)."
     )
 
 
