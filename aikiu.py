@@ -501,7 +501,38 @@ async def generar_respuesta(
 # Estado de conversación e inactividad
 # ---------------------------------------------------------------------------
 
+# Caché en RAM del historial por hogar. Se hidrata de disco la primera vez
+# (ver _get_historial) para que la conversación sobreviva a reinicios.
 historiales: dict[int, list] = {}
+
+# Cuántos mensajes (user+assistant) se conservan. 40 = ~20 turnos. Acota el
+# crecimiento en RAM/disco y el tamaño del prompt.
+_HISTORIAL_MAX = 40
+
+
+def _historial_path(chat_id: Optional[int]) -> Path:
+    if chat_id is None:
+        return BASE_DIR / "historial.json"
+    return hogar_mod.historial_path(chat_id)
+
+
+def _get_historial(chat_id: Optional[int]) -> list:
+    """Devuelve el historial del hogar, hidratándolo de disco la primera vez.
+    Así la conversación no se pierde al reiniciar el bot."""
+    key = chat_id if chat_id is not None else 0
+    if key not in historiales:
+        historiales[key] = load_json(_historial_path(chat_id), default=[]) or []
+    return historiales[key]
+
+
+def _persistir_historial(chat_id: Optional[int], historial: list) -> None:
+    """Poda a los últimos _HISTORIAL_MAX mensajes y escribe a disco."""
+    if len(historial) > _HISTORIAL_MAX:
+        del historial[:-_HISTORIAL_MAX]
+    try:
+        write_json_atomic(_historial_path(chat_id), historial)
+    except OSError as e:
+        log.warning(f"No pude persistir el historial de {chat_id}: {e}")
 
 # Multi-tenant: una última actividad por hogar. El global `_ultima_actividad`
 # se mantiene como espejo del último mensaje recibido entre TODOS los hogares
@@ -1635,7 +1666,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # angustia) NO va acá — corría en paralelo pero las dos llamadas a
     # OpenRouter se peleaban y sumaban ~12s. Ahora el vigía corre en background
     # después de responder, así el usuario espera solo una llamada.
-    historial = historiales.setdefault(chat_id, [])
+    historial = _get_historial(chat_id)
     raw = await generar_respuesta(texto, historial, chat_id=chat_id)
     # parse_llm_response limpia cualquier línea DISTRESS residual que el
     # conversador pudiera emitir (el nivel real lo pone el vigía en background).
@@ -1644,6 +1675,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     historial.append({"role": "user",      "content": texto})
     historial.append({"role": "assistant", "content": respuesta})
+    _persistir_historial(chat_id, historial)  # sobrevive a reinicios, podado
 
     if is_voice:
         await responder_con_voz(context, chat_id, respuesta)

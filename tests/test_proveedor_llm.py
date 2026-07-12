@@ -109,3 +109,27 @@ def test_on_error_avisa_al_usuario():
     _run(aikiu.on_error(upd, ctx))
     ctx.bot.send_message.assert_awaited_once()
     assert "cables" in ctx.bot.send_message.await_args.kwargs["text"].lower()
+
+
+# --- P1: historial persistente y podado ---
+
+def test_historial_persiste_y_se_poda(monkeypatch, tmp_path):
+    p = tmp_path / "historial.json"
+    monkeypatch.setattr(aikiu, "_historial_path", lambda cid: p)
+    monkeypatch.setattr(aikiu, "historiales", {})
+    h = aikiu._get_historial(999)
+    h.append({"role": "user", "content": "me gusta el tango"})
+    h.append({"role": "assistant", "content": "a mí también"})
+    aikiu._persistir_historial(999, h)
+    # 'reinicio': la caché en RAM se limpia, se rehidrata de disco
+    aikiu.historiales.clear()
+    h2 = aikiu._get_historial(999)
+    assert h2[-2:] == [
+        {"role": "user", "content": "me gusta el tango"},
+        {"role": "assistant", "content": "a mí también"},
+    ]
+    # poda al máximo
+    for i in range(60):
+        h2.append({"role": "user", "content": str(i)})
+    aikiu._persistir_historial(999, h2)
+    assert len(h2) == aikiu._HISTORIAL_MAX
