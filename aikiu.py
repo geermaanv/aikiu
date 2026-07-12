@@ -247,6 +247,14 @@ openrouter = AsyncOpenAI(
 )
 
 
+# Timeout por llamada al LLM de chat. El default del SDK es 10 min: si
+# OpenRouter se cuelga, el adulto esperaría eternamente. 20s es de sobra
+# para una respuesta de 300 tokens y corta rápido ante un hipo del proveedor.
+_LLM_TIMEOUT_S = 20
+# Modelo de respaldo en Groq si OpenRouter falla o tarda (rápido y siempre up).
+_FALLBACK_MODELO = "llama-3.3-70b-versatile"
+
+
 async def _chat_create(**kwargs):
     """
     Punto único de acceso al LLM de chat. Despacha según CONFIG["proveedor_llm"]
@@ -255,11 +263,30 @@ async def _chat_create(**kwargs):
     Con OpenRouter apaga el razonamiento de los modelos que lo traen (GLM-5):
     el "pensamiento" consume el max_tokens (deja content vacío) y agrega una
     latencia que la conversación de voz no tolera.
+
+    Si OpenRouter falla o supera el timeout, cae automáticamente a Groq/Llama
+    para que el adulto reciba SIEMPRE una respuesta. Nunca deja al usuario
+    colgado por un problema del proveedor.
     """
-    if CONFIG.get("proveedor_llm", "groq") == "openrouter":
-        kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
-        return await openrouter.chat.completions.create(**kwargs)
-    return await groq.chat.completions.create(**kwargs)
+    proveedor = CONFIG.get("proveedor_llm", "groq")
+    if proveedor == "openrouter":
+        or_kwargs = dict(kwargs)
+        or_kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
+        try:
+            return await asyncio.wait_for(
+                openrouter.chat.completions.create(**or_kwargs),
+                timeout=_LLM_TIMEOUT_S,
+            )
+        except Exception as e:
+            log.warning(f"OpenRouter falló ({type(e).__name__}: {str(e)[:80]}) → fallback a Groq/{_FALLBACK_MODELO}")
+            groq_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
+            groq_kwargs["model"] = _FALLBACK_MODELO
+            return await asyncio.wait_for(
+                groq.chat.completions.create(**groq_kwargs), timeout=_LLM_TIMEOUT_S
+            )
+    return await asyncio.wait_for(
+        groq.chat.completions.create(**kwargs), timeout=_LLM_TIMEOUT_S
+    )
 
 
 # Referencia fuerte a tasks en background para evitar que el GC los cancele
@@ -449,16 +476,24 @@ async def generar_respuesta(
         ),
     })
 
-    async with usage_mod.timed_chat(modelo) as t:
-        response = await _chat_create(
-            model=modelo,
-            messages=messages,
-            max_tokens=300,
-            temperature=0.7,
-        )
-        t.set_usage(response.usage)
+    try:
+        async with usage_mod.timed_chat(modelo) as t:
+            response = await _chat_create(
+                model=modelo,
+                messages=messages,
+                max_tokens=300,
+                temperature=0.7,
+            )
+            t.set_usage(response.usage)
+        respuesta = (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        log.warning(f"generar_respuesta: el LLM falló ({type(e).__name__}: {str(e)[:80]})")
+        respuesta = ""
 
-    respuesta = response.choices[0].message.content.strip()
+    # Nunca devolver vacío: si el LLM falló o vino sin contenido, una frase
+    # cálida de respaldo. Marta siempre recibe algo, jamás silencio.
+    if not respuesta:
+        respuesta = "Perdoná, se me trabó la palabra por un momento. ¿Me lo contás de nuevo?"
     log.info(f"LLM raw: '{respuesta}'")
     return respuesta
 
@@ -1552,6 +1587,22 @@ async def cmd_cancelar_onboarding(update: Update, context: ContextTypes.DEFAULT_
     )
     return ConversationHandler.END
 
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Error handler global. Ante cualquier excepción no atrapada en un handler,
+    lo registra y le manda al adulto una frase cálida en vez de dejarlo en
+    silencio. El silencio mata la confianza más que una respuesta imperfecta."""
+    log.error("Excepción no atrapada en un handler", exc_info=context.error)
+    try:
+        chat_id = getattr(getattr(update, "effective_chat", None), "id", None)
+        if chat_id is not None:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Uy, se me cruzaron los cables un segundo. ¿Me lo repetís?",
+            )
+    except Exception as e:
+        log.warning(f"on_error no pudo avisar al usuario: {e}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if not chat_id_autorizado(chat_id):
@@ -1915,6 +1966,7 @@ async def main():
     app.add_handler(onboarding_conv)
     app.add_handler(CommandHandler("invitar", cmd_invitar))
     app.add_handler(MessageHandler(filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle_message))
+    app.add_error_handler(on_error)
 
     async with app:
         # post_init equivalente — en el patrón async-with, PTB no llama post_init automáticamente

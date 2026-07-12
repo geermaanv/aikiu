@@ -73,3 +73,39 @@ def test_generar_respuesta_usa_openrouter(monkeypatch):
     assert texto.startswith("Hola Marta")
     fake_or.chat.completions.create.assert_awaited()
     fake_groq.chat.completions.create.assert_not_awaited()
+
+
+# --- P0: resiliencia (nunca dejar al usuario colgado) ---
+
+def test_chat_create_fallback_a_groq_si_openrouter_falla(monkeypatch):
+    monkeypatch.setitem(aikiu.CONFIG, "proveedor_llm", "openrouter")
+    fake_or = MagicMock()
+    fake_or.chat.completions.create = AsyncMock(side_effect=RuntimeError("OR down"))
+    fake_groq = _mock_client("resp groq")
+    with patch("aikiu.openrouter", fake_or), patch("aikiu.groq", fake_groq):
+        r = _run(aikiu._chat_create(model="z-ai/glm-5", messages=[], max_tokens=10))
+    assert r.choices[0].message.content == "resp groq"
+    # cayó al modelo de respaldo de Groq
+    assert fake_groq.chat.completions.create.await_args.kwargs["model"] == "llama-3.3-70b-versatile"
+
+
+def test_generar_respuesta_nunca_vacia_si_llm_falla(monkeypatch):
+    with patch.object(aikiu, "_chat_create", AsyncMock(side_effect=RuntimeError("todo mal"))):
+        r = _run(aikiu.generar_respuesta("hola", historial=[]))
+    assert r  # nunca vacío
+    assert "trabó" in r.lower()
+
+
+def test_generar_respuesta_maneja_content_none(monkeypatch):
+    fake = _mock_client(None)  # GLM a veces devuelve content=None
+    with patch("aikiu.groq", fake):
+        r = _run(aikiu.generar_respuesta("hola", historial=[]))
+    assert r  # frase de respaldo, no crash
+
+
+def test_on_error_avisa_al_usuario():
+    upd = MagicMock(); upd.effective_chat.id = 42
+    ctx = MagicMock(); ctx.error = RuntimeError("boom"); ctx.bot.send_message = AsyncMock()
+    _run(aikiu.on_error(upd, ctx))
+    ctx.bot.send_message.assert_awaited_once()
+    assert "cables" in ctx.bot.send_message.await_args.kwargs["text"].lower()
