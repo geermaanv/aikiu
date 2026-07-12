@@ -15,12 +15,37 @@ inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
 - Cuenta solo lo iniciado por ella (no las respuestas al saludo matutino).
 - No se despliega con la usuaria real hasta lograr un funcionamiento natural
   (validado en simulador y/o beta) — la primera impresión no se repite.
-- Fase actual de modelo: **GLM-5** (`z-ai/glm-5` vía OpenRouter, razonamiento
-  apagado). El bot de producción sigue en Groq/Llama hasta validar en simulador.
+- **Modelo en producción: GLM-5** (`z-ai/glm-5` vía OpenRouter, razonamiento
+  apagado). Ya migrado en `aikiu.py` (no solo simulador). Groq queda para la
+  transcripción de voz (Whisper).
 - La periferia (multi-tenant, admin, website, inversores) queda congelada
   hasta que la métrica norte muestre retención real.
 - Circuito de conocimiento (KB gerontológica → perfil): **manual**, sin
   automatizar mientras se está aprendiendo qué funciona.
+
+### Estado tras el primer beta real (11/07/2026)
+
+El bot corre en Telegram real con un usuario (Germán como tester). Andando
+end-to-end: onboarding, conversación GLM-5, detección de angustia con alerta
+a la familia. Cambios de arquitectura del día:
+
+- **Nombre Aikiu** (era Clara).
+- **Agente vigía**: la detección de angustia (DISTRESS) se separó del
+  conversador en una llamada LLM propia (`clasificar_distress`). El
+  conversador solo conversa. Resolvió la omisión del ~65% del DISTRESS.
+- **Vigía en background**: corre DESPUÉS de responder (no en el camino de la
+  respuesta), para no sumar latencia. La alerta a la familia llega un par de
+  segundos después de la respuesta.
+- **Núcleo podado**: `aikiu_core.md` de 92 → 76 reglas (dedup validado).
+- **Género configurable por hogar** (`genero` en state, inferido del nombre).
+- **Hot-reload** de perfil.md / aikiu_core.md.
+
+Bugs del beta arreglados: nombre del onboarding, alerta bloqueada por crash
+de stats, latencia (~12s → ~3s por contención de llamadas concurrentes).
+
+Pendientes anotados (nada urgente): calibración del vigía (un poco cauto),
+pulido de la pregunta de cierre ante síntoma físico, A/B de modelo más
+rápido, `/setname` en BotFather (aún dice "Aikiu - Clara").
 
 ---
 
@@ -28,7 +53,7 @@ inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
 
 ### Conversación
 - Recibe mensajes de voz y los transcribe (Groq Whisper large-v3)
-- Genera respuestas con LLM (Groq llama-3.3-70b-versatile)
+- Genera respuestas con LLM (GLM-5 vía OpenRouter; ver nota de estado arriba)
 - Responde con audio de voz (edge-tts + ffmpeg, voz argentina femenina)
 - También acepta texto plano — responde en el mismo medio (texto → texto, voz → voz)
 - Mantiene historial de conversación durante la sesión (últimos 10 mensajes)
