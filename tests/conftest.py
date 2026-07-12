@@ -26,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 _DUMMIES = {
     "BOT_TOKEN":             "0:dummy_bot_token_para_tests",
     "GROQ_API_KEY":          "gsk_dummy_para_tests",
+    "OPENROUTER_API_KEY":    "sk-or-dummy_para_tests",
     "FAMILIAR_BOT_TOKEN":    "0:dummy_familiar_token",
     "ADMIN_BOT_TOKEN":       "0:dummy_admin_token",
     "ANDROMARTA_API_ID":     "12345",

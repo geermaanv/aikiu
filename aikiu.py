@@ -237,8 +237,12 @@ groq = AsyncGroq(api_key=CONFIG["groq_api_key"])
 # Cliente OpenRouter (OpenAI-compatible): LLM de chat cuando
 # proveedor_llm == "openrouter". La key puede faltar si el proveedor es groq;
 # main() valida la combinación al arranque.
+# Placeholder si falta la key: el SDK de OpenAI lanza al construir con key
+# vacía, y eso rompía el import en CI (donde no hay OPENROUTER_API_KEY). Con
+# proveedor openrouter, main() valida la key real al arrancar; en tests las
+# llamadas están mockeadas, así que el cliente nunca hace un request real.
 openrouter = AsyncOpenAI(
-    api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+    api_key=os.environ.get("OPENROUTER_API_KEY") or "sk-or-placeholder",
     base_url="https://openrouter.ai/api/v1",
 )
 
