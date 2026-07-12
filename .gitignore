@@ -33,3 +33,4 @@ andromarta/data/*
 instances/
 
 historial.json
+*.log.*
