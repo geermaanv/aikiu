@@ -823,8 +823,10 @@ def test_programar_recordatorios_saludo_off(monkeypatch):
     monkeypatch.setattr(aikiu, "CONFIG", cfg)
     aikiu.programar_recordatorios(scheduler, MagicMock())
     jobs = scheduler.get_jobs()
-    # Solo el análisis nocturno
-    assert len(jobs) == 1
+    # Con saludo/recordatorios/inactividad off, quedan los jobs de madrugada:
+    # análisis nocturno + contexto del día (Google News + dólar + clima).
+    nombres = sorted(j.name for j in jobs)
+    assert nombres == ["actualizar_contexto_del_dia", "analisis_nocturno"]
 
 
 def test_programar_recordatorios_sin_saludo_diario(monkeypatch):

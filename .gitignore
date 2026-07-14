@@ -34,3 +34,5 @@ instances/
 
 historial.json
 *.log.*
+contexto_dia.json
+contexto_dia_local.json
