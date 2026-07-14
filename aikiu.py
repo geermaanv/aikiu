@@ -238,6 +238,15 @@ def _voz_tts_de(chat_id: Optional[int]) -> str:
     return _config_hogar(chat_id).get("voz_tts", "es-AR-ElenaNeural")
 
 
+def _medio_de(chat_id: Optional[int]) -> str:
+    """Medio preferido del hogar: 'texto' o 'voz'. Default 'texto' mientras
+    iteramos la conversación (la voz de edge-tts suena metálica). Editable en
+    config.yml (global) o en el state del hogar."""
+    if chat_id is None:
+        return CONFIG.get("medio", "texto")
+    return _config_hogar(chat_id).get("medio", "texto")
+
+
 def _asegurar_hogar(chat_id: int, *, nombre_tg: Optional[str] = None) -> bool:
     """
     Crea `instances/<chat_id>/` si no existe. Devuelve True si era nuevo.
@@ -650,10 +659,14 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
         f"MOTIVO: (frase corta que le sirva a la familia, ej: 'mencionó una caída y dolor de cadera')\n\n"
         f"Criterios (evaluá solo lo que {nombre} dice de su propio estado en este mensaje actual;\n"
         f"un saludo o pregunta neutra es nivel 0 aunque antes haya habido una emergencia):\n"
-        f"- 0: saludo, pregunta informativa, charla cotidiana, o cualquier mensaje ambiguo o sin señal\n"
-        f"- 1: expresa soledad, tristeza, que no durmió o que extraña a alguien; O menciona un "
-        f"golpe, tropezón o dolor físico reciente aunque lo minimice ('me golpeé', 'me pegué', "
-        f"'me duele un poco') — la familia debe enterarse aunque {nombre} le reste importancia\n"
+        f"- 0: saludo, pregunta informativa, charla cotidiana, o cualquier mensaje ambiguo o sin señal. "
+        f"OJO: hacer o planear una actividad en soledad ('voy a ver el partido solo', 'cené sola', "
+        f"'paso la tarde tranquilo en casa') NO es angustia — es un hecho cotidiano, es nivel 0. "
+        f"Solo cuenta como señal si {nombre} EXPRESA que ESO le pesa o lo entristece.\n"
+        f"- 1: expresa SENTIRSE solo/triste o que algo le pesa emocionalmente ('me siento muy solo', "
+        f"'estoy triste', 'extraño a alguien', 'no pude dormir') — un sentimiento, no un dato; O "
+        f"menciona un golpe, tropezón o dolor físico reciente aunque lo minimice ('me golpeé', "
+        f"'me pegué', 'me duele un poco') — la familia debe enterarse aunque {nombre} le reste importancia\n"
         f"- 2: llora, dice que está muy mal, dolor físico que PERSISTE, se repite o empeora "
         f"('me sigue doliendo', 'cada vez peor'), confusión/desorientación, menciona una CAÍDA "
         f"(aunque haya pasado), dice 'soy una carga'\n"
@@ -1710,7 +1723,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     historial.append({"role": "assistant", "content": respuesta})
     _persistir_historial(chat_id, historial)  # sobrevive a reinicios, podado
 
-    if is_voice:
+    # Responde en voz solo si el hogar prefiere voz Y el mensaje entró por voz.
+    # Con preferencia 'texto' (default mientras iteramos), siempre texto —
+    # aunque le hablen — para esquivar el TTS metálico de edge-tts.
+    if is_voice and _medio_de(chat_id) == "voz":
         await responder_con_voz(context, chat_id, respuesta)
     else:
         await context.bot.send_message(chat_id=chat_id, text=respuesta)
@@ -1786,6 +1802,14 @@ async def enviar_mensaje_voz(
         if chat_id is None:
             log.warning(f"Proactivo NO enviado (sin adulto registrado): '{texto}'")
             return
+
+    # Texto-primero: mientras iteramos la calidad conversacional, los mensajes
+    # proactivos van en texto salvo que el hogar pida voz explícitamente. La
+    # voz de edge-tts suena metálica; se retoma cuando haya un TTS mejor.
+    if _medio_de(chat_id) == "texto":
+        await app.bot.send_message(chat_id=chat_id, text=texto)
+        log.info(f"Proactivo (texto) enviado a chat_id={chat_id}: '{texto}'")
+        return
 
     with tempfile.TemporaryDirectory() as tmp:
         ogg = Path(tmp) / "proactivo.ogg"

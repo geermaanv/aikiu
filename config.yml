@@ -24,7 +24,13 @@ ciudad: ""
 # Archivo markdown con el perfil completo de la persona y las instrucciones de comportamiento
 perfil: "perfil.md"
 
-# --- Voz TTS ---
+# --- Medio de comunicación ---
+# "texto" (default) o "voz". Mientras iteramos la calidad conversacional,
+# todo va en texto (la voz de edge-tts suena metálica). Cambiar a "voz"
+# cuando haya un TTS mejor o para un adulto que prefiera audio.
+medio: "texto"
+
+# --- Voz TTS (solo si medio: "voz") ---
 # Opciones en español: es-AR-ElenaNeural, es-AR-TomasNeural, es-ES-ElviraNeural
 voz_tts: "es-AR-ElenaNeural"
 

@@ -499,8 +499,9 @@ def _setup_dos_hogares_con_overrides():
 
 def test_e2e_recordatorio_proactivo_fanout_a_todos_los_hogares(monkeypatch):
     """`enviar_mensaje_voz(app, "texto")` (sin chat_id) llega a los 2 hogares,
-    cada uno con su voz_tts propia."""
+    cada uno con su voz_tts propia. Requiere medio 'voz' (el default es texto)."""
     _setup_dos_hogares_con_overrides()
+    monkeypatch.setitem(aikiu.CONFIG, "medio", "voz")
 
     voces_usadas = []
     async def fake_sintetizar(texto, ogg, voz):
