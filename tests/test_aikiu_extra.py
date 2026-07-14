@@ -360,7 +360,7 @@ def test_handle_message_voz_responde_voz(monkeypatch):
     monkeypatch.setattr(aikiu, "historiales", {})
     monkeypatch.setattr(aikiu, "CONFIG",
                         {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
-                         "_perfil": "", "modelo_llm": "m"})
+                         "_perfil": "", "modelo_llm": "m", "medio": "voz"})
     monkeypatch.setattr(aikiu, "transcribir", AsyncMock(return_value="hola en voz"))
     monkeypatch.setattr(aikiu, "generar_respuesta",
                         AsyncMock(return_value="Buenas Marta\nDISTRESS_LEVEL: 0"))
@@ -481,7 +481,7 @@ def test_enviar_mensaje_voz_con_owner(monkeypatch):
     async def fake_sintetizar(texto, salida, voz):
         salida.write_bytes(b"x")
     monkeypatch.setattr(aikiu, "sintetizar", fake_sintetizar)
-    monkeypatch.setattr(aikiu, "CONFIG", {"voz_tts": "es-AR"})
+    monkeypatch.setattr(aikiu, "CONFIG", {"voz_tts": "es-AR", "medio": "voz"})
     run(aikiu.enviar_mensaje_voz(app, "feliz cumpleaños"))
     app.bot.send_voice.assert_awaited_once()
 

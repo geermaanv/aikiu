@@ -14,6 +14,7 @@ def run(coro):
 def _mock_app(chat_id="123"):
     app = MagicMock()
     app.bot.send_voice = AsyncMock()
+    app.bot.send_message = AsyncMock()  # medio 'texto' (default) → saludo por texto
     return app
 
 
@@ -53,18 +54,14 @@ _CONFIG_BASE = {
 }
 
 def _run_saludo(clima_mock, feriado_mock=""):
-    """Helper: corre saludo_matutino con clima y feriado mockeados, devuelve el texto."""
-    textos = []
-    async def capturar(texto, salida, voz):
-        textos.append(texto)
-        salida.touch()
+    """Helper: corre saludo_matutino con clima y feriado mockeados, devuelve el
+    texto. Con medio 'texto' (default) el saludo sale por send_message."""
+    app = _mock_app()
     with patch("aikiu.consultar_clima", new=AsyncMock(return_value=clima_mock)), \
          patch("aikiu.consultar_feriado", new=AsyncMock(return_value=feriado_mock)), \
-         patch("aikiu.CONFIG", _CONFIG_BASE), \
-         patch("aikiu.sintetizar", side_effect=capturar), \
-         patch("builtins.open", MagicMock()):
-        run(__import__("aikiu").saludo_matutino(_mock_app()))
-    return textos[0] if textos else ""
+         patch("aikiu.CONFIG", _CONFIG_BASE):
+        run(__import__("aikiu").saludo_matutino(app))
+    return app.bot.send_message.await_args.kwargs["text"] if app.bot.send_message.await_args else ""
 
 
 def test_saludo_incluye_temperatura_cuando_clima_ok():
@@ -75,17 +72,12 @@ def test_saludo_incluye_temperatura_cuando_clima_ok():
     assert "Aikiu" in saludo
 
 def test_saludo_sin_clima_usa_fallback():
-    textos = []
-    async def capturar(texto, salida, voz):
-        textos.append(texto)
-        salida.touch()
+    app = _mock_app()
     with patch("aikiu.consultar_clima", new=AsyncMock(side_effect=Exception("timeout"))), \
          patch("aikiu.consultar_feriado", new=AsyncMock(return_value="")), \
-         patch("aikiu.CONFIG", _CONFIG_BASE), \
-         patch("aikiu.sintetizar", side_effect=capturar), \
-         patch("builtins.open", MagicMock()):
-        run(__import__("aikiu").saludo_matutino(_mock_app()))
-    saludo = textos[0]
+         patch("aikiu.CONFIG", _CONFIG_BASE):
+        run(__import__("aikiu").saludo_matutino(app))
+    saludo = app.bot.send_message.await_args.kwargs["text"]
     assert "Marta" in saludo
     assert "Hola" in saludo
     assert "Hoy es" in saludo
