@@ -4,8 +4,11 @@ Usadas con tool calling nativo de Groq (formato OpenAI).
 """
 
 import json
+import logging
 import re
 import httpx
+
+log = logging.getLogger("aikiu")
 
 TOOLS = [
     {
@@ -125,6 +128,36 @@ async def consultar_noticias(tema: str = "") -> str:
         return "Noticias de hoy: " + ". ".join(headlines[:4]) + "."
     except Exception as e:
         return f"No pude obtener las noticias en este momento: {e}"
+
+
+async def titulares_google_news(query: str = "", max_titulares: int = 25) -> list[str]:
+    """Titulares del día desde Google News (Argentina, español). RSS gratis,
+    sin API key. Sin query → top titulares generales. Con query → búsqueda por
+    tema o ciudad (para temas locales). Devuelve titulares crudos (sin curar).
+    Se usa en el job nocturno que arma la lista de temas del día."""
+    if query:
+        from urllib.parse import quote
+        url = f"https://news.google.com/rss/search?q={quote(query)}&hl=es-419&gl=AR&ceid=AR:es-419"
+    else:
+        url = "https://news.google.com/rss?hl=es-419&gl=AR&ceid=AR:es-419"
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+        # En Google News RSS los títulos vienen en texto plano; el primero es
+        # el nombre del feed ("Google Noticias"), se descarta.
+        titulos = re.findall(r"<title>(.*?)</title>", r.text)[1:]
+        limpios = []
+        for t in titulos:
+            t = t.replace("&#39;", "'").replace("&amp;", "&").replace("&quot;", '"').strip()
+            # Google News agrega " - Medio" al final; nos quedamos con el titular.
+            t = re.sub(r"\s+-\s+[^-]+$", "", t).strip()
+            if t:
+                limpios.append(t)
+        return limpios[:max_titulares]
+    except Exception as e:
+        log.warning(f"titulares_google_news falló: {e}")
+        return []
 
 
 async def ejecutar_tool(name: str, args: dict) -> str:

@@ -27,7 +27,7 @@ from core.distress import (
 )
 from core.alerts import notify_family, notify_inactividad
 from core.tts import sintetizar
-from core.tools import consultar_clima, consultar_dolar, consultar_noticias
+from core.tools import consultar_clima, consultar_dolar, consultar_noticias, titulares_google_news
 from core import state as state_mod
 from core import heartbeat as hb_mod
 from core import usage as usage_mod
@@ -485,6 +485,18 @@ async def generar_respuesta(
                        f"{', '.join(preferidos_filtrados[:3])}.",
         })
 
+    # Contexto del día (actualidad curada de madrugada + dólar + clima). Sirve
+    # para responder si pregunta Y para traer temas a la charla por iniciativa.
+    contexto = _texto_contexto_del_dia(chat_id)
+    if contexto:
+        messages.append({
+            "role": "system",
+            "content": (
+                f"Contexto de actualidad de hoy que conocés (usalo si {nombre} pregunta, "
+                f"o para traer un tema liviano si la charla se frena — sin forzar):\n{contexto}"
+            ),
+        })
+
     messages.append({"role": "user", "content": texto_usuario})
 
     # Género: el núcleo está redactado en femenino (la base tiende a mujeres
@@ -837,6 +849,103 @@ def _temas_preferidos(chat_id: Optional[int] = None) -> list[str]:
         if ranking:
             return ranking[:5]
     return []
+
+
+# ---------------------------------------------------------------------------
+# Contexto del día (actualidad curada + dólar + clima)
+# ---------------------------------------------------------------------------
+# Un job de madrugada lee Google News, y un LLM cura la lista dejando SOLO
+# temas livianos y conversables (deportes, cultura, efemérides, color local),
+# filtrando lo angustiante (guerras, tragedias, crímenes, política dura). El
+# escudo se aplica una sola vez, acá, sobre la lista del día — no mensaje por
+# mensaje. Los temas sirven para responder si el adulto pregunta Y para traer
+# actualidad a la charla por iniciativa.
+
+_CONTEXTO_GLOBAL_PATH = BASE_DIR / "contexto_dia.json"
+
+
+def _contexto_hogar_path(chat_id: Optional[int]) -> Path:
+    if chat_id is None:
+        return BASE_DIR / "contexto_dia_local.json"
+    return hogar_mod.hogar_dir(chat_id) / "contexto_dia.json"
+
+
+async def _curar_temas(titulares: list[str], ambito: str) -> list[str]:
+    """LLM: de titulares crudos, extrae temas livianos y conversables para un
+    adulto mayor, filtrando lo angustiante. Devuelve lista de frases cortas."""
+    if not titulares:
+        return []
+    prompt = (
+        f"Estos son titulares de hoy ({ambito}). Elegí hasta 6 TEMAS livianos y "
+        f"agradables para charlar con una persona mayor: deportes, cultura, "
+        f"espectáculos, efemérides, ciencia curiosa, color local, algo positivo.\n"
+        f"EXCLUÍ todo lo angustiante o pesado: guerras, muertes, tragedias, "
+        f"crímenes, accidentes, política de conflicto, economía alarmante.\n"
+        f"Devolvé UNA LÍNEA por tema, en una frase corta y simple (no el titular "
+        f"crudo), empezando con '- '. Si no hay nada liviano, no devuelvas nada.\n\n"
+        + "\n".join(f"· {t}" for t in titulares[:25])
+    )
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
+    try:
+        r = await _chat_create(
+            model=modelo,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=250,
+            temperature=0.3,
+        )
+        texto = (r.choices[0].message.content or "")
+        temas = [ln.strip().lstrip("-•").strip() for ln in texto.splitlines() if ln.strip().startswith("-")]
+        return [t for t in temas if t][:6]
+    except Exception as e:
+        log.warning(f"_curar_temas ({ambito}) falló: {e}")
+        return []
+
+
+async def actualizar_contexto_del_dia(app=None, chat_id: Optional[int] = None):
+    """Job de madrugada. Sin chat_id: arma el contexto GLOBAL (temas generales
+    curados + dólar) y luego itera cada hogar para su contexto LOCAL (temas de
+    su ciudad + clima). Con chat_id: arma solo el contexto local de ese hogar."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+
+    if chat_id is None:
+        # Global: temas generales del país + dólar (igual para todos).
+        generales = await _curar_temas(await titulares_google_news(), "noticias generales de Argentina")
+        dolar = await consultar_dolar()
+        write_json_atomic(_CONTEXTO_GLOBAL_PATH, {"fecha": hoy, "temas_generales": generales, "dolar": dolar})
+        log.info(f"Contexto global del día: {len(generales)} temas generales")
+        for cid in hogar_mod.listar_hogares():
+            await actualizar_contexto_del_dia(app, chat_id=cid)
+        return
+
+    # Local por hogar: temas de la ciudad + clima.
+    ciudad = _ciudad_de(chat_id)
+    locales, clima = [], ""
+    if ciudad:
+        ciudad_corta = ciudad.split(",")[0]
+        locales = await _curar_temas(await titulares_google_news(ciudad_corta), f"noticias de {ciudad_corta}")
+        clima = await consultar_clima(ciudad)
+    write_json_atomic(_contexto_hogar_path(chat_id), {"fecha": hoy, "temas_locales": locales, "clima": clima})
+    log.info(f"Contexto local del hogar {chat_id} ({ciudad}): {len(locales)} temas locales")
+
+
+def _texto_contexto_del_dia(chat_id: Optional[int]) -> str:
+    """Arma el bloque de contexto para el prompt: temas generales + locales +
+    dólar + clima del día. Solo usa datos de HOY (si están viejos, los ignora)."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    partes = []
+    glob = load_json(_CONTEXTO_GLOBAL_PATH, default={})
+    if glob.get("fecha") == hoy:
+        if glob.get("temas_generales"):
+            partes.append("Temas del país: " + "; ".join(glob["temas_generales"]))
+        if glob.get("dolar"):
+            partes.append(glob["dolar"])
+    local = load_json(_contexto_hogar_path(chat_id), default={})
+    if local.get("fecha") == hoy:
+        if local.get("temas_locales"):
+            partes.append("Temas locales: " + "; ".join(local["temas_locales"]))
+        if local.get("clima"):
+            partes.append(local["clima"])
+    return "\n".join(partes)
 
 
 def _palabras_en_aprendizajes(chat_id: Optional[int] = None) -> set[str]:
@@ -1976,6 +2085,12 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
     hora_an, minuto_an = map(int, CONFIG.get("analisis_nocturno_hora", "23:30").split(":"))
     scheduler.add_job(analisis_nocturno, "cron", hour=hora_an, minute=minuto_an, args=[app])
     log.info(f"Análisis nocturno programado a las {hora_an:02d}:{minuto_an:02d} (todos los hogares)")
+
+    # Contexto del día: de madrugada lee Google News y arma la lista curada de
+    # temas (generales + locales) + dólar + clima. Default 05:20.
+    hora_cx, minuto_cx = map(int, CONFIG.get("contexto_dia_hora", "05:20").split(":"))
+    scheduler.add_job(actualizar_contexto_del_dia, "cron", hour=hora_cx, minute=minuto_cx, args=[app])
+    log.info(f"Contexto del día programado a las {hora_cx:02d}:{minuto_cx:02d} (Google News + dólar + clima)")
 
     cfg_inact = CONFIG.get("alerta_inactividad", {})
     if cfg_inact.get("activa", True):
