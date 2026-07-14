@@ -23,29 +23,54 @@ inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
 - Circuito de conocimiento (KB gerontológica → perfil): **manual**, sin
   automatizar mientras se está aprendiendo qué funciona.
 
-### Estado tras el primer beta real (11/07/2026)
+### Estado tras el beta real (11–14/07/2026)
 
 El bot corre en Telegram real con un usuario (Germán como tester). Andando
 end-to-end: onboarding, conversación GLM-5, detección de angustia con alerta
-a la familia. Cambios de arquitectura del día:
+a la familia (confirmada llegando en un dispositivo real).
 
+**Arquitectura nueva:**
 - **Nombre Aikiu** (era Clara).
 - **Agente vigía**: la detección de angustia (DISTRESS) se separó del
   conversador en una llamada LLM propia (`clasificar_distress`). El
   conversador solo conversa. Resolvió la omisión del ~65% del DISTRESS.
-- **Vigía en background**: corre DESPUÉS de responder (no en el camino de la
-  respuesta), para no sumar latencia. La alerta a la familia llega un par de
-  segundos después de la respuesta.
+  Corre en **background** (después de responder) → cero latencia extra.
 - **Núcleo podado**: `aikiu_core.md` de 92 → 76 reglas (dedup validado).
-- **Género configurable por hogar** (`genero` en state, inferido del nombre).
-- **Hot-reload** de perfil.md / aikiu_core.md.
+- **Género configurable por hogar** (`genero`, inferido del nombre).
+- **Hot-reload** de perfil.md / aikiu_core.md (cambios sin reiniciar).
+- **Modelo GLM-5** en producción (OpenRouter); Groq queda para Whisper.
 
-Bugs del beta arreglados: nombre del onboarding, alerta bloqueada por crash
-de stats, latencia (~12s → ~3s por contención de llamadas concurrentes).
+**Resiliencia (P0 — que nunca deje al adulto sin respuesta):**
+- Error handler global de Telegram: ante cualquier crash, frase cálida.
+- Timeout de 20s por llamada al LLM + fallback automático a Groq/Llama.
+- `generar_respuesta` nunca devuelve vacío.
 
-Pendientes anotados (nada urgente): calibración del vigía (un poco cauto),
-pulido de la pregunta de cierre ante síntoma físico, A/B de modelo más
-rápido, `/setname` en BotFather (aún dice "Aikiu - Clara").
+**Memoria e higiene:**
+- Historial de conversación **persistente** (sobrevive a reinicios) y podado.
+- Rotación de logs + redacción del token del bot en los logs.
+
+**Producto (del feedback del beta):**
+- **Texto-primero**: campo `medio` por hogar (default `texto`). La voz de
+  edge-tts suena metálica; se retoma con un TTS mejor. Saludo/recordatorios
+  y respuestas van en texto salvo que se pida voz.
+- **Aikiu como compañía que sabe**: responde preguntas de conocimiento
+  general (cómo funciona algo, historia, recetas, cálculos, idiomas).
+- **Contexto del día curado**: job de madrugada que lee Google News (general
+  + local por ciudad), un LLM **cura y filtra** dejando solo temas livianos
+  (deportes, cultura, efemérides) — el escudo ante noticias duras se aplica
+  una vez, ahí. Suma dólar y clima. Aikiu queda "al tanto" (ej: "hoy juega la
+  semifinal del Mundial") para responder y para traer temas por iniciativa.
+
+**Bugs del beta arreglados:** nombre del onboarding ("hola soy german"),
+alerta bloqueada por crash de stats, latencia (~12s → ~3s), género femenino
+hardcodeado, falso positivo del vigía ("ver el partido solo" no es angustia),
+Aikiu ofreciéndose a hacer acciones físicas ("¿te preparo un té?"), `/setname`
+en BotFather (ya dice "Aikiu").
+
+**Pendientes anotados (nada urgente):** calibración fina del vigía con datos
+reales; datos deportivos en vivo (resultado del partido) requieren una API de
+deportes aparte; P3 diferido (split del monolito, neutralizar género en el
+núcleo) — ver `MEJORAS.md`.
 
 ---
 
@@ -270,8 +295,8 @@ rápido, `/setname` en BotFather (aún dice "Aikiu - Clara").
 - [ ] **Dashboard de engagement**: visualizar el ranking de temas por score,
       evolución de receptividad y métricas de engagement desde el bot familiar
       o una interfaz web liviana. Los datos ya se acumulan en `stats.json`.
-- [ ] **Historial persistente**: hoy el historial de conversación se pierde
-      al reiniciar el bot. Guardarlo en disco para mantener continuidad entre sesiones
+- [x] **Historial persistente**: resuelto (11/07/2026). Se guarda en
+      `instances/<chat_id>/historial.json`, sobrevive a reinicios, podado a 40 mensajes.
 - [ ] **Métricas de aislamiento**: cronjob que evalúe la frecuencia de mensajes
       de Marta. Si el volumen cae por debajo del 50% del promedio semanal, enviar
       una alerta silenciosa al bot familiar indicando posible apatía o aislamiento.
@@ -282,9 +307,9 @@ rápido, `/setname` en BotFather (aún dice "Aikiu - Clara").
       de datos médicos/personales antes de enviar el payload a la API de Groq.
       Mitiga riesgos en ausencia de certificaciones formales (relevante si se
       posiciona contra alternativas como Ato que venden privacidad certificada).
-- [ ] **Voz más natural**: edge-tts (es-AR-ElenaNeural) suena metálica.
-      Evaluar ElevenLabs (pago, alta calidad) o aguardar que Groq reintegre
-      TTS en español. Priorizar cuando haya usuario real usando el bot a diario.
+- [ ] **Voz más natural**: edge-tts (es-AR-ElenaNeural) suena metálica —
+      confirmado en el beta. Por eso se pasó a **texto-primero** (campo `medio`).
+      Evaluar ElevenLabs (pago, alta calidad) u otro TTS antes de reactivar la voz.
 - [ ] **Configurador via Telegram**: que el familiar pueda armar el perfil
       respondiendo preguntas en el bot familiar, sin tocar archivos
 - [ ] **Panel web**: interfaz simple para editar perfil y ver logs desde
