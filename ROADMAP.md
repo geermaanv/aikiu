@@ -13,8 +13,6 @@ inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
 
 - Se mide sobre ventana móvil de 14 días, con datos de `stats.json`.
 - Cuenta solo lo iniciado por ella (no las respuestas al saludo matutino).
-- No se despliega con la usuaria real hasta lograr un funcionamiento natural
-  (validado en simulador y/o beta) — la primera impresión no se repite.
 - **Modelo en producción: GLM-5** (`z-ai/glm-5` vía OpenRouter, razonamiento
   apagado). Ya migrado en `aikiu.py` (no solo simulador). Groq queda para la
   transcripción de voz (Whisper).
@@ -22,6 +20,35 @@ inicie la conversación por gusto y mantenga 7 diálogos en 14 días.**
   hasta que la métrica norte muestre retención real.
 - Circuito de conocimiento (KB gerontológica → perfil): **manual**, sin
   automatizar mientras se está aprendiendo qué funciona.
+
+### Gate de despliegue con Marta — con fecha (para no caer en el refinamiento infinito)
+
+"Desplegar cuando se sienta natural" es un criterio que siempre puede pedir
+una semana más. Reemplazado por un gate con fecha y una lista de fallas
+BLOQUEANTES concretas y verificables (no "todavía no me convence"):
+
+**Cadena de validación:** simulador → beta con Irene (guión) → Marta → métrica norte corriendo.
+
+1. **Sesión beta con Irene** — semana del 20/07/2026. Prueba con guión
+   estructurado. Valida el "funcionamiento natural" con una persona real
+   antes de gastar la única primera impresión con Marta. Feedback incorporado
+   antes del gate de Marta.
+2. **Gate de Marta** — fecha objetivo: **antes de fin de julio** (fijar la
+   fecha exacta el domingo 19/07). Se despliega con Marta en esa fecha,
+   SALVO que en simulador o en la beta de Irene aparezca alguna de estas
+   fallas bloqueantes:
+   - No entiende el audio (transcripción falla de forma sistemática).
+   - Se cae / no responde (silencio ante un mensaje).
+   - Responde incoherencias graves (pierde el hilo, inventa cosas alarmantes).
+   - No dispara la alerta de angustia ante una señal real (o dispara falsas
+     en cascada).
+   "Todavía no se siente 100% natural" NO es una falla bloqueante — es la
+   excusa que estira para siempre. Agosto se come con la mudanza y septiembre
+   ya se sabe cómo viene: la ventana es julio.
+
+**Tareas (para el domingo 19/07):**
+- [ ] Fijar fecha exacta de despliegue con Marta + confirmar lista de fallas bloqueantes.
+- [ ] Coordinar sesión beta con Irene con guión — semana del 20/07.
 
 ### Estado tras el beta real (11–14/07/2026)
 
