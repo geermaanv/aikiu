@@ -1104,7 +1104,8 @@ Variables de entorno extra en `.env` (las que ya usa Aikiu siguen sirviendo):
 
 ```bash
 GEMINI_API_KEY=...        # obligatoria para Agente A y para el evaluador
-OPENROUTER_API_KEY=...    # opcional, solo si querés que la cascada caiga a OpenRouter
+OPENROUTER_API_KEY=...    # LLM de chat (GLM-5): primario en el simulador y
+                          # obligatorio en producción (proveedor_llm por default)
 ```
 
 ### Uso

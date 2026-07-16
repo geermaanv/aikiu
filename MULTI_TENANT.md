@@ -151,7 +151,8 @@ Si vas a desplegar con varios adultos activos:
 1. Cuenta de Railway con un proyecto creado.
 2. Bot tokens (BOT_TOKEN, FAMILIAR_BOT_TOKEN, ADMIN_BOT_TOKEN) creados
    en @BotFather.
-3. `GROQ_API_KEY` de https://console.groq.com.
+3. `GROQ_API_KEY` de https://console.groq.com (transcripción de voz).
+4. `OPENROUTER_API_KEY` de https://openrouter.ai/keys (LLM de chat GLM-5).
 
 ### Configuración
 
@@ -159,7 +160,10 @@ Si vas a desplegar con varios adultos activos:
 
    ```
    BOT_TOKEN=...
-   GROQ_API_KEY=...
+   GROQ_API_KEY=...                 # STT (Whisper) — siempre obligatoria
+   OPENROUTER_API_KEY=...           # LLM de chat (GLM-5) — obligatoria con
+                                    # proveedor_llm: "openrouter" (default).
+                                    # Sin esta, el bot NO arranca.
    FAMILIAR_BOT_TOKEN=...           # opcional
    ADMIN_BOT_TOKEN=...              # opcional
    AIKIU_REGISTRY=/data/instances   # MUY recomendado en producción
