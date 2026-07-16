@@ -29,12 +29,12 @@ BLOQUEANTES concretas y verificables (no "todavía no me convence"):
 
 **Cadena de validación:** simulador → beta con Irene (guión) → Marta → métrica norte corriendo.
 
-1. **Sesión beta con Irene** — semana del 20/07/2026. Prueba con guión
+1. **Sesión beta con Irene** — semana del 27/07/2026. Prueba con guión
    estructurado. Valida el "funcionamiento natural" con una persona real
    antes de gastar la única primera impresión con Marta. Feedback incorporado
    antes del gate de Marta.
-2. **Gate de Marta** — fecha objetivo: **antes de fin de julio** (fijar la
-   fecha exacta el domingo 19/07). Se despliega con Marta en esa fecha,
+2. **Gate de Marta** — fecha objetivo: **primeros días de agosto** (fijar la
+   fecha exacta el domingo 26/07). Se despliega con Marta en esa fecha,
    SALVO que en simulador o en la beta de Irene aparezca alguna de estas
    fallas bloqueantes:
    - No entiende el audio (transcripción falla de forma sistemática).
@@ -43,12 +43,12 @@ BLOQUEANTES concretas y verificables (no "todavía no me convence"):
    - No dispara la alerta de angustia ante una señal real (o dispara falsas
      en cascada).
    "Todavía no se siente 100% natural" NO es una falla bloqueante — es la
-   excusa que estira para siempre. Agosto se come con la mudanza y septiembre
-   ya se sabe cómo viene: la ventana es julio.
+   excusa que estira para siempre. La mudanza y septiembre presionan la
+   ventana: no correrla más allá de principios de agosto.
 
-**Tareas (para el domingo 19/07):**
+**Tareas (para el domingo 26/07):**
 - [ ] Fijar fecha exacta de despliegue con Marta + confirmar lista de fallas bloqueantes.
-- [ ] Coordinar sesión beta con Irene con guión — semana del 20/07.
+- [ ] Coordinar sesión beta con Irene con guión — semana del 27/07.
 
 ### Estado tras el beta real (11–14/07/2026)
 
