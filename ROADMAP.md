@@ -96,8 +96,23 @@ en BotFather (ya dice "Aikiu").
 
 **Pendientes anotados (nada urgente):** calibración fina del vigía con datos
 reales; datos deportivos en vivo (resultado del partido) requieren una API de
-deportes aparte; P3 diferido (split del monolito, neutralizar género en el
-núcleo) — ver `MEJORAS.md`.
+deportes aparte.
+
+### Deuda técnica diferida, con criterio
+
+De la revisión de código del beta (P0-P2 hechos; ver "Estado" arriba). Estos
+dos NO se hacen ahora, a propósito — son refactors grandes y riesgosos, sin
+beneficio para el objetivo norte, con alto riesgo de regresión justo después
+de un beta que funciona:
+
+- **Split del monolito (`aikiu.py`, ~2000 líneas):** ~890 tests parchean rutas
+  concretas (`patch("aikiu.groq")`, `aikiu.CONFIG`, etc.); mover funciones a
+  otros módulos rompe esos parches salvo re-exports frágiles. Hacer solo
+  cuando una feature grande lo justifique, no por prolijidad.
+- **Neutralizar el género en el núcleo:** la directiva por turno para el trato
+  masculino ya funciona. Reescribir las ~28 apariciones de "la usuaria" y los
+  adjetivos del núcleo es un rewrite grande que puede degradar el caso
+  femenino (Marta, la usuaria real). El approach actual alcanza.
 
 ---
 
