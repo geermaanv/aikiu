@@ -97,3 +97,29 @@ def test_actualizar_contexto_global_guarda_temas_y_dolar(monkeypatch, tmp_path):
     assert data["temas_generales"] == ["semifinal del Mundial"]
     assert data["dolar"] == "Dólar blue $1000"
     assert data["fecha"] == datetime.now().strftime("%Y-%m-%d")
+
+
+# --- Regresión del beta: historial viejo tomado como vigente ---
+
+def test_prompt_avisa_que_el_historial_puede_ser_de_otros_dias(monkeypatch):
+    """Bug real (18/07): el historial persistente traía 'hoy juegan Francia y
+    España' de 4 días antes y Aikiu lo repetía como si fuera hoy, además
+    contradiciendo al usuario. El prompt debe avisar que el historial abarca
+    varios días y que lo de hoy sale solo del contexto de actualidad."""
+    capturado = {}
+
+    async def fake_chat(**kwargs):
+        capturado["messages"] = kwargs["messages"]
+        comp = MagicMock()
+        comp.choices = [MagicMock()]
+        comp.choices[0].message.content = "ok"
+        comp.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+        return comp
+
+    monkeypatch.setattr(aikiu, "_chat_create", fake_chat)
+    _run(aikiu.generar_respuesta("hola", historial=[], chat_id=None))
+    sistema = " ".join(
+        m["content"] for m in capturado["messages"] if m["role"] == "system"
+    ).lower()
+    assert "días anteriores" in sistema
+    assert "siga vigente" in sistema or "no asumas" in sistema

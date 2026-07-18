@@ -492,10 +492,25 @@ async def generar_respuesta(
         messages.append({
             "role": "system",
             "content": (
-                f"Contexto de actualidad de hoy que conocés (usalo si {nombre} pregunta, "
-                f"o para traer un tema liviano si la charla se frena — sin forzar):\n{contexto}"
+                f"Contexto de actualidad de HOY ({fecha_en_espanol()}) — es la única "
+                f"fuente válida para lo que pasa hoy. Usalo si {nombre} pregunta, o "
+                f"para traer un tema liviano si la charla se frena (sin forzar):\n{contexto}"
             ),
         })
+
+    # El historial puede abarcar varios días: lo que era "hoy" en una charla vieja
+    # (un partido, un turno, una visita) NO sigue siendo hoy. Sin esta aclaración,
+    # el modelo repite datos con fecha del historial como si fueran actuales.
+    messages.append({
+        "role": "system",
+        "content": (
+            f"Hoy es {fecha_en_espanol()}. El historial de esta conversación puede "
+            f"incluir charlas de días anteriores: NO asumas que un dato con fecha que "
+            f"aparece ahí (partidos, turnos, planes, 'hoy viene X') siga vigente hoy. "
+            f"Para lo de hoy vale solo el contexto de actualidad; si no lo tenés, "
+            f"decilo con honestidad en vez de repetir algo viejo."
+        ),
+    })
 
     messages.append({"role": "user", "content": texto_usuario})
 
@@ -881,8 +896,12 @@ async def _curar_temas(titulares: list[str], ambito: str) -> list[str]:
         f"espectáculos, efemérides, ciencia curiosa, color local, algo positivo.\n"
         f"EXCLUÍ todo lo angustiante o pesado: guerras, muertes, tragedias, "
         f"crímenes, accidentes, política de conflicto, economía alarmante.\n"
-        f"Devolvé UNA LÍNEA por tema, en una frase corta y simple (no el titular "
-        f"crudo), empezando con '- '. Si no hay nada liviano, no devuelvas nada.\n\n"
+        f"Devolvé UNA LÍNEA por tema, empezando con '- '. En lenguaje simple, pero "
+        f"CONSERVANDO los datos concretos y accionables del titular: quién juega "
+        f"contra quién, día y hora, dónde verlo, nombres propios. Ej: '- Hoy a las "
+        f"18 juegan Francia e Inglaterra por el tercer puesto del Mundial' (NO: "
+        f"'- Hay partidos del Mundial'). Sin esos datos el tema no sirve.\n"
+        f"Si no hay nada liviano, no devuelvas nada.\n\n"
         + "\n".join(f"· {t}" for t in titulares[:25])
     )
     modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
