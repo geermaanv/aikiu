@@ -104,7 +104,12 @@ y ahora corre sobre un hogar de prueba llamando a `generar_respuesta` /
 estructuralmente incapaz de ver los bugs del beta (no pasaba por la resolución
 de config, ni inyectaba contexto del día ni el aviso de historial multi-día).
 Nueva persona **Héctor** (79, Rosario, hombre, parco, minimiza síntomas) para
-cubrir género masculino y otra ciudad.
+cubrir género masculino y otra ciudad. Dos escenarios nuevos cierran las clases
+de bug que el simulador no podía ver: **`correccion`** (el adulto lo corrige y
+desconfía → cubre "contradecir inventando" y "disculparse de más") y
+**`dia_siguiente`** con el flag `--continuar`, que conserva el historial entre
+corridas para simular otro día → cubre "dato con fecha viejo repetido como
+actual". Ambos validados en vivo.
 
 **Bugs del beta arreglados:** nombre del onboarding ("hola soy german"), alerta
 bloqueada por crash de stats, latencia (~12s → ~3s), género hardcodeado, falso
@@ -125,9 +130,6 @@ simuladas — de ahí la cadena simulador → Irene → Marta.
 
 **Producto:**
 - Calibración fina del vigía con datos reales de uso.
-- Simulador: falta que un personaje **corrija y desconfíe** (hoy Gemini es
-  complaciente y nunca contradice), y **conversaciones multi-día** — las dos
-  clases de bug que solo aparecieron con uso real.
 - Resumen diario al familiar (temas charlados, estado anímico, recordatorios).
 - Comando `/log` en el bot familiar (pedir el log del día sin tocar archivos).
 - Métricas de aislamiento (alerta silenciosa si el volumen de mensajes cae >50%).
