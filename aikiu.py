@@ -314,10 +314,16 @@ async def _chat_create(**kwargs):
         or_kwargs = dict(kwargs)
         or_kwargs.setdefault("extra_body", {"reasoning": {"enabled": False}})
         try:
-            return await asyncio.wait_for(
+            r = await asyncio.wait_for(
                 openrouter.chat.completions.create(**or_kwargs),
                 timeout=_LLM_TIMEOUT_S,
             )
+            # OpenRouter/GLM a veces devuelve 200 con content vacío. No es una
+            # excepción, así que sin este chequeo el fallback no se activaba y
+            # el vigía interpretaba el vacío como "nivel 0" — perdiendo alertas.
+            if not (r.choices and (r.choices[0].message.content or "").strip()):
+                raise RuntimeError("respuesta vacía de OpenRouter")
+            return r
         except Exception as e:
             log.warning(f"OpenRouter falló ({type(e).__name__}: {str(e)[:80]}) → fallback a Groq/{_FALLBACK_MODELO}")
             groq_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
@@ -578,6 +584,45 @@ historiales: dict[int, list] = {}
 _HISTORIAL_MAX = 40
 
 
+# ---------------------------------------------------------------------------
+# Alertas pendientes de confirmación
+# ---------------------------------------------------------------------------
+# Ante un síntoma o señal de angustia (nivel 1-2) NO se alerta de inmediato:
+# queda "pendiente", Aikiu repregunta con naturalidad, y con la respuesta se
+# decide si confirma (alerta con contexto) o se descarta. Nivel 3 (emergencia)
+# nunca espera. Si el adulto deja de responder, se alerta igual a los
+# _PENDIENTE_TIMEOUT_MIN — el silencio tras un síntoma es más grave, no menos.
+
+_PENDIENTE_TIMEOUT_MIN = 10
+
+
+def _pendiente_path(chat_id: Optional[int]) -> Path:
+    if chat_id is None:
+        return BASE_DIR / "alerta_pendiente.json"
+    return hogar_mod.hogar_dir(chat_id) / "alerta_pendiente.json"
+
+
+def _leer_pendiente(chat_id: Optional[int]) -> dict:
+    return load_json(_pendiente_path(chat_id), default={}) or {}
+
+
+def _guardar_pendiente(chat_id: Optional[int], nivel: int, motivo: str, texto: str) -> None:
+    write_json_atomic(_pendiente_path(chat_id), {
+        "nivel": nivel,
+        "motivo": motivo,
+        "texto": texto,
+        "ts": datetime.now().isoformat(timespec="seconds"),
+    })
+    log.info(f"[chat_id={chat_id}] Alerta PENDIENTE (nivel {nivel}): '{motivo}' — Aikiu repregunta antes de avisar")
+
+
+def _limpiar_pendiente(chat_id: Optional[int]) -> None:
+    try:
+        _pendiente_path(chat_id).unlink(missing_ok=True)
+    except OSError as e:
+        log.warning(f"No pude limpiar la alerta pendiente de {chat_id}: {e}")
+
+
 def _historial_path(chat_id: Optional[int]) -> Path:
     if chat_id is None:
         return BASE_DIR / "historial.json"
@@ -704,9 +749,13 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
         f"('me sigue doliendo', 'cada vez peor'), confusión/desorientación, menciona una CAÍDA "
         f"(aunque haya pasado), dice 'soy una carga'\n"
         f"- 3: emergencia activa ahora: no puede moverse, dolor de pecho, no puede respirar, pide ayuda urgente\n"
-        f"El dolor o daño físico se clasifica como FÍSICO, no como 'malestar anímico'. "
+        f"El dolor o daño físico se clasifica como FÍSICO, no como 'malestar anímico'.\n"
+        f"MUY IMPORTANTE: las personas mayores minimizan siempre. Palabras como 'un poco', "
+        f"'nada grave', 'no es nada', 'ya estoy acostumbrada', 'es la edad', 'ya se me pasa' "
+        f"NO bajan el nivel: si hay un síntoma, el nivel es 1 aunque venga minimizado "
+        f"('me duele un poco la rodilla' = nivel 1, no 0).\n"
         f"Ante la duda entre dos niveles, elegí el más bajo — salvo que haya un golpe, caída "
-        f"o dolor, donde conviene el más alto (mejor avisar de más que de menos ante lo físico)."
+        f"o síntoma, donde conviene el más alto (mejor avisar de más que de menos ante lo físico)."
     )
 
 
@@ -739,12 +788,78 @@ async def clasificar_distress(
                 temperature=0.1,
             )
             t.set_usage(r.usage)
-        nivel, motivo = parse_distress_classification(r.choices[0].message.content or "")
-        log.info(f"[chat_id={chat_id}] Vigía: nivel={nivel} motivo='{motivo}'")
+        crudo = r.choices[0].message.content or ""
+        nivel, motivo = parse_distress_classification(crudo)
+        if not crudo.strip() or not motivo:
+            # No es un "todo bien": es que no pudimos clasificar. Se registra
+            # como ERROR para que se vea, en vez de pasar por un nivel 0.
+            log.error(
+                f"[chat_id={chat_id}] Vigía NO pudo clasificar (respuesta sin formato: "
+                f"{crudo[:80]!r}) — se asume 0, revisar si se repite"
+            )
+        else:
+            log.info(f"[chat_id={chat_id}] Vigía: nivel={nivel} motivo='{motivo}'")
         return nivel, motivo
     except Exception as e:
         log.warning(f"clasificar_distress falló: {e}")
         return 0, ""
+
+
+async def evaluar_confirmacion(pendiente: dict, texto_nuevo: str, chat_id: Optional[int] = None) -> tuple[str, int]:
+    """
+    Segunda mirada del vigía: con la respuesta del adulto a la repregunta,
+    decide qué hacer con una preocupación pendiente.
+
+    Devuelve (decision, nivel) donde decision es:
+      "confirma"  → alertar a la familia (nivel puede haber subido)
+      "descarta"  → era menor y el adulto lo aclaró; no alertar
+      "sin_datos" → no aclara nada (cambió de tema); sigue pendiente
+
+    Ante cualquier fallo devuelve ("confirma", nivel original): mejor avisar
+    de más que perder una señal real por un error técnico.
+    """
+    nombre = _nombre_adulto_de(chat_id)
+    nivel_previo = int(pendiente.get("nivel", 1))
+    prompt = (
+        f"Sos un evaluador de riesgo. Hace un momento {nombre} dijo algo que encendió "
+        f"una preocupación, Aikiu le repreguntó, y ahora {nombre} respondió. Decidí si "
+        f"hay que avisarle a la familia.\n\n"
+        f"Preocupación pendiente: {pendiente.get('motivo','')} "
+        f"(lo que dijo: \"{pendiente.get('texto','')}\")\n"
+        f"Respuesta nueva de {nombre}: \"{texto_nuevo}\"\n\n"
+        f"Respondé EXACTAMENTE dos líneas:\n"
+        f"DECISION: (confirma | descarta | sin_datos)\n"
+        f"NIVEL: (un dígito 0-3)\n\n"
+        f"- confirma: la respuesta sostiene o agrava la preocupación ('me sigue doliendo', "
+        f"'bastante', 'no puedo apoyar el pie'). Si empeoró, subí el nivel.\n"
+        f"- descarta: {nombre} aclara que fue menor o ya pasó ('ya se me pasó', 'fue nada', "
+        f"'estoy bien'). OJO: si minimiza pero el síntoma sigue ahí, es confirma.\n"
+        f"- sin_datos: cambió de tema o no aclara nada sobre eso.\n"
+        f"Ante la duda entre confirma y descarta, elegí confirma."
+    )
+    modelo = CONFIG.get("modelo_llm", "llama-3.3-70b-versatile")
+    try:
+        r = await _chat_create(
+            model=modelo,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=30,
+            temperature=0.1,
+        )
+        texto = (r.choices[0].message.content or "")
+        decision = "confirma"
+        for linea in texto.splitlines():
+            if linea.upper().startswith("DECISION:"):
+                v = linea.split(":", 1)[1].strip().lower()
+                if v in ("confirma", "descarta", "sin_datos"):
+                    decision = v
+        m = re.search(r"NIVEL:\s*([0-3])", texto)
+        nivel = int(m.group(1)) if m else nivel_previo
+        nivel = max(nivel, nivel_previo) if decision == "confirma" else nivel
+        log.info(f"[chat_id={chat_id}] Confirmación: {decision} (nivel {nivel})")
+        return decision, nivel
+    except Exception as e:
+        log.warning(f"evaluar_confirmacion falló ({e}) → confirmo por las dudas")
+        return "confirma", nivel_previo
 
 
 async def clasificar_receptividad(
@@ -1883,22 +1998,47 @@ async def _evaluar_distress_y_extras(texto, respuesta, chat_id, family_bot):
     corresponde, y registra stats/log/receptividad. Todo en background: nada
     de esto bloquea la respuesta al usuario. La alerta es lo prioritario."""
     distress_level, distress_motivo = await clasificar_distress(texto, chat_id=chat_id)
+    pendiente = _leer_pendiente(chat_id)
 
-    # Alerta de seguridad PRIMERO — antes que las tareas cosméticas.
-    if should_send_alert(distress_level, adulto_chat_id=chat_id):
-        record_alert_sent(distress_level, adulto_chat_id=chat_id)
-        if family_bot:
-            log.info(f"Enviando alerta nivel {distress_level} a suscriptores del hogar {chat_id}")
-            await notify_family(
-                distress_level=distress_level,
-                adulto_message=texto,
-                bot_response=respuesta,
-                family_bot=family_bot,
-                adulto_chat_id=chat_id,
-                motivo=distress_motivo,
-            )
-        else:
+    async def _alertar(nivel: int, motivo: str, sin_respuesta: bool = False):
+        """Envía la alerta con el contexto de la charla (últimos 6 mensajes)."""
+        if not should_send_alert(nivel, adulto_chat_id=chat_id):
+            return
+        record_alert_sent(nivel, adulto_chat_id=chat_id)
+        if not family_bot:
             log.warning("Alerta detectada pero family_bot no está configurado — revisar FAMILIAR_BOT_TOKEN en .env")
+            return
+        log.info(f"Enviando alerta nivel {nivel} a suscriptores del hogar {chat_id}")
+        await notify_family(
+            distress_level=nivel,
+            adulto_message=texto,
+            bot_response=respuesta,
+            family_bot=family_bot,
+            adulto_chat_id=chat_id,
+            motivo=motivo,
+            contexto=_get_historial(chat_id),
+            sin_respuesta=sin_respuesta,
+        )
+
+    if distress_level >= 3:
+        # Emergencia: se avisa YA, sin indagar. Cada segundo cuenta.
+        _limpiar_pendiente(chat_id)
+        await _alertar(distress_level, distress_motivo)
+    elif pendiente:
+        # Ya había una preocupación abierta: esta respuesta es la que la aclara.
+        decision, nivel = await evaluar_confirmacion(pendiente, texto, chat_id=chat_id)
+        if decision == "confirma":
+            _limpiar_pendiente(chat_id)
+            await _alertar(nivel, pendiente.get("motivo", distress_motivo))
+        elif decision == "descarta":
+            log.info(f"[chat_id={chat_id}] Preocupación descartada tras repreguntar — sin alerta")
+            _limpiar_pendiente(chat_id)
+        # "sin_datos": se mantiene pendiente; lo resuelve la próxima respuesta
+        # o el timeout de verificar_pendientes.
+    elif distress_level >= 1:
+        # Señal nueva: NO alertamos todavía. Aikiu ya respondió con
+        # preocupación (suele repreguntar); con la respuesta se decide.
+        _guardar_pendiente(chat_id, distress_level, distress_motivo, texto)
 
     # Tareas cosméticas — blindadas: un fallo acá no afecta la alerta.
     try:
@@ -2017,6 +2157,51 @@ async def saludo_matutino(app: Application, chat_id: Optional[int] = None):
     )
     await enviar_mensaje_voz(app, texto, chat_id=chat_id)
 
+async def verificar_pendientes(app: Application, chat_id: Optional[int] = None):
+    """
+    Alertas pendientes que quedaron sin respuesta. Si el adulto mencionó un
+    síntoma y dejó de contestar, a los _PENDIENTE_TIMEOUT_MIN se avisa igual:
+    el silencio después de "me caí" es MÁS preocupante, no menos.
+    """
+    if chat_id is None:
+        for cid in hogar_mod.listar_hogares():
+            await verificar_pendientes(app, chat_id=cid)
+        return
+
+    pendiente = _leer_pendiente(chat_id)
+    if not pendiente:
+        return
+    try:
+        creado = datetime.fromisoformat(pendiente["ts"])
+    except (KeyError, ValueError):
+        _limpiar_pendiente(chat_id)
+        return
+    minutos = (datetime.now() - creado).total_seconds() / 60
+    if minutos < _PENDIENTE_TIMEOUT_MIN:
+        return
+
+    nivel = int(pendiente.get("nivel", 1))
+    _limpiar_pendiente(chat_id)
+    family_bot = app.bot_data.get("family_bot") if hasattr(app, "bot_data") else None
+    if not should_send_alert(nivel, adulto_chat_id=chat_id):
+        return
+    record_alert_sent(nivel, adulto_chat_id=chat_id)
+    if not family_bot:
+        log.warning("Pendiente vencida pero family_bot no está configurado")
+        return
+    log.info(f"[chat_id={chat_id}] Pendiente vencida ({minutos:.0f} min sin respuesta) → alerta nivel {nivel}")
+    await notify_family(
+        distress_level=nivel,
+        adulto_message=pendiente.get("texto", ""),
+        bot_response="",
+        family_bot=family_bot,
+        adulto_chat_id=chat_id,
+        motivo=pendiente.get("motivo", ""),
+        contexto=_get_historial(chat_id),
+        sin_respuesta=True,
+    )
+
+
 async def verificar_inactividad(app: Application, chat_id: Optional[int] = None):
     """
     Verifica inactividad y dispara alerta al familiar si corresponde.
@@ -2110,6 +2295,11 @@ def programar_recordatorios(scheduler: AsyncIOScheduler, app: Application):
     hora_an, minuto_an = map(int, CONFIG.get("analisis_nocturno_hora", "23:30").split(":"))
     scheduler.add_job(analisis_nocturno, "cron", hour=hora_an, minute=minuto_an, args=[app])
     log.info(f"Análisis nocturno programado a las {hora_an:02d}:{minuto_an:02d} (todos los hogares)")
+
+    # Alertas pendientes sin respuesta: chequeo frecuente para que el silencio
+    # tras un síntoma no se pierda (ver verificar_pendientes).
+    scheduler.add_job(verificar_pendientes, "interval", minutes=2, args=[app])
+    log.info(f"Chequeo de alertas pendientes cada 2 min (timeout {_PENDIENTE_TIMEOUT_MIN} min)")
 
     # Contexto del día: de madrugada lee Google News y arma la lista curada de
     # temas (generales + locales) + dólar + clima. Default 05:20.

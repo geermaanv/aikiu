@@ -116,10 +116,12 @@ def test_e2e_tofu_y_mensaje_genera_alerta_a_familiar(monkeypatch):
     completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
     fake_groq.chat.completions.create = AsyncMock(return_value=completion)
 
-    # Mock del agente vigía: clasifica nivel 2 (arquitectura de dos agentes).
+    # Mock del agente vigía: nivel 3 (emergencia) para que la alerta salga en
+    # el acto. Los niveles 1-2 quedan pendientes de repregunta — ese flujo se
+    # cubre en tests/test_alerta_pendiente.py.
     monkeypatch.setattr(
         aikiu, "clasificar_distress",
-        AsyncMock(return_value=(2, "dice que se siente muy sola")),
+        AsyncMock(return_value=(3, "dice que se siente muy sola")),
     )
 
     # Aislar usage

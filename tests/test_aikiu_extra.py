@@ -398,7 +398,9 @@ def test_handle_message_voz_vacia_pide_repetir(monkeypatch):
 
 
 def test_handle_message_distress_envia_alerta(monkeypatch):
-    """Si DISTRESS_LEVEL >= 1 y hay family_bot, dispara notify_family."""
+    """Emergencia (nivel 3) con family_bot → notify_family inmediato, sin
+    esperar confirmación. (Los niveles 1-2 quedan pendientes de repregunta:
+    ver tests/test_alerta_pendiente.py.)"""
     state_mod.registrar_owner(42)
     update = _fake_update(chat_id=42)
     update.message.voice = None
@@ -411,7 +413,9 @@ def test_handle_message_distress_envia_alerta(monkeypatch):
                         {"nombre_adulto_mayor": "Marta", "nombre_asistente": "Aikiu",
                          "_perfil": "", "modelo_llm": "m"})
     monkeypatch.setattr(aikiu, "generar_respuesta",
-                        AsyncMock(return_value="Entiendo Marta\nDISTRESS_LEVEL: 1"))
+                        AsyncMock(return_value="Entiendo Marta"))
+    monkeypatch.setattr(aikiu, "clasificar_distress",
+                        AsyncMock(return_value=(3, "no puede levantarse")))
     notif_mock = AsyncMock()
     monkeypatch.setattr(aikiu, "notify_family", notif_mock)
     monkeypatch.setattr(aikiu, "should_send_alert", lambda *a, **k: True)
@@ -823,10 +827,11 @@ def test_programar_recordatorios_saludo_off(monkeypatch):
     monkeypatch.setattr(aikiu, "CONFIG", cfg)
     aikiu.programar_recordatorios(scheduler, MagicMock())
     jobs = scheduler.get_jobs()
-    # Con saludo/recordatorios/inactividad off, quedan los jobs de madrugada:
-    # análisis nocturno + contexto del día (Google News + dólar + clima).
+    # Con saludo/recordatorios/inactividad off quedan: análisis nocturno,
+    # contexto del día y el chequeo de alertas pendientes (cada 2 min).
     nombres = sorted(j.name for j in jobs)
-    assert nombres == ["actualizar_contexto_del_dia", "analisis_nocturno"]
+    assert nombres == ["actualizar_contexto_del_dia", "analisis_nocturno",
+                       "verificar_pendientes"]
 
 
 def test_programar_recordatorios_sin_saludo_diario(monkeypatch):

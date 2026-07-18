@@ -88,6 +88,8 @@ async def notify_family(
     family_bot: Bot,
     adulto_chat_id: Optional[int] = None,
     motivo: str = "",
+    contexto: Optional[list] = None,
+    sin_respuesta: bool = False,
 ) -> None:
     """Envía alerta a todos los familiares asociados al adulto indicado.
 
@@ -101,13 +103,29 @@ async def notify_family(
     timestamp = datetime.now().strftime("%H:%M")
     header = _distress_messages(nombre)[distress_level]
     motivo_linea = f"*Por qué se avisa:* {motivo}\n\n" if motivo else ""
-    text = (
-        f"{header}\n\n"
-        f"🕐 {timestamp}\n\n"
-        f"{motivo_linea}"
-        f"*{nombre} dijo:* {adulto_message[:200]}\n\n"
-        f"*Aikiu respondió:* {bot_response[:200]}"
+
+    # Aviso extra si se alertó porque dejó de responder tras la repregunta:
+    # el silencio después de un síntoma es más preocupante, no menos.
+    silencio_linea = (
+        f"⚠️ _{nombre} no respondió cuando Aikiu le preguntó cómo seguía._\n\n"
+        if sin_respuesta else ""
     )
+
+    # Contexto: la familia necesita ver cómo se llegó a la situación, no solo
+    # la frase que disparó la alerta.
+    if contexto:
+        lineas = []
+        for m in contexto[-6:]:
+            quien = nombre if m.get("role") == "user" else "Aikiu"
+            lineas.append(f"  *{quien}:* {str(m.get('content',''))[:180]}")
+        bloque = "*Cómo venía la charla:*\n" + "\n".join(lineas)
+    else:
+        bloque = (
+            f"*{nombre} dijo:* {adulto_message[:200]}\n\n"
+            f"*Aikiu respondió:* {bot_response[:200]}"
+        )
+
+    text = f"{header}\n\n🕐 {timestamp}\n\n{silencio_linea}{motivo_linea}{bloque}"
 
     suscriptores = cargar_suscriptores(adulto_chat_id)
     if not suscriptores:
