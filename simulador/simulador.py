@@ -89,14 +89,20 @@ def _meta_persona(texto: str, nombre_archivo: str) -> dict:
     return meta
 
 
-def preparar_hogar_sim(meta: dict, perfil: str) -> int:
-    """Deja el hogar de prueba listo: perfil, datos de la persona e historial
-    limpio. Al usar un hogar real, el simulador ejercita la MISMA resolución de
-    config que producción (género, ciudad, medio) — por eso detecta bugs que
-    un prompt armado a mano no puede ver."""
+def preparar_hogar_sim(meta: dict, perfil: str, continuar: bool = False) -> tuple[int, list]:
+    """Deja el hogar de prueba listo: perfil, datos de la persona e historial.
+    Al usar un hogar real, el simulador ejercita la MISMA resolución de config
+    que producción (género, ciudad, medio) — por eso detecta bugs que un prompt
+    armado a mano no puede ver.
+
+    `continuar=True` CONSERVA el historial de la corrida anterior, para simular
+    "otro día" con la misma persona. Es la única forma de reproducir la clase
+    de bug donde un dato con fecha de una charla vieja se repite como actual.
+    Devuelve (chat_id, historial_inicial).
+    """
     sys.path.insert(0, str(BASE_DIR))
     from core import hogar as hogar_mod
-    from core.utils import write_text_atomic
+    from core.utils import write_text_atomic, load_json
 
     d = hogar_mod.hogar_dir(HOGAR_SIM)
     d.mkdir(parents=True, exist_ok=True)
@@ -108,9 +114,15 @@ def preparar_hogar_sim(meta: dict, perfil: str) -> int:
         "genero": meta["genero"],
         "perfil_completo": True,
     })
-    for f in ("historial.json", "alerta_pendiente.json"):
-        (d / f).unlink(missing_ok=True)
-    return HOGAR_SIM
+    (d / "alerta_pendiente.json").unlink(missing_ok=True)
+
+    if continuar:
+        historial = load_json(d / "historial.json", default=[]) or []
+        print(f"[simulador] Continuando con {len(historial)} mensajes de la charla anterior")
+        return HOGAR_SIM, historial
+
+    (d / "historial.json").unlink(missing_ok=True)
+    return HOGAR_SIM, []
 
 
 def cargar_persona(nombre: str = "marta") -> str:
@@ -261,6 +273,7 @@ async def simular(
     turnos: int = 10,
     iteracion: int = 1,
     escenario: str | None = None,
+    continuar: bool = False,
 ) -> tuple[list[dict], Path]:
     if not GEMINI_API_KEY:
         raise RuntimeError("Falta GEMINI_API_KEY en .env")
@@ -295,8 +308,7 @@ async def simular(
     sys.path.insert(0, str(BASE_DIR))
     import aikiu
     meta = _meta_persona(persona_prompt, persona)
-    chat_sim = preparar_hogar_sim(meta, perfil)
-    historial_bot: list[dict] = []
+    chat_sim, historial_bot = preparar_hogar_sim(meta, perfil, continuar=continuar)
 
     LOGS_SIM_DIR.mkdir(exist_ok=True)
     sufijo_esc = f"_{escenario}" if escenario else ""
@@ -343,6 +355,12 @@ async def simular(
         if turno < turnos - 1:
             msg_usuario = _enviar_a_usuario(chat_usuario, msg_bot_limpio)
 
+    # Persistimos el historial en el hogar de prueba para que una corrida con
+    # --continuar (otro día) lo encuentre, igual que hace producción.
+    from core.utils import write_json_atomic
+    from core import hogar as hogar_mod
+    write_json_atomic(hogar_mod.hogar_dir(chat_sim) / "historial.json", historial_bot[-40:])
+
     with open(log_path, "w", encoding="utf-8") as f:
         for entry in conversacion:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -352,9 +370,15 @@ async def simular(
 
 
 if __name__ == "__main__":
-    # Uso: python simulador/simulador.py [persona] [turnos] [escenario]
-    # ej.: python simulador/simulador.py marta 8 dolor_fisico
-    persona   = sys.argv[1] if len(sys.argv) > 1 else "marta"
-    turnos    = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-    escenario = sys.argv[3] if len(sys.argv) > 3 else None
-    asyncio.run(simular(persona=persona, turnos=turnos, escenario=escenario))
+    # Uso: python simulador/simulador.py [persona] [turnos] [escenario] [--continuar]
+    #   ej.: python simulador/simulador.py marta 8 dolor_fisico
+    #   multi-día: correr una vez normal y después con --continuar (conserva el
+    #   historial, así se prueba que un dato de "ayer" no se repita como de hoy):
+    #     python simulador/simulador.py marta 6 saludo
+    #     python simulador/simulador.py marta 6 dia_siguiente --continuar
+    args      = [a for a in sys.argv[1:] if not a.startswith("--")]
+    continuar = "--continuar" in sys.argv
+    persona   = args[0] if len(args) > 0 else "marta"
+    turnos    = int(args[1]) if len(args) > 1 else 10
+    escenario = args[2] if len(args) > 2 else None
+    asyncio.run(simular(persona=persona, turnos=turnos, escenario=escenario, continuar=continuar))
