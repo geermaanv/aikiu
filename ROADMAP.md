@@ -62,9 +62,25 @@ conversación con GLM-5, y detección de angustia con alerta a la familia
 - **Hot-reload** de perfil.md / aikiu_core.md (cambios sin reiniciar el bot).
 - **Género** configurable por hogar (inferido del nombre).
 
+**Alertas con indagación previa (18/07):**
+- Nivel 1-2 → NO se avisa de inmediato: queda **pendiente**, Aikiu repregunta
+  y un segundo pase decide con la respuesta: *confirma* (avisa), *descarta*
+  (era menor, no se molesta a la familia) o *sin datos* (sigue abierta).
+- Nivel 3 (emergencia) → alerta **inmediata**, sin indagar.
+- **Sin respuesta a los 10 min** → alerta igual, avisando que no contestó: el
+  silencio tras un síntoma es más grave, no menos (job cada 2 min).
+- La alerta incluye los **últimos 6 mensajes** de la charla, para que la
+  familia vea cómo se llegó a la situación.
+- La regla de salud cubre **síntomas** (náuseas, mareos, fiebre, falta de
+  aire…), no solo dolores; los minimizadores ("un poco", "es la edad") ya no
+  bajan el nivel — la confirmación previa filtra lo trivial.
+
 **Resiliencia — nunca dejar al adulto sin respuesta:**
 - Error handler global (frase cálida ante cualquier crash), timeout de 20s por
   llamada al LLM, y `generar_respuesta` nunca devuelve vacío.
+- **Respuesta vacía de OpenRouter** (HTTP 200 con content vacío, intermitente)
+  se trata como falla → cae a Groq. Antes el vigía la leía como "nivel 0" y
+  **perdía alertas en silencio**.
 
 **Memoria e higiene:**
 - Historial de conversación **persistente** (sobrevive a reinicios) y podado a
@@ -82,10 +98,26 @@ conversación con GLM-5, y detección de angustia con alerta a la familia
   "al tanto" (ej: "hoy juega la semifinal del Mundial") para responder y para
   traer temas por iniciativa.
 
+**Simulador sobre el camino real (18/07):** dejó de rearmar un prompt paralelo
+y ahora corre sobre un hogar de prueba llamando a `generar_respuesta` /
+`clasificar_distress` — el mismo camino que producción. Antes era
+estructuralmente incapaz de ver los bugs del beta (no pasaba por la resolución
+de config, ni inyectaba contexto del día ni el aviso de historial multi-día).
+Nueva persona **Héctor** (79, Rosario, hombre, parco, minimiza síntomas) para
+cubrir género masculino y otra ciudad.
+
 **Bugs del beta arreglados:** nombre del onboarding ("hola soy german"), alerta
 bloqueada por crash de stats, latencia (~12s → ~3s), género hardcodeado, falso
 positivo del vigía ("ver el partido solo" no es angustia), Aikiu ofreciéndose a
-hacer acciones físicas ("¿te preparo un té?"), `/setname` (ya dice "Aikiu").
+hacer acciones físicas ("¿te preparo un té?"), `/setname` (ya dice "Aikiu"),
+**contexto del día viejo repetido como actual** (historial multi-día),
+**contradecir al usuario inventando un dato para sostenerse**, **`genero` y
+`medio` del hogar ignorados** por `_config_hogar` (fallaba en silencio), y
+**disculparse por errores no cometidos** ante una simple preferencia.
+
+**Lección del beta:** cada persona nueva que lo prueba destapa una clase
+distinta de falla. 4 mensajes de un amigo valieron más que 40 conversaciones
+simuladas — de ahí la cadena simulador → Irene → Marta.
 
 ---
 
@@ -93,6 +125,9 @@ hacer acciones físicas ("¿te preparo un té?"), `/setname` (ya dice "Aikiu").
 
 **Producto:**
 - Calibración fina del vigía con datos reales de uso.
+- Simulador: falta que un personaje **corrija y desconfíe** (hoy Gemini es
+  complaciente y nunca contradice), y **conversaciones multi-día** — las dos
+  clases de bug que solo aparecieron con uso real.
 - Resumen diario al familiar (temas charlados, estado anímico, recordatorios).
 - Comando `/log` en el bot familiar (pedir el log del día sin tocar archivos).
 - Métricas de aislamiento (alerta silenciosa si el volumen de mensajes cae >50%).
@@ -120,7 +155,7 @@ regresión justo después de un beta que funciona):
 | TTS (texto → voz) | edge-tts + ffmpeg — en pausa (texto-primero) |
 | Bot Telegram | python-telegram-bot 21.6 |
 | Scheduler | APScheduler 3.10 |
-| Tests | pytest (891 tests) |
+| Tests | pytest (901 tests) |
 | Actualidad / datos | Google News RSS (curado) + dolarapi + wttr.in |
 | Deploy | Railway + volumen persistente (`AIKIU_REGISTRY`) — ver MULTI_TENANT.md |
 | Runtime | Python 3.11+ (desarrollo en 3.14), macOS/Linux/Windows |
