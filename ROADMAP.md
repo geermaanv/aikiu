@@ -45,11 +45,11 @@ coordinar sesión con Irene.
 
 ---
 
-## Estado actual (post-beta, 11–15/07/2026)
+## Estado actual (post-beta, 11–18/07/2026)
 
 El bot corre en Telegram real (Germán como tester), end-to-end: onboarding,
 conversación con GLM-5, y detección de angustia con alerta a la familia
-(confirmada llegando en un dispositivo real). **891 tests, CI en verde.**
+(confirmada llegando en un dispositivo real). **901 tests, CI en verde.**
 
 **Arquitectura:**
 - **GLM-5** (`z-ai/glm-5` vía OpenRouter, razonamiento apagado) como LLM de
