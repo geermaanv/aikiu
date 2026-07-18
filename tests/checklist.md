@@ -10,6 +10,24 @@ despliegue con Marta** (ver ROADMAP → Objetivo norte). La sección 0 son las
 
 ---
 
+## 0.a Paso previo OBLIGATORIO: batería del simulador
+
+Antes de la sesión con Irene y antes del gate de Marta, correr:
+
+```bash
+bash simulador/correr_bateria.sh          # 10 escenarios, ~15 min
+```
+
+Y leer las transcripciones contra los chequeos de `simulador/escenarios.json`.
+
+**Por qué es obligatorio:** el riesgo real no es que falle algo viejo — es que
+un arreglo nuevo rompa una regla vieja **en silencio**. Pasó el 18/07: una
+regla de deferencia agregada ese día le ganó a la de confusiones temporales y
+Aikiu terminó confirmándole a Marta que era mayo cuando era julio. Los 901
+tests pasaban igual; solo la batería lo vio.
+
+---
+
 ## 0. Fallas BLOQUEANTES del gate (si alguna falla → no se despliega)
 
 1. **Entiende el audio.** Enviar 3 notas de voz distintas → las tres se
