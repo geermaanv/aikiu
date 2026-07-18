@@ -65,6 +65,54 @@ if ":" in _override:
     BOT_BACKENDS.insert(0, (_prov, _mod))
 
 
+# chat_id reservado para el simulador. Es un hogar real (pasa por toda la
+# maquinaria de producción) pero aislado de los hogares de verdad.
+HOGAR_SIM = 990001
+
+# Metadatos de la persona, en un comentario al inicio del .md:
+#   <!-- ciudad: Buenos Aires, Argentina | genero: F -->
+# Sirven para armar el hogar de prueba igual que uno real. Si faltan, se usan
+# los defaults.
+_META_RE = re.compile(r"<!--\s*(.*?)\s*-->", re.S)
+
+
+def _meta_persona(texto: str, nombre_archivo: str) -> dict:
+    meta = {"nombre": nombre_archivo.capitalize(), "ciudad": "Buenos Aires, Argentina", "genero": "F"}
+    m = _META_RE.search(texto)
+    if m:
+        for par in m.group(1).split("|"):
+            if ":" in par:
+                k, v = par.split(":", 1)
+                k = k.strip().lower()
+                if k in meta:
+                    meta[k] = v.strip()
+    return meta
+
+
+def preparar_hogar_sim(meta: dict, perfil: str) -> int:
+    """Deja el hogar de prueba listo: perfil, datos de la persona e historial
+    limpio. Al usar un hogar real, el simulador ejercita la MISMA resolución de
+    config que producción (género, ciudad, medio) — por eso detecta bugs que
+    un prompt armado a mano no puede ver."""
+    sys.path.insert(0, str(BASE_DIR))
+    from core import hogar as hogar_mod
+    from core.utils import write_text_atomic
+
+    d = hogar_mod.hogar_dir(HOGAR_SIM)
+    d.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(hogar_mod.perfil_path(HOGAR_SIM), perfil)
+    hogar_mod.escribir_state(HOGAR_SIM, {
+        "owner_chat_id": HOGAR_SIM,
+        "nombre_adulto_mayor": meta["nombre"],
+        "ciudad": meta["ciudad"],
+        "genero": meta["genero"],
+        "perfil_completo": True,
+    })
+    for f in ("historial.json", "alerta_pendiente.json"):
+        (d / f).unlink(missing_ok=True)
+    return HOGAR_SIM
+
+
 def cargar_persona(nombre: str = "marta") -> str:
     path = BASE_DIR / "simulador" / "personas" / f"{nombre}.md"
     contenido = path.read_text(encoding="utf-8")
@@ -239,9 +287,16 @@ async def simular(
         config={"system_instruction": persona_prompt},
     )
 
-    # Agente B: bot con fallback multi-proveedor
+    # Agente B: el bot REAL. En vez de rearmar un prompt paralelo, el
+    # simulador llama a aikiu.generar_respuesta sobre un hogar de prueba, así
+    # ejercita lo mismo que producción: resolución de config por hogar
+    # (género, ciudad, medio), contexto del día, blacklist de temas, aviso de
+    # historial multi-día, recordatorio por turno y el fallback de proveedor.
+    sys.path.insert(0, str(BASE_DIR))
+    import aikiu
+    meta = _meta_persona(persona_prompt, persona)
+    chat_sim = preparar_hogar_sim(meta, perfil)
     historial_bot: list[dict] = []
-    sp_bot = system_prompt_bot(perfil, core)
 
     LOGS_SIM_DIR.mkdir(exist_ok=True)
     sufijo_esc = f"_{escenario}" if escenario else ""
@@ -261,32 +316,15 @@ async def simular(
     for turno in range(turnos):
         print(f"[{persona.capitalize()}]: {msg_usuario}\n")
 
+        # Camino real de producción: conversador primero, vigía después (igual
+        # que handle_message, donde el vigía corre en background).
+        raw = await aikiu.generar_respuesta(msg_usuario, historial_bot, chat_id=chat_sim)
+        msg_bot_limpio, _ = aikiu.parse_llm_response(raw)
+        nivel, distress_motivo = await aikiu.clasificar_distress(msg_usuario, chat_id=chat_sim)
+        distress_raw = f"DISTRESS_LEVEL: {nivel}" if distress_motivo else None
+        backend_actual = f"prod:{aikiu.CONFIG.get('modelo_llm', '?')}"
+
         historial_bot.append({"role": "user", "content": msg_usuario})
-        # Recordatorio por turno — réplica fiel de aikiu.py::generar_respuesta.
-        recordatorio = {
-            "role": "system",
-            "content": (
-                "Recordá dos cosas al responder: (1) primero el texto para Marta, "
-                "cálido y nunca vacío, aunque ella cierre con un monosílabo; "
-                "(2) al final, en su propia línea, exactamente: DISTRESS_LEVEL: N "
-                "(N de 0 a 3 según el último mensaje). Nunca omitas esa línea."
-            ),
-        }
-        messages = [{"role": "system", "content": sp_bot}] + historial_bot[-20:] + [recordatorio]
-
-        # Dos agentes en paralelo, igual que producción: el conversador
-        # responde y el vigía clasifica la angustia del mensaje de Marta.
-        vigia_messages = [{"role": "user", "content": system_prompt_vigia(msg_usuario)}]
-        (msg_bot, backend_actual), (vigia_raw, _) = await asyncio.gather(
-            llamar_bot_con_fallback(messages, gemini_client),
-            llamar_bot_con_fallback(vigia_messages, gemini_client),
-        )
-
-        nivel, motivo = parse_distress_classification(vigia_raw)
-        distress_raw = f"DISTRESS_LEVEL: {nivel}" if _NIVEL_RE.search(vigia_raw) else None
-        distress_motivo = motivo
-        # El conversador ya no emite DISTRESS, pero limpiamos por las dudas.
-        msg_bot_limpio = _DISTRESS_RE.sub("", msg_bot).strip()
         historial_bot.append({"role": "assistant", "content": msg_bot_limpio})
 
         print(f"[Aikiu ({backend_actual})]:   {msg_bot_limpio}\n")
