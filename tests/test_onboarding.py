@@ -313,3 +313,18 @@ def test_wizard_acepta_voz_transcrita(monkeypatch):
     estado = run(aikiu.ob_nombre(update_voz, ctx))
     assert estado == aikiu.OB_EDAD
     assert hogar_mod.leer_state(70)["onboarding_progress"]["nombre"] == "Pedro"
+
+
+def test_config_hogar_promueve_genero_y_medio_del_state(monkeypatch):
+    """Bug real (18/07): `genero` se guardaba M en el state del hogar pero
+    `_config_hogar` no lo promovía, así que `_genero_de` leía el default
+    global (F) y trataba a un hombre en femenino. Toda clave overrideable
+    por hogar tiene que estar en la lista de promoción."""
+    monkeypatch.setattr(aikiu, "_state_hogar", lambda cid: {
+        "nombre_adulto_mayor": "Nico", "genero": "M", "medio": "voz",
+    })
+    vista = aikiu._config_hogar(999)
+    assert vista["genero"] == "M"
+    assert vista["medio"] == "voz"
+    assert aikiu._genero_de(999) == "M"
+    assert aikiu._medio_de(999) == "voz"

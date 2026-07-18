@@ -188,7 +188,11 @@ def _config_hogar(chat_id: int) -> dict:
     """
     vista = dict(CONFIG)
     estado = _state_hogar(chat_id)
-    for clave in ("nombre_adulto_mayor", "nombre_asistente", "ciudad", "voz_tts"):
+    # OJO: toda clave overrideable por hogar tiene que estar en esta lista, si
+    # no el valor del state se ignora silenciosamente y cae al default global.
+    # (Pasó con `genero`: se guardaba M en el state y se leía F del template.)
+    for clave in ("nombre_adulto_mayor", "nombre_asistente", "ciudad", "voz_tts",
+                  "genero", "medio"):
         if clave in estado:
             vista[clave] = estado[clave]
     if "nombre_adulto_mayor" not in estado and estado.get("nombre_adulto"):
