@@ -9,6 +9,19 @@ no lo recibió: hay una sola oportunidad de primera impresión.
 
 ---
 
+## Cómo se trabaja acá
+
+```
+specs/active/       la spec en curso — leerla antes de tocar nada
+specs/backlog/      lo que sigue
+specs/done/         historial de por qué las cosas son así
+specs/ARCHITECTURE.md   el sistema y el porqué de cada decisión
+memory/learning.md  errores que ya se cometieron. LEER ESTO PRIMERO.
+CAMBIOS.md          el formato de 5 campos para especificar un cambio
+```
+
+---
+
 ## Las tres reglas que más importan
 
 1. **Antes de tocar una regla de comportamiento, leé `CAMBIOS.md` y corré
@@ -40,7 +53,7 @@ no lo recibió: hay una sola oportunidad de primera impresión.
 | `simulador/aserciones.json` | qué cuenta como falla, y cuáles van por código |
 | `simulador/niveles.json` | gate por niveles, criterio binario sin tolerancia |
 | `kb/` | 21 libros de gerontología indexados + búsqueda semántica local |
-| `PROPUESTA_PROTOCOLOS.md` | propuesta de refactor **refutada por su propio experimento**. Archivada. |
+| `specs/done/000-*` | propuesta de refactor **refutada por su propio experimento** |
 
 **Cosas no obvias que ya existen** (verificar antes de construir):
 
