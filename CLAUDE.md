@@ -100,6 +100,38 @@ verde — pasó el 22/07. Para fallas sutiles, 8 reps mínimo.
 
 ---
 
+## Si algo falla dos veces, cambiá de enfoque
+
+**No hagas un tercer intento del mismo tipo.** El 22/07 la misma regla se
+reescribió tres veces y quedó estancada en 3/5; recién el cuarto intento, que
+cambió de enfoque, cerró en 5/5. Antes había pasado lo mismo con la
+clasificación de riesgo: tres prompts fallidos, resuelto al separar el agente.
+
+- **Si `pytest` no pasa tras 3 modificaciones**: pará, mostrá la salida
+  completa de la terminal y pedí intervención. No emparches a ciegas.
+- **Si una regla de comportamiento falla dos veces seguidas en el gate**: no la
+  reescribas una tercera en el mismo tono. O se pasa a código (un detector que
+  inyecte la directiva solo en ese turno), o se reescribe imperativa con las
+  frases textuales de lo que salió mal. Ver `memory/learning.md` #5.
+- **Si el gate sigue rojo después de un arreglo**: antes de tocar la regla otra
+  vez, verificá si la falla es del medidor. El 22/07, 9 de 22 fallas reportadas
+  eran falsos positivos del juez.
+
+---
+
+## Conflictos entre la spec y las reglas
+
+La spec en `specs/active/` manda sobre `aikiu_core.md`. **Pero si para cumplirla
+hay que modificar o contradecir una regla existente del núcleo, avisá primero y
+esperá confirmación** — no la cambies por tu cuenta.
+
+Motivo concreto: el 22/07 se agregó una regla de largo que contradecía a otra
+que ya existía en otra sección, y las respuestas largas siguieron saliendo
+porque había una regla autorizándolas. Un choque de reglas no se ve hasta que
+rompe algo.
+
+---
+
 ## Cómo se conversa acá
 
 Español rioplatense, voseo estricto. Varias verificaciones son sobre el
@@ -107,3 +139,23 @@ registro, así que no se puede simplificar cambiando el idioma.
 
 La latencia importa: es la queja principal de los testers. Nada que agregue una
 llamada de LLM al camino de la respuesta.
+
+---
+
+## Definition of Done
+
+Antes de reportar una tarea como terminada:
+
+1. **`./venv/bin/python -m pytest tests/ -q`** en verde. Sin excepciones.
+2. Si tocaste reglas de comportamiento: haber corrido `bash spec.sh <tema>`
+   ANTES, y el criterio de éxito de la spec DESPUÉS, con la muestra que pide
+   (8 reps mínimo — un verde con 16 conversaciones no es verde).
+3. `git status` limpio de `.env`, `kb/kb.sqlite`, `kb/vectores.npy` y cualquier
+   extracto de los libros. **El repo es público.**
+4. Si la tarea salió de una spec, actualizar su bitácora. Si se cumplió el
+   criterio de éxito, moverla a `specs/done/`.
+5. Si en el camino apareció un error que ya estaba en `memory/learning.md`,
+   anotarlo — significa que la lección no alcanzó y hay que automatizarla.
+
+**No reportes como hecho algo verificado solo con una prueba manual exitosa.**
+Es el error que más se repitió: pasó dos veces el mismo día.
