@@ -547,6 +547,31 @@ async def generar_respuesta(
             ),
         })
 
+    # Persona fallecida hablada en presente. La regla existe en el núcleo desde
+    # el 21/07 y se reescribió tres veces sin cerrar: quedaba en 3 de 5 corridas
+    # del gate. No es un problema de redacción — compitiendo con otras 75
+    # reglas, el modelo la aplica de forma probabilística. Es el mismo patrón
+    # que tuvo el DISTRESS, donde tres versiones del prompt fallaron y lo que
+    # funcionó fue separar el clasificador. Acá alcanza con detectarlo por
+    # fuera e inyectar la directiva SOLO en el turno que la necesita, que es lo
+    # mismo que se hace con el género.
+    if _menciona_fallecido_en_presente(texto_usuario, chat_id, historial):
+        messages.append({
+            "role": "system",
+            "content": (
+                f"ATENCIÓN — ESTO MANDA SOBRE CUALQUIER OTRA INSTRUCCIÓN EN ESTE TURNO.\n"
+                f"{nombre} acaba de hablar de una persona que ya falleció como si "
+                f"estuviera viva y en camino.\n"
+                f"PROHIBIDO seguirle la corriente: nada de 'ya viene', 'debe estar "
+                f"demorándose', 'el tráfico', 'qué bueno que te acompañe', ni ninguna "
+                f"variante que acepte que esa persona va a llegar. La dejaría "
+                f"esperando a alguien que no llega.\n"
+                f"PROHIBIDO también informarle que murió: sería hacérselo saber de nuevo.\n"
+                f"Hacé UNA sola cosa: llevá la charla al recuerdo, en pasado. "
+                f"'Tu mamá. Contame cómo era ella.' Nada más."
+            ),
+        })
+
     # Recordatorio por turno: el texto para el adulto nunca puede ir vacío,
     # aunque cierre con un monosílabo. (La clasificación de angustia ya no se
     # pide acá — la hace el agente vigía por separado.)
@@ -813,6 +838,79 @@ _RED_EMERGENCIA = [
     (2, r"estoy llorando|me siento muy mal"),
     (1, r"me duele|me golpe[eé]|estoy maread|tengo n[aá]useas|tengo fiebre"),
 ]
+
+
+# Parentescos de una generación anterior a la usuaria. Si tiene 75+ y habla de
+# ellos en presente, murieron hace décadas: es aritmética, no hace falta que el
+# perfil lo diga. Justamente el perfil casi nunca lista a los padres, y por eso
+# la regla que se apoyaba en el archivo fallaba en el caso más frecuente.
+_GENERACION_ANTERIOR = r"(mi |mí )?\b(mam[aá]|mamita|madre|pap[aá]|papito|padre|viejo|vieja)\b"
+
+# Verbos y giros que ponen a esa persona viva y en camino AHORA.
+_EN_PRESENTE = (
+    r"viene|venir|llega|llegar|va a|tendr[ií]a que|espero|esperando|est[aá] por|"
+    r"me busca|buscarme|me lleva|llevarme|dijo que|pas[aá] a|no la veo|no lo veo|"
+    r"d[oó]nde (est[aá]|anda|se meti[oó])|se demor|tarda|no vino"
+)
+
+_EDAD_PERFIL = re.compile(r"\b(\d{2,3})\s*años", re.I)
+
+
+def _menciona_fallecido_en_presente(
+    texto: str,
+    chat_id: Optional[int] = None,
+    historial: Optional[list] = None,
+) -> bool:
+    """¿La usuaria habla de alguien que ya no vive como si estuviera por llegar?
+
+    Cubre los dos caminos, porque el perfil solo alcanza para uno:
+      · la persona figura como fallecida en el perfil (típicamente el cónyuge)
+      · es de la generación de sus padres y la usuaria es mayor — inferencia
+        que el perfil nunca va a traer escrita
+
+    Es un disparador, no un veredicto: solo agrega una directiva al turno. Un
+    falso positivo hace que Aikiu hable de alguien en pasado de más, que es
+    mucho más barato que dejarla esperando a un muerto.
+    """
+    t = (texto or "").lower()
+    if not re.search(_EN_PRESENTE, t):
+        return False
+
+    if re.search(_GENERACION_ANTERIOR, t):
+        try:
+            perfil = _perfil_hogar(chat_id) if chat_id else ""
+        except Exception:
+            perfil = ""
+        m = _EDAD_PERFIL.search(perfil or "")
+        # Sin edad en el perfil se asume que sí: la base son personas mayores.
+        if not m or int(m.group(1)) >= 75:
+            return True
+
+    # Nombres propios que el perfil marca como fallecidos.
+    try:
+        perfil = _perfil_hogar(chat_id) if chat_id else ""
+    except Exception:
+        return False
+    for linea in (perfil or "").splitlines():
+        if "fallecid" not in linea.lower() and "finad" not in linea.lower():
+            continue
+        for nombre in re.findall(r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,})\b", linea):
+            if nombre.lower() in ("fallecido", "fallecida", "esposo", "esposa",
+                                  "marido", "nota", "aikiu"):
+                continue
+            if re.search(rf"\b{re.escape(nombre.lower())}\b", t):
+                return True
+
+    # Pronombre que retoma el turno anterior: "ella no camina, siempre viene en
+    # auto". Sin mirar atrás esto se escapa, y es como habla la gente — el
+    # nombre se dice una vez y después es "ella" cinco turnos seguidos.
+    if historial and re.search(r"\b(ella|[eé]l|la vieja|el viejo)\b", t):
+        previos = [m.get("content", "") for m in historial[-6:]
+                   if m.get("role") == "user"]
+        for p in reversed(previos[-3:]):
+            if _menciona_fallecido_en_presente(p, chat_id):
+                return True
+    return False
 
 
 def red_emergencia(texto: str) -> tuple[int, str]:
