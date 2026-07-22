@@ -31,10 +31,15 @@ Fecha: 22/07/2026. Todos los números son medidos, no estimados.
 > sobrevive a su propia prueba.**
 >
 > Ese mismo día se aplicó la alternativa barata —reescribir las reglas en el
-> formato validado, sin tocar la arquitectura— sobre los dos bugs reales que
-> quedaban. **El nivel 1 del gate pasó de rojo a verde en cuatro vueltas**
-> (sección 10.4): 16 conversaciones, 14 aserciones, cero fallas. Sin
-> protocolos, sin cargador, sin detectores.
+> formato validado, sin tocar la arquitectura— sobre los bugs reales que
+> quedaban. **7 de 11 aserciones pasaron a verde y el largo de respuesta bajó
+> de 27/65 a 6/36** (sección 10.4), sin protocolos, sin cargador y sin
+> detectores.
+>
+> El nivel **no** quedó cerrado: una vuelta dio verde con 16 conversaciones y
+> volvió a rojo con 36, porque quedaban fallas de baja frecuencia que esa
+> muestra no alcanzaba a ver. Ese episodio está documentado en 10.4 en vez de
+> corregido en silencio, porque es la lección más útil del día.
 >
 > El documento se deja completo, con el razonamiento intacto, porque el debate
 > sigue siendo útil: la pregunta pasa de *"¿hay que modularizar?"* a *"¿por qué
@@ -724,11 +729,26 @@ frases textuales de lo que el modelo dijo mal, debería dar la misma ganancia
 que el refactor. Se probó ese mismo día sobre dos bugs reales.
 
 **Caso 1 — el largo de respuesta.** Era la falla más frecuente de todo el
-sistema: 27 de 65 corridas. Al revisar el núcleo apareció que **no existía
-ninguna regla de largo**: describía la estructura ideal pero nunca decía
-"corto". Se agregó en el formato validado, con las dos respuestas reales de 7 y
-10 oraciones que el modelo había escrito. Resultado: de 2/5 respuestas largas a
-1/5, y en preguntas de conocimiento de 2/5 a 0/5. En el gate pasó a verde.
+sistema: 27 de 65 corridas. Se agregó una regla de largo en el formato
+validado, con las dos respuestas reales de 7 y 10 oraciones que el modelo había
+escrito. Resultado inmediato: de 2/5 respuestas largas a 1/5, y en preguntas de
+conocimiento de 2/5 a 0/5.
+
+> **Corrección posterior, y es más interesante que el caso.** Al escribir esto
+> se afirmó que "no existía ninguna regla de largo". **Era falso.** Existía en
+> otra sección del núcleo y decía: *3 oraciones para charla, hasta 5 para
+> recetas y explicaciones*. O sea que las respuestas largas no eran un olvido:
+> **había una regla autorizándolas**, contradiciendo a la nueva.
+>
+> Es el mismo choque de reglas sin precedencia que el documento describe en la
+> sección 2.1 — cometido por quien lo estaba escribiendo, sobre el archivo que
+> venía leyendo hacía dos días. Vale como dato sobre la magnitud del problema:
+> con 105 reglas en prosa repartidas en 25 secciones, **nadie tiene el conjunto
+> en la cabeza**, ni siquiera quien lo edita todos los días.
+>
+> Un tercer caso: la regla nueva decía "ofrecé seguir" y el modelo respondió
+> *"¿te sigo con el frito o las preferís al horno?"* — un menú A/B, prohibido
+> por otra regla. **Un arreglo introdujo una violación de una regla distinta.**
 
 **Caso 2 — negarle la soledad.** El gate encontró esto:
 
@@ -745,14 +765,32 @@ contraste con la forma correcta. Verificado después: 2/2 validan sin negarla.
 consulta práctica, soledad), cuatro vueltas el mismo día:
 
 ```
-1ª  🔴  G1, G2, G3, G6, G7, G8, S-CPR1
-2ª  🔴  G11, G6, G7, G8, S-CPR1          (arregladas G1, G2, G3, G5)
-3ª  🔴  G11, G9, S-SOL1                  (arregladas G6, G7, G8 ← el largo)
-4ª  🟢  16 conversaciones, 14 aserciones, cero fallas
+1ª  🔴  G1, G2, G3, G6, G7, G8, S-CPR1        16 conversaciones
+2ª  🔴  G11, G6, G7, G8, S-CPR1               (arregladas G1, G2, G3, G5)
+3ª  🔴  G11, G9, S-SOL1                       (arregladas G6, G7, G8 ← el largo)
+4ª  🟢  cero fallas                            16 conversaciones
+5ª  🔴  G8 17%, G2 6%, G10 3%                  36 conversaciones  ← ojo acá
 ```
 
-**Sin refactor, sin protocolos, sin cargador, sin detectores.** Solo
-reescribiendo reglas en el formato que el experimento validó.
+> **El verde de la 4ª vuelta era falso, y conviene entender por qué.** No hubo
+> regresión entre la 4ª y la 5ª: son **fallas de baja frecuencia que 16
+> conversaciones no alcanzaban a ver**. Una falla que ocurre el 5% de las veces
+> tiene ~55% de probabilidad de no aparecer en 16 corridas. Con 36 aparece.
+>
+> Es el mismo error que la sección 3.3 documenta —declarar un bug arreglado tras
+> una prueba manual exitosa— en versión estadística, y cometido *después* de
+> haber escrito esa sección.
+>
+> Peor: la configuración le daba **menos** repeticiones al nivel 1 que a los
+> demás, asumiendo que "conversación base" es lo fácil. Es al revés: sus fallas
+> son las más sutiles y necesita **más** muestra, no menos.
+
+**Qué queda en pie de todo esto.** Las mejoras fueron reales y se lograron sin
+refactor, solo reescribiendo reglas en el formato que el experimento validó:
+G1, G2, G3, G5, G6, G7 y S-CPR1 pasaron a verde y se mantuvieron; el largo bajó
+de 27/65 a 6/36. Pero el nivel **no está cerrado**, y cualquier afirmación de
+"verde" con menos de ~30 conversaciones por escenario hay que leerla con
+desconfianza.
 
 > **Lección 6.** La proporción importa: de las 15 fallas que el gate reportó en
 > las tres vueltas, **6 eran defectos del propio instrumento** —turnos donde el
