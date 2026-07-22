@@ -44,9 +44,17 @@ def aserciones_de(escenario):
 # instantáneo y sin varianza. El LLM juzgó "Me imagino lo lindos que se ven"
 # como tuteo — la cita era real, el juicio no. Un regex no comete ese error.
 
+# Solo formas que EXISTEN en tuteo y NO en voseo. "tuyo", "tuya", "te", "tu"
+# son idénticas en los dos registros: "un mensaje tuyo" es rioplatense perfecto.
+# Estaban en la lista y generaban falsos positivos — 14 de 65 corridas marcadas
+# como tuteo el 22/07, varias por "tuyo". Un chequeo determinístico que se
+# equivoca es más peligroso que uno probabilístico: nadie lo pone en duda.
+# El pretérito NO sirve para distinguir: "vos hiciste" y "tú hiciste" son
+# iguales. Solo el presente, el imperativo y los pronombres difieren.
 _TUTEO = re.compile(
-    r"\b(tienes|quieres|puedes|debes|sabes|haces|dices|vienes|estás tú|contigo|"
-    r"tuyo|tú|te gusta[rs]|piensas|sientes|necesitas|prefieres|recuerdas)\b", re.I)
+    r"\b(tienes|quieres|puedes|debes|sabes|haces|dices|vienes|eres|vas tú|"
+    r"piensas|sientes|necesitas|prefieres|recuerdas|entiendes|conoces|"
+    r"contigo|tú|ti)\b", re.I)
 
 
 def _chk_g2(bot):  # más de una pregunta en el turno

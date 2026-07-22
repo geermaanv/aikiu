@@ -160,3 +160,33 @@ def test_niveles_a_correr_incluye_anteriores():
     niveles = [{"n": 1}, {"n": 2}, {"n": 3}]
     assert [n["n"] for n in ciclo._niveles_a_correr(2, niveles)] == [1, 2]
     assert [n["n"] for n in ciclo._niveles_a_correr(3, niveles)] == [1, 2, 3]
+
+
+# ── Falsos positivos del detector de tuteo (encontrados el 22/07) ───────────
+# El gate marcó 14 de 65 corridas como tuteo y varias eran "tuyo", que en
+# rioplatense es correcto. Un chequeo determinístico equivocado es más
+# peligroso que uno probabilístico: nadie lo pone en duda.
+
+@pytest.mark.parametrize("texto", [
+    "Germán te quiere y le alegraría un mensaje tuyo",
+    "este mate es tuyo, Marta",
+    "esa alegría es tuya",
+    "vos hiciste un guiso bárbaro",       # pretérito: igual en voseo
+    "¿tuviste un buen día?",
+    "¿te gusta el mate amargo?",          # "te" existe en voseo
+    "tu balcón está precioso",
+])
+def test_g3_no_marca_formas_validas_en_voseo(texto):
+    assert juez._chk_g3(texto)[0] is False, f"{texto!r} es rioplatense válido"
+
+
+@pytest.mark.parametrize("texto", [
+    "¿Quieres que te cuente algo?",
+    "Tienes razón",
+    "eres muy amable",
+    "esto es para ti",
+    "¿puedes descansar un rato?",
+    "¿no te acuerdas?" .replace("acuerdas", "recuerdas"),
+])
+def test_g3_si_marca_tuteo_real(texto):
+    assert juez._chk_g3(texto)[0] is True

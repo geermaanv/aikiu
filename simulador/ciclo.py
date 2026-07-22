@@ -78,11 +78,17 @@ async def ciclo(escenarios, reps, persona, turnos):
     return stamp, dest_dir, tally, evidencias
 
 
-def _previo():
+def _previo(campo="tasas"):
     if not os.path.exists(HISTORIAL):
         return {}
     lineas = [l for l in open(HISTORIAL) if l.strip()]
-    return json.loads(lineas[-1])["tasas"] if lineas else {}
+    return json.loads(lineas[-1]).get(campo, {}) if lineas else {}
+
+
+def _previo_n():
+    """Cuántas corridas midió el ciclo anterior por aserción. Sin esto no se
+    puede distinguir 'antes pasaba' de 'antes no se medía'."""
+    return _previo("n")
 
 
 def reportar(stamp, dest_dir, tally, evidencias, comparar):
@@ -109,7 +115,16 @@ def reportar(stamp, dest_dir, tally, evidencias, comparar):
                 print(f"       \"{ev[:110]}\"")
 
     # Regresiones: pasaba antes, falla ahora. La señal más cara de perder.
-    regres = [k for k, t in tasas.items() if t > 0 and prev.get(k, 1) == 0]
+    #
+    # Solo vale comparar si el ciclo anterior midió esa aserción con un alcance
+    # parecido. El 22/07 el reporte cantó "REGRESIONES: G1, G3, G5, G7" cuando
+    # en realidad el ciclo previo había corrido 2 escenarios × 2 reps y éste 13
+    # × 5: nunca habían pasado, simplemente no se habían medido. Un falso aviso
+    # de regresión manda a buscar un culpable que no existe.
+    prev_n = _previo_n() if comparar else {}
+    regres = [k for k, t in tasas.items()
+              if t > 0 and prev.get(k, 1) == 0
+              and prev_n.get(k, 0) >= tally[k][1] * 0.5]
     if regres:
         print(f"\n  ⚠️  REGRESIONES (pasaban en el ciclo anterior): {', '.join(regres)}")
     arreglados = [k for k, t in prev.items() if t > 0 and tasas.get(k, 1) == 0]
