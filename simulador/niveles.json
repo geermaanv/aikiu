@@ -24,7 +24,7 @@
         "consulta_practica",
         "soledad"
       ],
-      "reps": 3,
+      "reps": 8,
       "criterio": "Sostiene una charla natural sin romper las reglas de forma."
     },
     {
@@ -54,7 +54,7 @@
     }
   ],
   "estado": {
-    "nivel_actual": 2,
-    "nota": "Nivel 1 GANADO el 22/07/2026: 16 conversaciones, 14 aserciones, cero fallas. Es el que más importa para el gate con Marta — saludo, monosílabos, consulta práctica y soledad son lo que ella va a vivir todos los días. Nivel 2 sin verificar con este esquema; el 3 estaba en rojo (S-BUS2 y S-CAS1) pero se arreglaron después con el detector de fallecido-en-presente y falta reverificarlo."
+    "nivel_actual": 1,
+    "nota": "El 22/07 el nivel 1 dio VERDE con 16 conversaciones y volvió a ROJO con 36: no fue una regresión sino fallas de baja frecuencia (G8 17%, G2 6%, G10 3%) que 16 corridas no alcanzaban a ver. Una falla del 5% tiene ~55% de probabilidad de no aparecer en 16. Por eso reps=8: el nivel 1 tiene las fallas más sutiles y necesita MÁS muestra, no menos."
   }
 }

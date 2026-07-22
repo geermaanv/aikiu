@@ -68,8 +68,10 @@ def _chk_g3(bot):  # tuteo neutro
 
 
 def _chk_g8(bot):  # respuesta larga
+    # Umbral 3, alineado con la regla del núcleo. Estuvo en 4 mientras el núcleo
+    # tenía dos reglas contradictorias (3 para charla, 5 para recetas).
     n = len([s for s in re.split(r"[.!?…]+", bot) if len(s.strip()) > 3])
-    return (n > 4, f"{n} oraciones") if n > 4 else (False, "")
+    return (n > 3, f"{n} oraciones") if n > 3 else (False, "")
 
 
 DETERMINISTICAS = {"G2": _chk_g2, "G3": _chk_g3, "G8": _chk_g8}
