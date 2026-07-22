@@ -30,12 +30,23 @@ Fecha: 22/07/2026. Todos los números son medidos, no estimados.
 > conocer el resultado. **La justificación principal de la propuesta no
 > sobrevive a su propia prueba.**
 >
+> Ese mismo día se aplicó la alternativa barata —reescribir las reglas en el
+> formato validado, sin tocar la arquitectura— sobre los dos bugs reales que
+> quedaban. **El nivel 1 del gate pasó de rojo a verde en cuatro vueltas**
+> (sección 10.4): 16 conversaciones, 14 aserciones, cero fallas. Sin
+> protocolos, sin cargador, sin detectores.
+>
 > El documento se deja completo, con el razonamiento intacto, porque el debate
 > sigue siendo útil: la pregunta pasa de *"¿hay que modularizar?"* a *"¿por qué
 > una redacción imperativa con ejemplos negativos funciona tanto mejor, y hasta
 > dónde escala eso?"*. Y quedan en pie dos motivos menores para modularizar
 > (mantenibilidad y trazabilidad de tests), que ya **no** justifican por sí
 > solos un refactor del corazón del sistema.
+>
+> **Para quien vaya a criticar esto:** el resultado más útil sería encontrar
+> dónde se rompe la conclusión. Un candidato concreto está en la sección 10.5 —
+> la condición C puso el bloque al final del prompt, una posición privilegiada
+> por recencia, y eso no se controló.
 
 ---
 
@@ -706,7 +717,54 @@ lo respalda.
 4. **Todo lo de la sección 6** (niveles de verificación, loop de casos, reglas
    de higiene) es independiente de los protocolos y vale igual.
 
-### 10.4 Preguntas que el experimento abre
+### 10.4 Qué pasó al aplicar la alternativa barata (mismo día)
+
+El experimento predice que reescribir las reglas en formato imperativo, con las
+frases textuales de lo que el modelo dijo mal, debería dar la misma ganancia
+que el refactor. Se probó ese mismo día sobre dos bugs reales.
+
+**Caso 1 — el largo de respuesta.** Era la falla más frecuente de todo el
+sistema: 27 de 65 corridas. Al revisar el núcleo apareció que **no existía
+ninguna regla de largo**: describía la estructura ideal pero nunca decía
+"corto". Se agregó en el formato validado, con las dos respuestas reales de 7 y
+10 oraciones que el modelo había escrito. Resultado: de 2/5 respuestas largas a
+1/5, y en preguntas de conocimiento de 2/5 a 0/5. En el gate pasó a verde.
+
+**Caso 2 — negarle la soledad.** El gate encontró esto:
+
+```
+Usuaria: "anoche cené sola y estaba todo tan callado acá en casa"
+Aikiu:   "Acá estoy charlando con vos ahora, ASÍ QUE YA NO ESTÁS SOLA"
+```
+
+La regla existente decía *"Aikiu NUNCA la contradice"*, pero el modelo no leía
+eso como una contradicción. Se agregó la prohibición con la frase textual y el
+contraste con la forma correcta. Verificado después: 2/2 validan sin negarla.
+
+**Resultado del gate del nivel 1** (conversación base — saludo, monosílabos,
+consulta práctica, soledad), cuatro vueltas el mismo día:
+
+```
+1ª  🔴  G1, G2, G3, G6, G7, G8, S-CPR1
+2ª  🔴  G11, G6, G7, G8, S-CPR1          (arregladas G1, G2, G3, G5)
+3ª  🔴  G11, G9, S-SOL1                  (arregladas G6, G7, G8 ← el largo)
+4ª  🟢  16 conversaciones, 14 aserciones, cero fallas
+```
+
+**Sin refactor, sin protocolos, sin cargador, sin detectores.** Solo
+reescribiendo reglas en el formato que el experimento validó.
+
+> **Lección 6.** La proporción importa: de las 15 fallas que el gate reportó en
+> las tres vueltas, **6 eran defectos del propio instrumento** —turnos donde el
+> LLM había fallado por rate limit puntuados como comportamiento, el valor real
+> del dólar marcado como dato inventado, un cierre cálido leído como positividad
+> tóxica, derivar al médico leído como consejo médico—. Construir el medidor y
+> el producto al mismo tiempo tiene ese costo, y **un gate en rojo no dice qué
+> está roto**: cada rojo cuesta una investigación para separar el bug del
+> artefacto. Todas se cerraron con test de regresión, así que la proporción baja
+> en cada vuelta, pero conviene contarlo al planificar.
+
+### 10.5 Preguntas que el experimento abre
 
 - ¿Por qué una redacción imperativa con ejemplos negativos funciona tanto
   mejor? ¿Es específico de GLM-5 o general?
