@@ -91,11 +91,18 @@ def respuesta_larga(bot: str):
     return (n > MAX_ORACIONES, f"{n} oraciones") if n > MAX_ORACIONES else (False, "")
 
 
+# El cierre incluye la elipsis unicode (…), no solo los tres puntos ASCII.
+# Sin ella, "Ay, Marta…" se marcaba como respuesta cortada a mitad de frase —
+# falso positivo introducido el 22/07 al escribir este chequeo, detectado en la
+# primera corrida del gate.
+RE_CIERRE_VALIDO = re.compile(r"[.!?…\u2026]['\"»]?$")
+
+
 def truncada(bot: str):
     """Cortada a mitad de frase. Ante una persona mayor es desconcertante."""
     t = (bot or "").strip()
-    malo = bool(t) and RE_TRUNCADO.search(t) and not re.search(r"[.!?]$", t)
-    return (bool(malo), "no termina en punto") if malo else (False, "")
+    malo = bool(t) and not RE_CIERRE_VALIDO.search(t)
+    return (bool(malo), "no termina en puntuación de cierre") if malo else (False, "")
 
 
 def markdown(bot: str):

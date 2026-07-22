@@ -130,3 +130,28 @@ def test_revisar_integra_todo():
     assert "exclamacion_ante_lo_negativo" in tipos
     assert "familiares_ante_soledad" in tipos
     assert "dos_preguntas" in tipos
+
+
+# ── Cierres válidos (falso positivo del 22/07) ──────────────────────────────
+# El chequeo de truncado se escribió con [.!?]$ y marcaba como cortada
+# cualquier frase terminada en elipsis unicode. Apareció en la primera corrida
+# del gate, una hora después de escribirlo.
+
+@pytest.mark.parametrize("texto", [
+    "Qué lindo, Marta.",
+    "¿Cómo andás?",
+    "¡Qué alegría!",
+    "Ay, Marta…",                    # elipsis unicode
+    "Bueno...",                      # tres puntos ASCII
+    'Me dijo "no vengo."',
+])
+def test_cierres_validos_no_son_truncado(texto):
+    assert calidad.truncada(texto)[0] is False
+
+
+@pytest.mark.parametrize("texto", [
+    "Y entonces le puse el agua y",
+    "Lo que pasa es que",
+])
+def test_truncado_real(texto):
+    assert calidad.truncada(texto)[0] is True
