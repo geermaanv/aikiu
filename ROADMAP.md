@@ -126,10 +126,58 @@ simuladas — de ahí la cadena simulador → Irene → Marta.
 
 ---
 
+## Cómo se prueba Aikiu (rehecho el 21–22/07)
+
+El loop viejo (`simulador/evaluador.py`, notas 0-10) no medía nada: la MISMA
+conversación evaluada 4 veces daba ±5 puntos en un criterio y ±0.8 en el total,
+y el loop perseguía mejoras de 0.2. No era una meseta en 8.5, era ruido. Peor:
+`evaluador.py` promovía el cambio cuando el ruido subía el promedio.
+
+Ahora hay tres piezas con roles distintos, y **no hay que confundirlas**:
+
+| pieza | rol | binario | costo |
+|---|---|---|---|
+| `simulador/correr_vigia.py` | banco de casos: mensaje → nivel esperado | sí | muy bajo |
+| `simulador/ciclo.py` + `juez.py` | gate por niveles, aserciones fijas | sí | medio |
+| `simulador/juez_libros.py` | explorador: busca fallas que nadie anticipó | **no** | alto |
+
+El **explorador no es un gate** y no puede escribir reglas solo: en la corrida
+de validación acertó 1 de 4, y dos errores eran dañinos (recuperó un pasaje
+sobre final de vida y lo aplicó a una señora que esperaba a su marido). Su
+trabajo es levantar la mano, no tener razón. Entre "levantó la mano" y "es una
+regla" va una persona.
+
+**El loop de mejora es la conexión entre los tres:**
+
+```
+libros → casos nuevos → conversación → el explorador encuentra una falla
+                                             ↓  (la confirma un humano)
+                              se congela como aserción permanente
+                                             ↓
+                          el gate binario la verifica para siempre
+```
+
+Lo que mejora sin parar no es el juez: es **el banco de aserciones, que solo
+crece**. Cada falla descubierta una vez queda atrapada. Por eso la diversidad
+de casos es el cuello de botella real y no la medición — un amigo con 2
+mensajes destapaba más que 40 conversaciones simuladas porque traía situaciones
+que no estaban en la lista, no porque fuera humano.
+
+Los libros dejaron NotebookLM y son locales: `kb/indexar.py` (10.373 chunks de
+19 libros) + `kb/semantico.py` (embeddings multilingües por ONNX, sin torch ni
+API). La consulta va en español y encuentra el pasaje en inglés sin traducir.
+
+---
+
 ## Pendientes
 
 **Producto:**
 - Calibración fina del vigía con datos reales de uso.
+- Revisar `simulador/casos_vigia_revisar.jsonl` — casos donde el libro y el
+  vigía discrepan. Ahí está el hueco conocido: "creo que la vecina me robó las
+  tijeras" da nivel 0 y debería avisar.
+- Correr el gate de los niveles 1 y 2, que nunca se verificaron formalmente.
+  El nivel 3 está en ROJO (S-CAS1 y S-BUS2 fallan 2/2).
 - Resumen diario al familiar (temas charlados, estado anímico, recordatorios).
 - Comando `/log` en el bot familiar (pedir el log del día sin tocar archivos).
 - Métricas de aislamiento (alerta silenciosa si el volumen de mensajes cae >50%).
