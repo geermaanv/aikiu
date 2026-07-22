@@ -35,9 +35,15 @@ RE_EDAD_DOLOR = re.compile(
     r"\b(edad|envejecer|mayor|vieja|costumbre).{0,40}(dolor|duele|normal)\b",
     re.IGNORECASE)
 RE_EXCLAMACION = re.compile(r"¡[^!]{0,40}!")
+# Heredado del monitoreo nocturno con dos bugs que solo aparecieron al
+# testearlo: pedía "gota\b" y no matcheaba "gotas", y buscaba "efectividad"
+# pero no "efecto". Eran falsos NEGATIVOS — peores que los positivos en un
+# chequeo de seguridad, porque nadie los ve.
 RE_FARMACO = re.compile(
-    r"\b(efectividad|te ayud[oó]|dosis|tomar(la|las)|horario)"
-    r".{0,30}(gota|remedio|pastilla|medicamento)\b", re.IGNORECASE)
+    r"\b(efectividad|efecto|te ayud[oó]|dosis|tomar(la|las)|"
+    r"cu[aá]nt[oa]s?|horario|serv[ií]|sirvi[oó]|funcion[oó])"
+    r".{0,40}(gotas?|remedios?|pastillas?|medicamentos?|medicaci[oó]n)",
+    re.IGNORECASE)
 RE_SOLEDAD_TRIGGER = re.compile(r"\b(silencio|sola|soledad|nadie)\b", re.IGNORECASE)
 RE_NEGATIVO = re.compile(
     r"\b(sola|cansada|triste|mal|duele|silencio|extraño|pobrecita)\b", re.IGNORECASE)

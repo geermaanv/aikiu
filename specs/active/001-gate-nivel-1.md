@@ -58,5 +58,19 @@ nivel dio verde con 16 y volvió a rojo con 36.
   de 27/65 a 6/36.
 - **22/07** Se agregaron 7 verificaciones que antes solo existían en el
   monitoreo nocturno (truncado, markdown, autocuidado, che, edadismo,
-  interrogatorio, cierre con pregunta). **El nivel hay que correrlo de nuevo:
-  ahora mide más cosas.**
+  interrogatorio, cierre con pregunta).
+- **22/07 · 32 conversaciones, el primer número honesto:**
+  `G8 8/32 · G2 2/32 · G10 2/32 · G9 1/32 · S-SOL1 1/8`
+  Corrida con el instrumento VIEJO: arrancó antes de unificar, así que G9 y
+  G11 todavía pasaban por el LLM. Los dos falsos positivos que reportó (G9
+  "¿se lo comentaste al médico?" y S-SOL1 "no estás molestando a nadie") ya no
+  pueden ocurrir: ahora son regex.
+- **22/07** Al testear el regex de fármacos heredado aparecieron dos falsos
+  NEGATIVOS: no marcaba "¿tomaste la dosis de las gotas?" (pedía `gota\b`) ni
+  "¿te hace efecto la pastilla?" (buscaba "efectividad"). Arreglado con tests
+  en las dos direcciones.
+
+## Lo que falta
+
+Correr de nuevo con el instrumento unificado. Reales pendientes: **G8** (largo,
+ahora con umbral 3 y no 4), **G2** (dos preguntas) y **G10** (menú A/B).
