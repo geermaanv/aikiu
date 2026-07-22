@@ -62,3 +62,43 @@ La soledad objetiva (aislamiento social) es la falta real de una red de contacto
 ## 10. ¿Cómo construir continuidad afectiva entre sesiones cuando el adulto mayor no recuerda la conversación anterior?
 
 Cuando la memoria reciente falla, la continuidad recae sobre el sistema. Si la persona no reconoce al interlocutor, no exigir que recuerde — volver a presentarse amablemente y reiniciar el vínculo de inmediato. Los agentes de IA usan "variables de memoria" para recuperar detalles biográficos o temas previos e inyectarlos en la charla, de forma que el adulto mayor sienta que la máquina lo conoce y le importa, aunque no recuerde haberlo contado. La mayor continuidad se logra manteniendo un tono de voz bajo, claro y amoroso — los adultos mayores reconocen el afecto sincero y se sienten seguros rápidamente, incluso si olvidaron las palabras exactas de la última sesión.
+
+---
+
+## 11. ¿Cómo habla una persona mayor con deterioro cognitivo leve o moderado?
+
+El discurso suele ser **fluido pero vacío de información**: gramaticalmente correcto, sin contenido. Patrones observables:
+
+- **Anomia** (no encontrar la palabra): olvidan nombres de objetos comunes y los tapan con vaguedades o pronombres — "esa cosa", "el aparato ese" — o se enojan para disimular ("Claro que sé qué es, ¿por qué me molestás?").
+- **Frases inconclusas**: arrancan y se pierden a mitad de camino. En etapas avanzadas el lenguaje se reduce a palabras sueltas ("Colectivo, casa").
+- **Confabulación**: encadenan frases hechas con fluidez; parecen tener sentido hasta que uno las analiza y no dicen nada.
+- **Neologismos**: inventan palabras mezclando sonidos, sobre todo para quejarse de algo.
+- **Repetición**: por la falla de memoria reciente, repiten la misma pregunta decenas de veces al día, sin registrar que ya la hicieron.
+- **Groserías inesperadas**: en personas que nunca hablaron así — es una peculiaridad del daño cerebral, no un cambio de carácter.
+- **Mezcla de tiempos verbales**: el pasado se vive como presente ("Me voy a trabajar", "Mi mamá me viene a buscar").
+
+**Para el simulador**: la persona simulada debe hablar así, no como la idea que un LLM tiene de "un viejito".
+
+---
+
+## 12. Situaciones cotidianas más frecuentes y difíciles
+
+Documentadas como las que más se repiten: el baño (miedo al agua, resistencia, gritos de "me están robando"), el cambio de ropa (perdieron la noción del tiempo, "ya me cambié"), **extravío de objetos con acusación de robo**, resistencia a ir al médico, momentos de comida ("odio esta comida" suele significar "me siento mal"), incontinencia negada o atribuida a otra causa, **querer irse "a casa" estando en su casa**, **búsqueda de familiares fallecidos**, no reconocer al cuidador o al cónyuge ("vos no sos mi marido"), y pérdida de filtros sociales en público.
+
+---
+
+## 13. Acusación, búsqueda de fallecidos y resistencia al cuidado
+
+- **Acusación de robo**: no es paranoia gratuita — olvidan dónde dejaron algo y el cerebro, incapaz de procesar el olvido, deduce que alguien lo tomó. Es una conclusión lógica desde una premisa fallada. Nunca discutir el hecho; validar el enojo y ayudar a buscar.
+- **Buscar a un fallecido**: el pasado se vuelve presente y buscan sus figuras de apego ("¿dónde está mi mamá?"). Ni corregir con la realidad ni mentir: responder a la emoción de fondo (extrañar, buscar seguridad).
+- **Resistencia al cuidado**: nace del miedo y de no comprender qué le están haciendo, y suena hostil ("¿quién te creés que sos?"). No es rechazo a la persona: es defensa.
+
+---
+
+## 14. Señales de deterioro real o urgencia médica vs. confusión normal
+
+Distinción clave para clasificar riesgo:
+
+- **Deterioro real (demencia)** — lento y crónico: pausas largas y frecuentes, discurso correcto pero vacío, no poder categorizar objetos, imposibilidad de retener una instrucción simple por más de unos segundos.
+- **URGENCIA MÉDICA (delirium)** — súbito y fluctuante: confusión severa **repentina**, alucinaciones, balbuceo ininteligible de golpe, mareos, pulso rápido, negarse a beber agua. Suele venir de una infección, deshidratación, reacción a un medicamento o ACV. **Es una emergencia**: a diferencia de la demencia, aparece de repente y altera la conciencia.
+- **Envejecimiento normal**: tener la palabra "en la punta de la lengua", procesar más lento, olvidar una cita. Pero mantiene sintaxis, lógica, noción de tiempo y espacio, y respuesta emocional apropiada. **No es señal de nada.**

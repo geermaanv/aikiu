@@ -296,7 +296,7 @@ _LLM_TIMEOUT_S = 20
 _FALLBACK_MODELO = "llama-3.3-70b-versatile"
 
 
-async def _chat_create(**kwargs):
+async def _chat_create(timeout_s: Optional[float] = None, **kwargs):
     """
     Punto único de acceso al LLM de chat. Despacha según CONFIG["proveedor_llm"]
     ("groq" por default, compat con instalaciones y tests existentes).
@@ -308,7 +308,15 @@ async def _chat_create(**kwargs):
     Si OpenRouter falla o supera el timeout, cae automáticamente a Groq/Llama
     para que el adulto reciba SIEMPRE una respuesta. Nunca deja al usuario
     colgado por un problema del proveedor.
+
+    timeout_s permite alargar la espera en el trabajo de LOTE (simulador, juez,
+    curación nocturna), donde no hay nadie esperando. Importa: GLM-5 en
+    OpenRouter tiene una cola muy despareja — típico 5s, con picos medidos de
+    139s para la misma respuesta. Con el timeout corto de conversación, cada
+    pico caía a Groq y agotaba su cuota diaria de 100k tokens, que es
+    justamente la red de seguridad que necesita la charla con el adulto.
     """
+    espera = timeout_s or _LLM_TIMEOUT_S
     proveedor = CONFIG.get("proveedor_llm", "groq")
     if proveedor == "openrouter":
         or_kwargs = dict(kwargs)
@@ -316,7 +324,7 @@ async def _chat_create(**kwargs):
         try:
             r = await asyncio.wait_for(
                 openrouter.chat.completions.create(**or_kwargs),
-                timeout=_LLM_TIMEOUT_S,
+                timeout=espera,
             )
             # OpenRouter/GLM a veces devuelve 200 con content vacío. No es una
             # excepción, así que sin este chequeo el fallback no se activaba y
@@ -329,10 +337,10 @@ async def _chat_create(**kwargs):
             groq_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
             groq_kwargs["model"] = _FALLBACK_MODELO
             return await asyncio.wait_for(
-                groq.chat.completions.create(**groq_kwargs), timeout=_LLM_TIMEOUT_S
+                groq.chat.completions.create(**groq_kwargs), timeout=espera
             )
     return await asyncio.wait_for(
-        groq.chat.completions.create(**kwargs), timeout=_LLM_TIMEOUT_S
+        groq.chat.completions.create(**kwargs), timeout=espera
     )
 
 
@@ -750,8 +758,24 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
         f"(aunque haya pasado), dice 'soy una carga'\n"
         f"- 3: emergencia activa ahora: no puede moverse, dolor de pecho, no puede respirar, "
         f"pide ayuda urgente; O está PERDIDA o desorientada fuera de su casa ('no sé volver', "
-        f"'no sé dónde estoy', 'no reconozco esto', se quedó afuera sin poder entrar). "
-        f"Perderse es una emergencia como una caída: la familia tiene que enterarse YA, sin esperar.\n"
+        f"'no sé dónde estoy', 'no reconozco esto', se quedó afuera sin poder entrar); "
+        f"O hay señales de DELIRIUM: confusión severa que aparece DE GOLPE, alucinaciones "
+        f"('veo gente que no está'), habla que se vuelve incomprensible de repente, mareo "
+        f"fuerte con pulso acelerado, o que se niegue a tomar agua. El delirium es una "
+        f"urgencia médica (suele ser infección, deshidratación o reacción a un remedio) y se "
+        f"distingue de la demencia porque es SÚBITO. Perderse y el delirium son emergencias "
+        f"como una caída: la familia tiene que enterarse YA, sin esperar.\n"
+        f"  · TAMBIÉN es nivel 3 cualquier señal de que no quiere seguir viviendo: "
+        f"'ya no tiene sentido', 'para qué seguir', 'ojalá no me despierte', 'estarían "
+        f"mejor sin mí', 'ya viví bastante' dicho con pesar, o que mencione dejar de "
+        f"tomar los remedios o de comer a propósito. El suicidio en personas mayores "
+        f"es MÁS frecuente de lo que se cree y casi siempre se avisa antes, en voz baja "
+        f"y de pasada. Nunca lo minimices ni lo leas como un comentario resignado: "
+        f"ante la mínima duda acá, nivel 3. Distinguilo de 'soy una carga' suelto, "
+        f"que sigue siendo nivel 2.\n"
+        f"OJO con los falsos positivos: que tarde en encontrar una palabra, que piense más "
+        f"lento o que se olvide una cita es envejecimiento NORMAL — nivel 0, no es señal de "
+        f"nada mientras mantenga el hilo lógico y sepa dónde está.\n"
         f"El dolor o daño físico se clasifica como FÍSICO, no como 'malestar anímico'.\n"
         f"MUY IMPORTANTE: las personas mayores minimizan siempre. Palabras como 'un poco', "
         f"'nada grave', 'no es nada', 'ya estoy acostumbrada', 'es la edad', 'ya se me pasa' "

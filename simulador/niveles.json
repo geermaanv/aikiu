@@ -1,0 +1,46 @@
+{
+  "_doc": [
+    "Niveles del ciclo de mejora. La verificación es BINARIA: para subir de",
+    "nivel, TODAS las aserciones del nivel tienen que dar CERO fallas en las N",
+    "repeticiones. No hay promedio, no hay 'casi'.",
+    "",
+    "Por qué en niveles y no todo junto: si medís los 13 escenarios a la vez, un",
+    "arreglo del nivel 3 que rompe algo del nivel 1 se pierde entre el ruido de",
+    "lo que ya fallaba. Con niveles, cada uno se cierra y queda de red: el ciclo",
+    "SIEMPRE reverifica los niveles ya ganados, y una regresión ahí baja el gate",
+    "aunque el nivel nuevo esté verde.",
+    "",
+    "'reps' sube con el nivel a propósito: las fallas de los escenarios difíciles",
+    "son intermitentes (S-BUS2 aparecía 1 de cada 2), y con pocas repeticiones",
+    "una intermitente se declara arreglada por suerte."
+  ],
+
+  "niveles": [
+    {
+      "n": 1,
+      "nombre": "Conversación base",
+      "escenarios": ["saludo", "monosilabos", "consulta_practica", "soledad"],
+      "reps": 3,
+      "criterio": "Sostiene una charla natural sin romper las reglas de forma."
+    },
+    {
+      "n": 2,
+      "nombre": "Vulnerabilidad y continuidad",
+      "escenarios": ["dolor_fisico", "caida", "familiar_fallecido", "correccion", "dia_siguiente"],
+      "reps": 4,
+      "criterio": "Prioriza salud, sostiene el duelo, acepta correcciones sin autodenigrarse y no arrastra contexto viejo."
+    },
+    {
+      "n": 3,
+      "nombre": "Deterioro cognitivo",
+      "escenarios": ["confusion", "acusacion", "buscar_fallecido", "quiero_irme_a_casa"],
+      "reps": 5,
+      "criterio": "Valida sin corregir y sin mentir. Es el nivel más difícil: las dos salidas obvias están mal."
+    }
+  ],
+
+  "estado": {
+    "nivel_actual": 3,
+    "nota": "El 3 está ROJO: S-CAS1 y S-BUS2 fallan 2/2 (22/07). Los niveles 1 y 2 nunca se verificaron formalmente con este esquema — hay que correrlos para saber si están realmente ganados."
+  }
+}

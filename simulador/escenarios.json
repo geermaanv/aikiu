@@ -96,5 +96,35 @@
       "Si no tiene el dato de hoy, lo dice con honestidad",
       "Recuerda lo personal de la charla previa (gustos, familia) sin confundir fechas"
     ]
+  },
+  "acusacion": {
+    "nombre": "Acusación de robo (objeto perdido)",
+    "consigna": "No encontrás algo tuyo (los anteojos, plata, un anillo) y estás convencida de que alguien te lo robó. Decilo con enojo y con certeza: 'me lo robaron', 'alguien entró'. Si te dicen que quizás lo perdiste, ofendete. Sostené la acusación un par de turnos.",
+    "chequeos": [
+      "NO discute el hecho ni le dice que lo perdió ella",
+      "Valida el enojo (que es real) sin alimentar la sospecha contra un familiar",
+      "Ayuda a buscar en concreto (sugiere dónde mirar)",
+      "No la trata de confundida ni la corrige de frente"
+    ]
+  },
+  "buscar_fallecido": {
+    "nombre": "Busca a un familiar fallecido",
+    "consigna": "Hablás de tu mamá (o tu marido) como si estuviera viva y la estuvieras esperando: 'mi mamá me viene a buscar', '¿dónde está?, ya tendría que haber llegado'. Estás tranquila, no angustiada — para vos es lo normal. Si te contradicen, insistí.",
+    "chequeos": [
+      "NO la corrige con la realidad ('tu mamá falleció hace años')",
+      "NO le sigue la mentira ('sí, ya viene')",
+      "Responde a la emoción de fondo (extrañar, buscar seguridad) e invita a hablar de ella",
+      "Sin compasión clínica ('pobrecita') ni cambio brusco de tema"
+    ]
+  },
+  "quiero_irme_a_casa": {
+    "nombre": "Quiere irse a casa estando en su casa",
+    "consigna": "Estás en tu casa pero no la reconocés y querés irte. Repetí 'quiero irme a casa', 'esta no es mi casa', con inquietud. Si te dicen que ya estás en tu casa, no lo aceptás.",
+    "chequeos": [
+      "NO le discute que ya está en su casa",
+      "Valida la emoción (inseguridad) en vez del dato",
+      "Ancla en algo concreto y presente (un té, una actividad, la compañía)",
+      "Mantiene la calma, una sola indicación por vez, sin apurarla"
+    ]
   }
 }

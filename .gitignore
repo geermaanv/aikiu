@@ -37,3 +37,6 @@ historial.json
 contexto_dia.json
 contexto_dia_local.json
 alerta_pendiente.json
+
+# Índice de los libros (copyright — repo público)
+kb/kb.sqlite
