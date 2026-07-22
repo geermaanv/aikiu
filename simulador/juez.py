@@ -40,71 +40,77 @@ def aserciones_de(escenario):
 
 
 # ── Chequeos determinísticos ────────────────────────────────────────────────
-# Lo que se puede verificar con código NO va al LLM: es exacto, gratis,
-# instantáneo y sin varianza. El LLM juzgó "Me imagino lo lindos que se ven"
-# como tuteo — la cita era real, el juicio no. Un regex no comete ese error.
+# Viven en core/calidad.py, COMPARTIDOS con el monitoreo nocturno que corre
+# sobre las conversaciones reales. Hasta el 22/07 estaban duplicados: cuatro
+# aserciones de acá ya existían allá como reglas de código, midiendo lo mismo
+# con distinto criterio. Peor: las de acá pasaban por el LLM, que es caro y se
+# equivoca — G9 (consejo médico) se marcó mal tres veces mientras el regex
+# equivalente nunca falló.
+#
+# Lo que se puede verificar con código NO va al LLM: es gratis, instantáneo y
+# sin varianza.
 
-# Solo formas que EXISTEN en tuteo y NO en voseo. "tuyo", "tuya", "te", "tu"
-# son idénticas en los dos registros: "un mensaje tuyo" es rioplatense perfecto.
-# Estaban en la lista y generaban falsos positivos — 14 de 65 corridas marcadas
-# como tuteo el 22/07, varias por "tuyo". Un chequeo determinístico que se
-# equivoca es más peligroso que uno probabilístico: nadie lo pone en duda.
-# El pretérito NO sirve para distinguir: "vos hiciste" y "tú hiciste" son
-# iguales. Solo el presente, el imperativo y los pronombres difieren.
-_TUTEO = re.compile(
-    r"\b(tienes|quieres|puedes|debes|sabes|haces|dices|vienes|eres|vas tú|"
-    r"piensas|sientes|necesitas|prefieres|recuerdas|entiendes|conoces|"
-    r"contigo|tú|ti)\b", re.I)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import calidad  # noqa: E402
 
+DETERMINISTICAS = {
+    "G2":  lambda b: calidad.dos_preguntas(b),
+    "G3":  lambda b: calidad.tuteo(b),
+    "G8":  lambda b: calidad.respuesta_larga(b),
+    "G9":  lambda b: calidad.consejo_farmacologico(b),
+    "G14": lambda b: calidad.truncada(b),
+    "G15": lambda b: calidad.markdown(b),
+    "G16": lambda b: calidad.pregunta_de_autocuidado(b),
+    "G17": lambda b: calidad.che_al_cierre(b),
+    "G18": lambda b: calidad.edadismo(b),
+}
 
-def _chk_g2(bot):  # más de una pregunta en el turno
-    n = bot.count("?")
-    return (n > 1, f"{n} preguntas en el turno") if n > 1 else (False, "")
+# Necesitan el par (usuario, bot), no solo la respuesta.
+DETERMINISTICAS_PAR = {
+    "G5":  calidad.eco_lexico,
+    "G11": calidad.exclamacion_ante_lo_negativo,
+}
 
-
-def _chk_g3(bot):  # tuteo neutro
-    m = _TUTEO.findall(bot)
-    return (bool(m), f"tuteo: {', '.join(sorted(set(m)))}") if m else (False, "")
-
-
-def _chk_g8(bot):  # respuesta larga
-    # Umbral 3, alineado con la regla del núcleo. Estuvo en 4 mientras el núcleo
-    # tenía dos reglas contradictorias (3 para charla, 5 para recetas).
-    n = len([s for s in re.split(r"[.!?…]+", bot) if len(s.strip()) > 3])
-    return (n > 3, f"{n} oraciones") if n > 3 else (False, "")
-
-
-DETERMINISTICAS = {"G2": _chk_g2, "G3": _chk_g3, "G8": _chk_g8}
+# Se evalúan sobre la conversación entera.
+DETERMINISTICAS_CONV = {
+    "G19": calidad.interrogatorio,
+    "G20": calidad.cierre_con_pregunta,
+}
 
 
 def _correr_deterministicas(turnos):
-    """Devuelve {id: resultado} para las aserciones verificables con código."""
+    """Devuelve {id: resultado} para todo lo verificable con código."""
     res = {}
     for aid, fn in DETERMINISTICAS.items():
         for i, (_, bot) in enumerate(turnos):
             fallo, detalle = fn(bot)
             if fallo:
                 res[aid] = {"falla": True, "turno": str(i + 1),
-                            "cita": f"{detalle} — \"{bot[:90]}…\"", "det": True}
+                            "cita": f'{detalle} — "{bot[:90]}…"', "det": True}
                 break
         else:
             res[aid] = {"falla": False, "det": True}
+
+    for aid, fn in DETERMINISTICAS_PAR.items():
+        for i, (usr, bot) in enumerate(turnos):
+            fallo, detalle = fn(usr, bot)
+            if fallo:
+                res[aid] = {"falla": True, "turno": str(i + 1),
+                            "cita": f'{detalle} — "{bot[:90]}…"', "det": True}
+                break
+        else:
+            res[aid] = {"falla": False, "det": True}
+
+    bots = [b for _, b in turnos]
+    for aid, fn in DETERMINISTICAS_CONV.items():
+        fallo, detalle = fn(bots)
+        res[aid] = ({"falla": True, "turno": "-", "cita": detalle, "det": True}
+                    if fallo else {"falla": False, "det": True})
     return res
 
 
-# Frases que Aikiu emite cuando el LLM falló (rate limit, timeout, proveedor
-# caído). No son comportamiento: son infraestructura. Juzgarlas produce fallas
-# fantasma — el 22/07 un 429 de Groq se contó como "esquivó la pregunta de
-# conocimiento" y apareció en el reporte como una regresión que no existía.
-_FRASES_DE_ERROR = (
-    "se me trabó la palabra",
-    "se me cruzaron los cables",
-)
-
-
 def _es_error_de_infra(texto):
-    t = (texto or "").lower()
-    return any(f in t for f in _FRASES_DE_ERROR)
+    return calidad.es_error_de_infra(texto)
 
 
 def _transcripcion(path):
@@ -169,7 +175,8 @@ async def juzgar(path, escenario):
     ases = aserciones_de(escenario)
     det = _correr_deterministicas(turnos)
     # Al LLM solo van las que requieren juicio real.
-    a_juzgar = [a for a in ases if a["id"] not in DETERMINISTICAS]
+    por_codigo = set(DETERMINISTICAS) | set(DETERMINISTICAS_PAR) | set(DETERMINISTICAS_CONV)
+    a_juzgar = [a for a in ases if a["id"] not in por_codigo]
     r = await aikiu._chat_create(
         model=MODELO_JUEZ,
         messages=[{"role": "user", "content": _prompt(turnos, a_juzgar)}],

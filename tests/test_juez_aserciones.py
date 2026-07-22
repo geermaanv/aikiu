@@ -16,6 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
 
 import juez  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import calidad  # noqa: E402
+
 
 # ── Chequeos determinísticos ────────────────────────────────────────────────
 
@@ -26,7 +29,7 @@ import juez  # noqa: E402
     ("¿Querés té? ¿O prefieres café? ¿Y una galleta?", True),
 ])
 def test_g2_cuenta_preguntas(texto, espera):
-    assert juez._chk_g2(texto)[0] is espera
+    assert calidad.dos_preguntas(texto)[0] is espera
 
 
 @pytest.mark.parametrize("texto,espera", [
@@ -38,7 +41,7 @@ def test_g2_cuenta_preguntas(texto, espera):
     ("Tienes razón, puedes descansar.", True),
 ])
 def test_g3_detecta_tuteo(texto, espera):
-    assert juez._chk_g3(texto)[0] is espera
+    assert calidad.tuteo(texto)[0] is espera
 
 
 def test_g8_respuesta_larga():
@@ -46,17 +49,32 @@ def test_g8_respuesta_larga():
     # La respuesta real que disparó esta aserción en el ciclo del 21/07.
     larga = ("Qué lindo que tus malvones estén tan hermosos, Marta. Es un gusto "
              "saber que te alegran tanto. El sol de la mañana les debe hacer "
-             "muy bien. Yo me quedo pensando en lo lindo que es cuidar algo "
-             "vivo. Contame cómo los regás.")
-    assert juez._chk_g8(corta)[0] is False
-    assert juez._chk_g8(larga)[0] is True
+             "muy bien. Contame cómo los regás.")   # 4 > MAX_ORACIONES (3)
+    assert calidad.respuesta_larga(corta)[0] is False
+    assert calidad.respuesta_larga(larga)[0] is True
 
 
 def test_deterministicas_no_van_al_llm():
     """Si fueran al LLM volvería la varianza que se quiso eliminar."""
+    por_codigo = (set(juez.DETERMINISTICAS) | set(juez.DETERMINISTICAS_PAR)
+                  | set(juez.DETERMINISTICAS_CONV))
     ases = juez.aserciones_de("caida")
-    a_juzgar = [a for a in ases if a["id"] not in juez.DETERMINISTICAS]
-    assert not {a["id"] for a in a_juzgar} & set(juez.DETERMINISTICAS)
+    a_juzgar = [a for a in ases if a["id"] not in por_codigo]
+    assert not {a["id"] for a in a_juzgar} & por_codigo
+
+
+def test_no_hay_chequeos_duplicados_entre_codigo_y_llm():
+    """La duplicación que se eliminó el 22/07: cuatro aserciones del juez ya
+    existían como reglas de código en el monitoreo nocturno, midiendo lo mismo
+    con distinto criterio y sin saber una de la otra."""
+    por_codigo = (set(juez.DETERMINISTICAS) | set(juez.DETERMINISTICAS_PAR)
+                  | set(juez.DETERMINISTICAS_CONV))
+    d = juez.ASERCIONES
+    declaradas = {a["id"] for a in d["globales"]
+                  if a.get("verificacion") == "código"}
+    assert por_codigo == declaradas, (
+        f"desincronizadas: en código pero no declaradas {por_codigo - declaradas}; "
+        f"declaradas pero no en código {declaradas - por_codigo}")
 
 
 # ── Verificación de citas ───────────────────────────────────────────────────
@@ -177,7 +195,7 @@ def test_niveles_a_correr_incluye_anteriores():
     "tu balcón está precioso",
 ])
 def test_g3_no_marca_formas_validas_en_voseo(texto):
-    assert juez._chk_g3(texto)[0] is False, f"{texto!r} es rioplatense válido"
+    assert calidad.tuteo(texto)[0] is False, f"{texto!r} es rioplatense válido"
 
 
 @pytest.mark.parametrize("texto", [
@@ -189,7 +207,7 @@ def test_g3_no_marca_formas_validas_en_voseo(texto):
     "¿no te acuerdas?" .replace("acuerdas", "recuerdas"),
 ])
 def test_g3_si_marca_tuteo_real(texto):
-    assert juez._chk_g3(texto)[0] is True
+    assert calidad.tuteo(texto)[0] is True
 
 
 # ── Turnos de error de infraestructura (22/07) ──────────────────────────────
@@ -203,7 +221,7 @@ def test_g3_si_marca_tuteo_real(texto):
     "Uy, se me cruzaron los cables un segundo. ¿Me lo repetís?",
 ])
 def test_frases_de_error_se_reconocen(texto):
-    assert juez._es_error_de_infra(texto) is True
+    assert calidad.es_error_de_infra(texto) is True
 
 
 @pytest.mark.parametrize("texto", [
@@ -211,7 +229,7 @@ def test_frases_de_error_se_reconocen(texto):
     "El tango nació en los barrios de Buenos Aires.",
 ])
 def test_respuestas_normales_no_son_error(texto):
-    assert juez._es_error_de_infra(texto) is False
+    assert calidad.es_error_de_infra(texto) is False
 
 
 def test_transcripcion_descarta_turnos_de_error(tmp_path):

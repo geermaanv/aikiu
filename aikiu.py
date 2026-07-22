@@ -26,6 +26,7 @@ from core.distress import (
     should_send_alert, record_alert_sent,
 )
 from core.alerts import notify_family, notify_inactividad
+from core import calidad as calidad_mod
 from core.tts import sintetizar
 from core.tools import consultar_clima, consultar_dolar, consultar_noticias, titulares_google_news
 from core import state as state_mod
@@ -1410,10 +1411,11 @@ AJUSTES_CONVERSACION:
         # Detectar síntomas persistentes entre sesiones y alertar al familiar
         await _alertar_sintomas_persistentes(app, log_dia, chat_id=chat_id)
 
-        # Monitoreo de calidad del bot (30 reglas gerontológicas)
+        # Calidad de las conversaciones REALES del día.
         alertas = _monitoreo_calidad_bot(log_dia, chat_id=chat_id)
         if alertas:
             log.warning(f"analisis_nocturno calidad [{len(alertas)} alerta(s)]: {alertas}")
+            await _avisar_calidad_al_admin(alertas, chat_id)
 
         # Inyectar temática activa si se repite en sesiones consecutivas (RULE_MEM_01)
         _inyectar_tematica_activa(chat_id=chat_id)
@@ -1497,12 +1499,56 @@ _RE_EXCLAMACION_BOT   = re.compile(r"¡[^!]{0,40}!")
 _RE_FARMACO           = re.compile(r"\b(efectividad|te ayud[oó]|dosis|tomar(la|las)|horario).{0,30}(gota|remedio|pastilla|medicamento)\b", re.IGNORECASE)
 
 
-def _monitoreo_calidad_bot(log_dia: str, chat_id: Optional[int] = None) -> list[str]:
-    """RULE_VUI_02 a RULE_CTRL_29: detecta patrones de baja calidad en los logs del día.
+async def _avisar_calidad_al_admin(alertas: list[str], chat_id: Optional[int]) -> None:
+    """Manda los hallazgos de calidad al bot admin.
 
-    En multi-tenant, los nombres del adulto y de la asistente vienen de la vista
-    del hogar (`chat_id`). Si no se pasa `chat_id`, se cae a CONFIG global."""
-    alertas = []
+    Hasta el 22/07 esto terminaba en un log.warning que nadie leía: el
+    monitoreo corría todas las noches sobre conversaciones reales —la señal más
+    valiosa que tiene el proyecto— y el resultado se perdía. La última entrada
+    encontrada en los logs era de dos meses antes.
+
+    Falla en silencio a propósito: es un aviso de calidad, no una alerta de
+    emergencia. Que no salga nunca puede romper el análisis nocturno.
+    """
+    token = os.environ.get("ADMIN_BOT_TOKEN")
+    if not token:
+        return
+    try:
+        admins = json.loads(
+            (BASE_DIR / "admin" / "admin_state.json").read_text(encoding="utf-8")
+        ).get("admins", [])
+    except Exception:
+        return
+    if not admins:
+        return
+
+    nombre = _nombre_adulto_de(chat_id) if chat_id else "el hogar"
+    cuerpo = "\n".join(f"· {a}" for a in alertas[:12])
+    texto = (f"🔍 Calidad de las charlas de ayer — {nombre}\n"
+             f"{len(alertas)} hallazgo(s):\n\n{cuerpo}\n\n"
+             f"Detectado con core/calidad.py sobre conversaciones reales.")
+    bot = Bot(token=token)
+    for a in admins:
+        try:
+            await bot.send_message(chat_id=a["chat_id"], text=texto[:4000])
+        except Exception as e:
+            log.warning(f"no se pudo avisar calidad al admin: {type(e).__name__}")
+
+
+def _monitoreo_calidad_bot(log_dia: str, chat_id: Optional[int] = None) -> list[str]:
+    """Revisa las conversaciones REALES del día contra los chequeos de calidad.
+
+    Los chequeos viven en core/calidad.py, compartidos con el juez del
+    simulador. Hasta el 22/07 estaban duplicados: diez reglas acá y aserciones
+    equivalentes allá, midiendo lo mismo con distinto criterio y sin saber una
+    de la otra. Cuatro de las del simulador pasaban por un LLM, que es caro y
+    se equivoca — la de consejo farmacológico se marcó mal tres veces seguidas
+    mientras el regex de acá nunca falló.
+
+    Esto corre sobre conversaciones reales, que es la fuente más valiosa de
+    señal que tiene el proyecto: un tester con cuatro mensajes destapó más
+    fallas que cuarenta conversaciones simuladas.
+    """
     if chat_id is None:
         nombre    = CONFIG["nombre_adulto_mayor"]
         asistente = CONFIG["nombre_asistente"]
@@ -1513,73 +1559,16 @@ def _monitoreo_calidad_bot(log_dia: str, chat_id: Optional[int] = None) -> list[
     turnos_bot = re.findall(rf"- {asistente}: (.+)", log_dia)
     turnos_usr = re.findall(rf"- {nombre}: (.+)", log_dia)
     if not turnos_bot:
-        return alertas
+        return []
 
-    # RULE_VUI_02: ratio de preguntas > 50%
-    con_pregunta = sum(1 for t in turnos_bot if _RE_PREGUNTA_CIERRE.search(t))
-    if turnos_bot and con_pregunta / len(turnos_bot) > 0.5:
-        alertas.append(f"RULE_VUI_02: interrogatorio ({con_pregunta}/{len(turnos_bot)} turnos con pregunta)")
+    # Nombres de los familiares del hogar, para detectar si se los enumera
+    # ante una declaración de soledad.
+    familiares = tuple(
+        m.group(1).lower()
+        for m in re.finditer(r"^-\s*(?:Hijo|Hija|Nieto|Nieta|Esposo|Esposa)\w*:\s*(\w+)",
+                             _perfil_hogar(chat_id) if chat_id else "", re.M))
 
-    # RULE_ERR_03: respuestas truncadas (no terminan en puntuación de cierre)
-    truncados = [t for t in turnos_bot if _RE_TRUNCADO.search(t) and not re.search(r"[.!?]$", t.strip())]
-    if truncados:
-        alertas.append(f"RULE_ERR_03: {len(truncados)} respuesta(s) truncada(s)")
-
-    # RULE_LEX_04: solapamiento léxico > 40% entre turno usuario y turno bot
-    solapamientos = 0
-    for u, b in zip(turnos_usr, turnos_bot):
-        palabras_u = {w.lower() for w in re.findall(r"\w{4,}", u)} - _RE_OVERLAP_STOP
-        palabras_b = {w.lower() for w in re.findall(r"\w{4,}", b)} - _RE_OVERLAP_STOP
-        if palabras_u and len(palabras_u & palabras_b) / len(palabras_u) > 0.4:
-            solapamientos += 1
-    if solapamientos:
-        alertas.append(f"RULE_LEX_04: eco léxico en {solapamientos} turno(s)")
-
-    # RULE_LIN_10: "che" como sufijo de pregunta
-    che_mal = sum(1 for t in turnos_bot if _RE_CHE_CIERRE.search(t))
-    if che_mal:
-        alertas.append(f"RULE_LIN_10: 'che' al cierre de pregunta en {che_mal} turno(s)")
-
-    # RULE_TON_13: exclamaciones ante tono neutro/negativo del usuario
-    _NEGATIVO = re.compile(r"\b(sola|cansada|triste|mal|duele|silencio|extraño|pobrecita)\b", re.IGNORECASE)
-    for u, b in zip(turnos_usr, turnos_bot):
-        if _NEGATIVO.search(u) and _RE_EXCLAMACION_BOT.search(b):
-            alertas.append("RULE_TON_13: exclamación ante tono negativo del usuario")
-            break
-
-    # RULE_LON_19: listar familiares como respuesta a soledad
-    for u, b in zip(turnos_usr, turnos_bot):
-        if _RE_SOLEDAD_TRIGGER.search(u) and _RE_SOLEDAD_FAMILIAR.search(b):
-            alertas.append("RULE_LON_19: enumeración de familiares ante soledad declarada")
-            break
-
-    # RULE_GER_08: edadismo (dolor asociado a vejez)
-    for t in turnos_bot:
-        if _RE_EDAD_DOLOR.search(t):
-            alertas.append("RULE_GER_08: sesgo edadista detectado")
-            break
-
-    # RULE_TXT_24: markdown en output del bot
-    md_turnos = sum(1 for t in turnos_bot if _RE_MARKDOWN.search(t))
-    if md_turnos:
-        alertas.append(f"RULE_TXT_24: markdown en {md_turnos} turno(s) del bot")
-
-    # RULE_MED_06: preguntas sobre efectividad de medicamentos
-    for t in turnos_bot:
-        if _RE_FARMACO.search(t):
-            alertas.append("RULE_MED_06: pregunta sobre efectividad de fármaco")
-            break
-
-    # RULE_CTRL_29: preguntas de control de autocuidado
-    ctrl = sum(1 for t in turnos_bot if _RE_CTRL_AUTOCUIDADO.search(t))
-    if ctrl:
-        alertas.append(f"RULE_CTRL_29: {ctrl} pregunta(s) de control de autocuidado")
-
-    # RULE_CLOSE_30: última respuesta del bot termina con pregunta
-    if turnos_bot and _RE_PREGUNTA_CIERRE.search(turnos_bot[-1]):
-        alertas.append("RULE_CLOSE_30: sesión cerrada con repregunta abierta")
-
-    return alertas
+    return calidad_mod.revisar(list(zip(turnos_usr, turnos_bot)), familiares)
 
 
 _TEMATICA_ACTIVA_PATH = BASE_DIR / "tematica_activa.json"
