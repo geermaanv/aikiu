@@ -90,11 +90,29 @@ def _correr_deterministicas(turnos):
     return res
 
 
+# Frases que Aikiu emite cuando el LLM falló (rate limit, timeout, proveedor
+# caído). No son comportamiento: son infraestructura. Juzgarlas produce fallas
+# fantasma — el 22/07 un 429 de Groq se contó como "esquivó la pregunta de
+# conocimiento" y apareció en el reporte como una regresión que no existía.
+_FRASES_DE_ERROR = (
+    "se me trabó la palabra",
+    "se me cruzaron los cables",
+)
+
+
+def _es_error_de_infra(texto):
+    t = (texto or "").lower()
+    return any(f in t for f in _FRASES_DE_ERROR)
+
+
 def _transcripcion(path):
     turnos = []
     for l in open(path):
         d = json.loads(l)
-        turnos.append((d.get("usuario", ""), d.get("bot", "")))
+        bot = d.get("bot", "")
+        if _es_error_de_infra(bot):
+            continue
+        turnos.append((d.get("usuario", ""), bot))
     return turnos
 
 

@@ -190,3 +190,38 @@ def test_g3_no_marca_formas_validas_en_voseo(texto):
 ])
 def test_g3_si_marca_tuteo_real(texto):
     assert juez._chk_g3(texto)[0] is True
+
+
+# ── Turnos de error de infraestructura (22/07) ──────────────────────────────
+# Cuando el LLM falla (429, timeout), Aikiu emite una frase de cortesía. Eso no
+# es comportamiento: es infraestructura. Juzgarlo produce fallas fantasma — un
+# rate limit de Groq se contó como "esquivó la pregunta de conocimiento" y
+# apareció en el reporte como una regresión inexistente.
+
+@pytest.mark.parametrize("texto", [
+    "Perdoná, se me trabó la palabra por un momento. ¿Me lo contás de nuevo?",
+    "Uy, se me cruzaron los cables un segundo. ¿Me lo repetís?",
+])
+def test_frases_de_error_se_reconocen(texto):
+    assert juez._es_error_de_infra(texto) is True
+
+
+@pytest.mark.parametrize("texto", [
+    "Qué lindo, Marta. Contame más de esos malvones.",
+    "El tango nació en los barrios de Buenos Aires.",
+])
+def test_respuestas_normales_no_son_error(texto):
+    assert juez._es_error_de_infra(texto) is False
+
+
+def test_transcripcion_descarta_turnos_de_error(tmp_path):
+    p = tmp_path / "conv.jsonl"
+    p.write_text("\n".join(json.dumps(d, ensure_ascii=False) for d in [
+        {"usuario": "hola", "bot": "Buen día, Marta."},
+        {"usuario": "¿cuándo terminó la guerra?",
+         "bot": "Perdoná, se me trabó la palabra por un momento. ¿Me lo contás de nuevo?"},
+        {"usuario": "dale", "bot": "En 1945, Marta."},
+    ]), encoding="utf-8")
+    turnos = juez._transcripcion(str(p))
+    assert len(turnos) == 2, "el turno con error de infra debería descartarse"
+    assert all("trabó" not in b for _, b in turnos)
