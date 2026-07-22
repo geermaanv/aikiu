@@ -28,7 +28,7 @@ DB = os.path.join(BASE, "kb.sqlite")
 VECTORES = os.path.join(BASE, "vectores.npy")
 META = os.path.join(BASE, "vectores_meta.json")
 
-MODELO = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+MODELO = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 LOTE = 64
 
 

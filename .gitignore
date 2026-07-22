@@ -40,3 +40,5 @@ alerta_pendiente.json
 
 # Índice de los libros (copyright — repo público)
 kb/kb.sqlite
+kb/vectores.npy
+kb/vectores_meta.json
