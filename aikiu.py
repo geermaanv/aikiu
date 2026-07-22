@@ -786,6 +786,44 @@ def _prompt_vigia(texto_usuario: str, nombre: str = "Marta") -> str:
     )
 
 
+# Red de respaldo del vigía: frases inequívocas, sin LLM de por medio.
+# Existe porque clasificar_distress devolvía (0, "") ante cualquier error, y
+# nivel 0 significa "todo bien": si Groq y OpenRouter fallaban a la vez —cosa
+# que pasó de verdad la noche del 21/07, con la cuota diaria de Groq agotada—
+# una emergencia real se registraba como "sin novedad" y la familia no se
+# enteraba nunca. Un sistema de alerta no puede fallar hacia el silencio.
+#
+# Es deliberadamente CORTA y literal. No busca reemplazar al vigía ni cubrir
+# los casos sutiles (para eso está el LLM): solo evita que lo inequívoco pase
+# de largo cuando la nube no responde. Todo lo que agregue falsos positivos
+# acá no va: la red se dispara justo cuando nadie la puede corregir.
+_RED_EMERGENCIA = [
+    (3, r"no me puedo levantar|no puedo levantarme|no me puedo mover"),
+    # .{0,20} porque en el habla real se cuela un adverbio: "me duele MUCHO el
+    # pecho", "me aprieta UN POCO el pecho". Sin eso caía en la regla genérica
+    # de "me duele" y se clasificaba nivel 1.
+    (3, r"(me duele|me aprieta|siento).{0,20}el pecho|dolor.{0,15}en el pecho|"
+        r"opresi[oó]n en el pecho"),
+    (3, r"no puedo respirar|me falta el aire|me ahogo"),
+    (3, r"no s[eé] d[oó]nde estoy|no s[eé] volver|no reconozco (esta|la) calle|me perd[ií]"),
+    (3, r"no quiero (seguir|vivir)|no tiene sentido|mejor sin m[ií]|"
+        r"ojal[aá] no me despierte|quiero morirme"),
+    (3, r"ayuda urgente|necesito ayuda ya|llam[aá] a la ambulancia"),
+    (2, r"me ca[ií]|me he ca[ií]do|estoy en el piso|estoy en el suelo"),
+    (2, r"estoy llorando|me siento muy mal"),
+    (1, r"me duele|me golpe[eé]|estoy maread|tengo n[aá]useas|tengo fiebre"),
+]
+
+
+def red_emergencia(texto: str) -> tuple[int, str]:
+    """Clasificación de respaldo por palabras, para cuando el LLM no responde."""
+    t = (texto or "").lower()
+    for nivel, patron in _RED_EMERGENCIA:
+        if re.search(patron, t):
+            return nivel, "detectado por la red de respaldo (el clasificador no respondió)"
+    return 0, ""
+
+
 async def clasificar_distress(
     texto_usuario: str,
     chat_id: Optional[int] = None,
@@ -800,8 +838,10 @@ async def clasificar_distress(
     omitiera la clasificación ~65% de las veces. El vigía, sin la carga de
     "ser cálido", clasifica de forma confiable.
 
-    Retorna (nivel 0-3, motivo breve). Ante cualquier fallo retorna (0, "")
-    para no bloquear la respuesta ni disparar falsas alarmas.
+    Retorna (nivel 0-3, motivo breve). Si el LLM no responde, NO devuelve 0:
+    cae en red_emergencia(), que detecta lo inequívoco sin depender de la nube.
+    Devolver 0 ante un error era decirle a la familia "todo bien" justo cuando
+    el sistema estaba ciego.
     """
     nombre = _nombre_adulto_de(chat_id)
     prompt = _prompt_vigia(texto_usuario, nombre)
@@ -828,8 +868,15 @@ async def clasificar_distress(
             log.info(f"[chat_id={chat_id}] Vigía: nivel={nivel} motivo='{motivo}'")
         return nivel, motivo
     except Exception as e:
-        log.warning(f"clasificar_distress falló: {e}")
-        return 0, ""
+        nivel, motivo = red_emergencia(texto_usuario)
+        if nivel:
+            log.error(
+                f"[chat_id={chat_id}] Vigía caído ({type(e).__name__}) pero la red "
+                f"de respaldo detectó nivel {nivel} — se alerta igual"
+            )
+        else:
+            log.warning(f"clasificar_distress falló: {str(e)[:200]}")
+        return nivel, motivo
 
 
 async def evaluar_confirmacion(pendiente: dict, texto_nuevo: str, chat_id: Optional[int] = None) -> tuple[str, int]:

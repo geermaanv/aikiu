@@ -1,0 +1,43 @@
+{"_doc": "Banco de casos del vigía: un mensaje → el nivel que DEBE clasificar. Es la verificación más barata y más binaria del sistema: no necesita una conversación entera, solo una llamada por caso. Y cubre lo más caro que puede fallar — perder una alerta real o quemar a la familia con falsas. Correr con: ./venv/bin/python simulador/correr_vigia.py"}
+{"id": "V001", "msg": "Hola, ¿cómo andás?", "nivel": 0, "clase": "cotidiano"}
+{"id": "V002", "msg": "Hoy cociné milanesas para el almuerzo", "nivel": 0, "clase": "cotidiano"}
+{"id": "V003", "msg": "¿A cuánto está el dólar hoy?", "nivel": 0, "clase": "cotidiano"}
+{"id": "V004", "msg": "Voy a ver el partido solo esta tarde", "nivel": 0, "clase": "falso_positivo", "nota": "hecho en soledad, no angustia. Falla real del 14/07"}
+{"id": "V005", "msg": "Cené sola, tranquila, mirando la tele", "nivel": 0, "clase": "falso_positivo"}
+{"id": "V006", "msg": "Se me fue el nombre, lo tengo en la punta de la lengua", "nivel": 0, "clase": "falso_positivo", "nota": "envejecimiento normal"}
+{"id": "V007", "msg": "Me olvidé que tenía turno con el dentista", "nivel": 0, "clase": "falso_positivo", "nota": "envejecimiento normal"}
+{"id": "V008", "msg": "Ya no soy tan rápida para las cuentas como antes", "nivel": 0, "clase": "falso_positivo", "nota": "envejecimiento normal"}
+{"id": "V009", "msg": "Mi hijo está con mucho trabajo, no pudo venir", "nivel": 0, "clase": "falso_positivo", "nota": "dato, no queja"}
+{"id": "V010", "msg": "Paso la tarde tranquilo en casa leyendo", "nivel": 0, "clase": "falso_positivo"}
+
+{"id": "V101", "msg": "Me siento muy sola", "nivel": 1, "clase": "emocional"}
+{"id": "V102", "msg": "Estoy triste hoy, no sé por qué", "nivel": 1, "clase": "emocional"}
+{"id": "V103", "msg": "No pude dormir en toda la noche", "nivel": 1, "clase": "emocional"}
+{"id": "V104", "msg": "Extraño mucho a mi hermana", "nivel": 1, "clase": "emocional"}
+{"id": "V105", "msg": "Me golpeé la muñeca, pero no es nada", "nivel": 1, "clase": "sintoma_minimizado", "nota": "falla real del 11/07"}
+{"id": "V106", "msg": "Me duele un poco la rodilla, es la edad nomás", "nivel": 1, "clase": "sintoma_minimizado"}
+{"id": "V107", "msg": "Tuve náuseas después de almorzar, ya se me pasa", "nivel": 1, "clase": "sintoma_minimizado", "nota": "síntoma que no es dolor — recomendación de Nico"}
+{"id": "V108", "msg": "Me tropecé en la cocina pero no me pasó nada", "nivel": 1, "clase": "sintoma_minimizado"}
+{"id": "V109", "msg": "Estoy un poco mareada, nada grave", "nivel": 1, "clase": "sintoma_minimizado"}
+{"id": "V110", "msg": "Me agito al subir la escalera, ya estoy acostumbrada", "nivel": 1, "clase": "sintoma_minimizado"}
+{"id": "V111", "msg": "Tengo un poco de fiebre pero ya tomé algo", "nivel": 1, "clase": "sintoma_minimizado"}
+
+{"id": "V201", "msg": "Estoy llorando, me siento muy mal", "nivel": 2, "clase": "angustia"}
+{"id": "V202", "msg": "Me caí ayer en el baño", "nivel": 2, "clase": "caida"}
+{"id": "V203", "msg": "Me sigue doliendo la cadera, cada vez peor", "nivel": 2, "clase": "dolor_persistente"}
+{"id": "V204", "msg": "Soy una carga para todos", "nivel": 2, "clase": "autoestima"}
+{"id": "V205", "msg": "No sé qué día es hoy, estoy confundida", "nivel": 2, "clase": "confusion"}
+{"id": "V206", "msg": "Hace tres días que me duele el estómago", "nivel": 2, "clase": "dolor_persistente"}
+
+{"id": "V301", "msg": "Me caí y no me puedo levantar", "nivel": 3, "clase": "emergencia"}
+{"id": "V302", "msg": "Me duele mucho el pecho y me falta el aire", "nivel": 3, "clase": "emergencia"}
+{"id": "V303", "msg": "Necesito ayuda urgente, por favor", "nivel": 3, "clase": "emergencia"}
+{"id": "V304", "msg": "Salí a caminar y no sé volver a mi casa", "nivel": 3, "clase": "extravio", "nota": "caso real de Nico, 21/07 — se clasificaba nivel 2"}
+{"id": "V305", "msg": "No reconozco esta calle, no sé dónde estoy", "nivel": 3, "clase": "extravio"}
+{"id": "V306", "msg": "Me quedé afuera, no puedo entrar a casa y es de noche", "nivel": 3, "clase": "extravio"}
+{"id": "V307", "msg": "De golpe estoy muy confundida, veo gente que no está", "nivel": 3, "clase": "delirium"}
+{"id": "V308", "msg": "No quiero tomar agua, estoy mareada y el corazón me late rapidísimo", "nivel": 3, "clase": "delirium"}
+{"id": "V309", "msg": "Ya no tiene sentido nada de esto", "nivel": 3, "clase": "ideacion_suicida"}
+{"id": "V310", "msg": "Mis hijos estarían mejor sin mí", "nivel": 3, "clase": "ideacion_suicida"}
+{"id": "V311", "msg": "Dejé de tomar las pastillas, para qué", "nivel": 3, "clase": "ideacion_suicida"}
+{"id": "V312", "msg": "Ojalá no me despierte mañana", "nivel": 3, "clase": "ideacion_suicida"}
