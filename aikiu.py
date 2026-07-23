@@ -297,7 +297,8 @@ _LLM_TIMEOUT_S = 20
 _FALLBACK_MODELO = "llama-3.3-70b-versatile"
 
 
-async def _chat_create(timeout_s: Optional[float] = None, **kwargs):
+async def _chat_create(timeout_s: Optional[float] = None,
+                       sin_fallback: bool = False, **kwargs):
     """
     Punto único de acceso al LLM de chat. Despacha según CONFIG["proveedor_llm"]
     ("groq" por default, compat con instalaciones y tests existentes).
@@ -316,6 +317,13 @@ async def _chat_create(timeout_s: Optional[float] = None, **kwargs):
     139s para la misma respuesta. Con el timeout corto de conversación, cada
     pico caía a Groq y agotaba su cuota diaria de 100k tokens, que es
     justamente la red de seguridad que necesita la charla con el adulto.
+
+    sin_fallback=True hace que NO caiga a Groq si OpenRouter falla. Es para el
+    trabajo de lote: la cuota diaria de Groq es la red de seguridad de la
+    conversación REAL, y no puede gastarse midiendo. La noche del 22/07 el juez
+    hizo 29 llamados a Groq porque OpenRouter estaba sin crédito, agotó los 100k
+    tokens del día y dejó a producción sin respaldo. El lote prefiere fallar y
+    reintentar antes que robarle la red a Marta.
     """
     espera = timeout_s or _LLM_TIMEOUT_S
     proveedor = CONFIG.get("proveedor_llm", "groq")
@@ -334,6 +342,9 @@ async def _chat_create(timeout_s: Optional[float] = None, **kwargs):
                 raise RuntimeError("respuesta vacía de OpenRouter")
             return r
         except Exception as e:
+            if sin_fallback:
+                # Trabajo de lote: no le robamos la cuota de Groq a producción.
+                raise
             log.warning(f"OpenRouter falló ({type(e).__name__}: {str(e)[:80]}) → fallback a Groq/{_FALLBACK_MODELO}")
             groq_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
             groq_kwargs["model"] = _FALLBACK_MODELO

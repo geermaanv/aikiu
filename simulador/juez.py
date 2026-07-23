@@ -180,7 +180,7 @@ async def juzgar(path, escenario):
     r = await aikiu._chat_create(
         model=MODELO_JUEZ,
         messages=[{"role": "user", "content": _prompt(turnos, a_juzgar)}],
-        max_tokens=1800, temperature=0.0, timeout_s=TIMEOUT_JUEZ)
+        max_tokens=1800, temperature=0.0, timeout_s=TIMEOUT_JUEZ, sin_fallback=True)
     res = _parsear(r.choices[0].message.content, turnos, a_juzgar)
     res.update(det)
     return res, ases
