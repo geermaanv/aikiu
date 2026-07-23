@@ -170,6 +170,28 @@ def _parsear(salida, turnos, ases):
     return res
 
 
+async def _juzgar_con_reintento(prompt, reintentos=3):
+    """El juez va sin fallback a Groq (no le roba la cuota a producción), pero
+    eso lo dejaba frágil: un solo timeout de OpenRouter lanzaba excepción y
+    mataba el gate entero — una corrida de horas perdida por un pico transitorio
+    de la cola de GLM. El lote no necesita fallback NI crashear: necesita
+    reintentar. Backoff creciente ante fallos transitorios."""
+    import asyncio
+    ultimo = None
+    for intento in range(reintentos):
+        try:
+            return await aikiu._chat_create(
+                model=MODELO_JUEZ,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1800, temperature=0.0,
+                timeout_s=TIMEOUT_JUEZ, sin_fallback=True)
+        except Exception as e:
+            ultimo = e
+            if intento < reintentos - 1:
+                await asyncio.sleep(10 * (intento + 1))  # 10s, 20s
+    raise ultimo
+
+
 async def juzgar(path, escenario):
     turnos = _transcripcion(path)
     ases = aserciones_de(escenario)
@@ -177,10 +199,7 @@ async def juzgar(path, escenario):
     # Al LLM solo van las que requieren juicio real.
     por_codigo = set(DETERMINISTICAS) | set(DETERMINISTICAS_PAR) | set(DETERMINISTICAS_CONV)
     a_juzgar = [a for a in ases if a["id"] not in por_codigo]
-    r = await aikiu._chat_create(
-        model=MODELO_JUEZ,
-        messages=[{"role": "user", "content": _prompt(turnos, a_juzgar)}],
-        max_tokens=1800, temperature=0.0, timeout_s=TIMEOUT_JUEZ, sin_fallback=True)
+    r = await _juzgar_con_reintento(_prompt(turnos, a_juzgar))
     res = _parsear(r.choices[0].message.content, turnos, a_juzgar)
     res.update(det)
     return res, ases

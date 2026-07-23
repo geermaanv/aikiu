@@ -62,7 +62,13 @@ async def ciclo(escenarios, reps, persona, turnos):
             dest = os.path.join(dest_dir, f"{esc}_{i+1}.jsonl")
             if not _correr_simulacion(persona, turnos, esc, dest):
                 print(f"  rep {i+1}: no generó log"); continue
-            res, ases = await juzgar(dest, esc)
+            try:
+                res, ases = await juzgar(dest, esc)
+            except Exception as e:
+                # Una conversación que no se pudo juzgar no puede tirar abajo la
+                # corrida entera: se salta y las demás siguen contando.
+                print(f"  rep {i+1}: juez falló ({type(e).__name__}), se saltea")
+                continue
             fallas = [a["id"] for a in ases if res[a["id"]]["falla"]]
             for a in ases:
                 clave = f"{esc}:{a['id']}" if a["id"].startswith("S-") else a["id"]
