@@ -169,15 +169,39 @@ API). La consulta va en español y encuentra el pasaje en inglés sin traducir.
 
 ---
 
+## Lo próximo a arreglar — resultado del gate completo (23/07)
+
+Primera corrida entera de los 3 niveles, dos pasadas cada uno (~240
+conversaciones, instrumento unificado, sin cortes). Ver
+`noche_20260723_131520.md` y `spec.sh` antes de tocar cada regla.
+
+**Las fallas firmes (en las dos pasadas) colapsan en 3 familias, no 10 bugs:**
+
+1. **Aikiu pregunta e insiste de más al cerrar el turno** — es la más grande y
+   la de mayor impacto. La forman: `G2` (dos preguntas), `G10` (menú A/B),
+   `G17` ("che" cerrando pregunta), `G19` (interrogatorio, >50% de turnos con
+   pregunta), `G20` (cierra la sesión con pregunta abierta). Son la MISMA
+   conducta. Atacar primero, probablemente con una o dos reglas en formato
+   imperativo (no cinco). Es lo primero de la spec `001`.
+2. **Respuesta larga** — `G8` (>3 oraciones) y `G14` (cortada). El largo ya
+   bajó de 27/65 a ~6/32 pero no cierra.
+3. **Eco léxico** (`G5`) e **infantilización** (`G6`), sueltas.
+
+**Ningún nivel está verde de forma estable:** algunos pases dan 🟢 y otros 🔴 en
+el mismo nivel → las fallas son intermitentes (5-12%), justo lo que la muestra
+grande destapa. El vigía (seguridad) sí está perfecto: no aparece en ninguna
+falla.
+
+**Casos nuevos de los libros** esperando revisión en
+`simulador/casos_vigia_revisar.jsonl`. Hueco conocido: "creo que la vecina me
+robó las tijeras" da nivel 0 y debería avisar (el vigía es ciego a la paranoia).
+
+---
+
 ## Pendientes
 
 **Producto:**
 - Calibración fina del vigía con datos reales de uso.
-- Revisar `simulador/casos_vigia_revisar.jsonl` — casos donde el libro y el
-  vigía discrepan. Ahí está el hueco conocido: "creo que la vecina me robó las
-  tijeras" da nivel 0 y debería avisar.
-- Correr el gate de los niveles 1 y 2, que nunca se verificaron formalmente.
-  El nivel 3 está en ROJO (S-CAS1 y S-BUS2 fallan 2/2).
 - Resumen diario al familiar (temas charlados, estado anímico, recordatorios).
 - Comando `/log` en el bot familiar (pedir el log del día sin tocar archivos).
 - Métricas de aislamiento (alerta silenciosa si el volumen de mensajes cae >50%).
