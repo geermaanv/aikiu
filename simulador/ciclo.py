@@ -55,20 +55,27 @@ async def ciclo(escenarios, reps, persona, turnos):
     # {aserción: [n_fallas, n_corridas]}
     tally = collections.defaultdict(lambda: [0, 0])
     evidencias = collections.defaultdict(list)
+    # Cobertura de la medición: cuántas conversaciones se juzgaron de verdad.
+    # Sin esto, si el juez falla en TODAS (p.ej. 402 sin crédito), el tally
+    # queda vacío, no hay fallas y el gate canta VERDE sin haber medido nada.
+    # Un verde falso es peor que un rojo. Pasó el 25/07.
+    cobertura = {"juzgadas": 0, "salteadas": 0}
 
     for esc in escenarios:
         print(f"\n▸ {esc}", flush=True)
         for i in range(reps):
             dest = os.path.join(dest_dir, f"{esc}_{i+1}.jsonl")
             if not _correr_simulacion(persona, turnos, esc, dest):
-                print(f"  rep {i+1}: no generó log"); continue
+                print(f"  rep {i+1}: no generó log"); cobertura["salteadas"] += 1; continue
             try:
                 res, ases = await juzgar(dest, esc)
             except Exception as e:
                 # Una conversación que no se pudo juzgar no puede tirar abajo la
                 # corrida entera: se salta y las demás siguen contando.
                 print(f"  rep {i+1}: juez falló ({type(e).__name__}), se saltea")
+                cobertura["salteadas"] += 1
                 continue
+            cobertura["juzgadas"] += 1
             fallas = [a["id"] for a in ases if res[a["id"]]["falla"]]
             for a in ases:
                 clave = f"{esc}:{a['id']}" if a["id"].startswith("S-") else a["id"]
@@ -81,7 +88,7 @@ async def ciclo(escenarios, reps, persona, turnos):
             print(f"  rep {i+1}: {len(ases)-len(fallas)}/{len(ases)} ok"
                   + (f"  ✗ {', '.join(fallas)}" if fallas else ""), flush=True)
 
-    return stamp, dest_dir, tally, evidencias
+    return stamp, dest_dir, tally, evidencias, cobertura
 
 
 def _previo(campo="tasas"):
@@ -143,17 +150,26 @@ def reportar(stamp, dest_dir, tally, evidencias, comparar):
     print(f"\n  Histórico: {HISTORIAL}\n{'='*66}")
 
 
-def gate(tally, nivel, niveles):
+def gate(tally, nivel, niveles, cobertura=None):
     """Veredicto BINARIO: ¿se gana el nivel o se sigue en el loop?
 
     Sin promedios ni umbrales blandos: una sola falla en cualquier aserción
     deja el nivel en rojo. Un criterio con tolerancia ('95% de las corridas')
     se vuelve negociable, y lo que se negocia no cierra nunca.
 
-    Devuelve (pasa: bool, culpables: list).
+    Devuelve (pasa: bool, culpables: list, motivo: str). motivo == "medido"
+    cuando el veredicto es real; "sin_cobertura" cuando no se pudo medir lo
+    suficiente y por lo tanto NO puede pasar aunque el tally no muestre fallas.
     """
+    cobertura = cobertura or {}
+    juzgadas = cobertura.get("juzgadas", 1)
+    total = juzgadas + cobertura.get("salteadas", 0)
+    # Si se juzgó menos del 70% de lo intentado, el verde no es creíble: un
+    # tally vacío por fallas del juez parece "sin fallas". No puede pasar.
+    if total and juzgadas / total < 0.70:
+        return False, [f"solo {juzgadas}/{total} conversaciones juzgadas"], "sin_cobertura"
     culpables = sorted(k for k, (f, t) in tally.items() if t and f > 0)
-    return not culpables, culpables
+    return not culpables, culpables, "medido"
 
 
 def _niveles_a_correr(objetivo, niveles):
@@ -184,9 +200,9 @@ async def main():
         print(f"\n{'─'*66}\n  NIVEL {niv['n']} — {niv['nombre']}  "
               f"({len(niv['escenarios'])} escenarios × {reps} reps)\n"
               f"  {niv['criterio']}\n{'─'*66}")
-        stamp, dest, tally, ev = await ciclo(niv["escenarios"], reps, a.persona, a.turnos)
-        pasa, culpables = gate(tally, niv, niveles)
-        veredictos.append((niv, pasa, culpables))
+        stamp, dest, tally, ev, cob = await ciclo(niv["escenarios"], reps, a.persona, a.turnos)
+        pasa, culpables, motivo = gate(tally, niv, niveles, cob)
+        veredictos.append((niv, pasa, culpables, motivo))
         for k, v in tally.items():
             total_tally[k][0] += v[0]; total_tally[k][1] += v[1]
         for k, v in ev.items():
@@ -195,11 +211,17 @@ async def main():
     reportar(stamp, dest, total_tally, total_ev, a.comparar)
 
     print(f"\n{'═'*66}\n  VEREDICTO\n{'═'*66}")
-    for niv, pasa, culpables in veredictos:
-        print(f"  {'🟢 PASA ' if pasa else '🔴 FALLA'}  nivel {niv['n']} — {niv['nombre']}"
+    for niv, pasa, culpables, motivo in veredictos:
+        if motivo == "sin_cobertura":
+            icono = "⚠️  NO MEDIDO"
+        elif pasa:
+            icono = "🟢 PASA "
+        else:
+            icono = "🔴 FALLA"
+        print(f"  {icono}  nivel {niv['n']} — {niv['nombre']}"
               + ("" if pasa else f"   ← {', '.join(culpables)}"))
 
-    todos_ok = all(p for _, p, _ in veredictos)
+    todos_ok = all(p for _, p, _, _ in veredictos)
     objetivo = a_correr[-1]
     if todos_ok:
         siguiente = next((n for n in niveles if n["n"] == objetivo["n"] + 1), None)
@@ -208,7 +230,7 @@ async def main():
                  f"     actualizá nivel_actual en simulador/niveles.json y corré de nuevo."
                  if siguiente else " No quedan niveles: al gate con Irene."))
     else:
-        rotos = [n['n'] for n, p, _ in veredictos if not p]
+        rotos = [n['n'] for n, p, _, _ in veredictos if not p]
         print(f"\n  ⛔ Seguís en el loop. Nivel(es) en rojo: {rotos}."
               f"\n     Arreglá la regla, corré de nuevo. No subas de nivel hasta el verde.")
     print(f"{'═'*66}")

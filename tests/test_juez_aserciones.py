@@ -157,20 +157,41 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
 import ciclo  # noqa: E402
 
 
+COB_OK = {"juzgadas": 8, "salteadas": 0}
+
+
 def test_gate_pasa_sin_fallas():
-    pasa, culpables = ciclo.gate({"G1": [0, 5], "G2": [0, 5]}, None, None)
-    assert pasa is True and culpables == []
+    pasa, culpables, motivo = ciclo.gate({"G1": [0, 5], "G2": [0, 5]}, None, None, COB_OK)
+    assert pasa is True and culpables == [] and motivo == "medido"
 
 
 def test_gate_falla_con_una_sola():
     """Sin tolerancia: una falla en una corrida deja el nivel en rojo."""
-    pasa, culpables = ciclo.gate({"G1": [0, 5], "G2": [1, 5]}, None, None)
+    pasa, culpables, _ = ciclo.gate({"G1": [0, 5], "G2": [1, 5]}, None, None, COB_OK)
     assert pasa is False and culpables == ["G2"]
 
 
 def test_gate_ignora_aserciones_sin_corridas():
-    pasa, _ = ciclo.gate({"G1": [0, 0]}, None, None)
+    pasa, _, _ = ciclo.gate({"G1": [0, 0]}, None, None, COB_OK)
     assert pasa is True
+
+
+def test_gate_no_pasa_sin_cobertura():
+    """El verde falso del 25/07: el juez falló en TODAS (402 sin crédito), el
+    tally quedó vacío y el gate cantó PASA sin medir nada. Un verde falso es
+    peor que un rojo."""
+    tally_vacio = {}
+    cob_mala = {"juzgadas": 0, "salteadas": 32}
+    pasa, culpables, motivo = ciclo.gate(tally_vacio, None, None, cob_mala)
+    assert pasa is False
+    assert motivo == "sin_cobertura"
+
+
+def test_gate_no_pasa_con_cobertura_parcial():
+    """Menos del 70% juzgado tampoco alcanza para creer un verde."""
+    pasa, _, motivo = ciclo.gate({"G1": [0, 4]}, None, None,
+                                 {"juzgadas": 4, "salteadas": 28})
+    assert pasa is False and motivo == "sin_cobertura"
 
 
 def test_niveles_a_correr_incluye_anteriores():
