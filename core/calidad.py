@@ -150,11 +150,26 @@ POR_TURNO = {
 # ── Chequeos que necesitan el par (usuario, bot) ────────────────────────────
 
 def eco_lexico(usr: str, bot: str):
-    """Repetir las palabras del otro suena a loro, no a conversación."""
+    """Repetir textualmente las palabras del otro suena a loro. Pero el chequeo
+    original marcaba dos cosas que NO son eco y sobre-disparaba (10/32 el 25/07,
+    casi todo falso positivo):
+
+      · Responder una PREGUNTA reutiliza sus términos por necesidad: "¿al horno
+        cuánto?" → "cuarenta minutos a horno medio". No es loro, es contestar.
+      · Reconocer el tema y AMPLIAR está permitido por la regla del núcleo:
+        "me duelen las manos" → "las manos son las que más trabajan".
+
+    Ahora solo cuenta como eco si el bot NO está respondiendo una pregunta, el
+    solapamiento es alto (>55%) Y comparte al menos 3 palabras sustantivas — es
+    decir, repite en serio, no comparte el tema.
+    """
+    if "?" in (usr or ""):          # está contestando: reusar términos es normal
+        return False, ""
     pu = {w.lower() for w in re.findall(r"\w{4,}", usr or "")} - STOP
     pb = {w.lower() for w in re.findall(r"\w{4,}", bot or "")} - STOP
-    if pu and len(pu & pb) / len(pu) > 0.4:
-        return True, f"eco: {', '.join(sorted(pu & pb))[:60]}"
+    comunes = pu & pb
+    if pu and len(comunes) >= 3 and len(comunes) / len(pu) > 0.55:
+        return True, f"eco: {', '.join(sorted(comunes))[:60]}"
     return False, ""
 
 

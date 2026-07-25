@@ -74,14 +74,28 @@ def test_truncada():
 # ── Eco léxico ──────────────────────────────────────────────────────────────
 
 def test_eco_lexico():
+    # Eco real: repite verbatim varias palabras sustantivas sin aportar.
     falla, _ = calidad.eco_lexico(
         "regué los malvones del balcón temprano",
         "Qué bueno que regaste los malvones del balcón temprano.")
     assert falla is True
+    # Ampliar el tema con otras palabras NO es eco.
     falla, _ = calidad.eco_lexico(
         "regué los malvones del balcón temprano",
         "Se nota el mimo que les ponés a esas flores.")
     assert falla is False
+
+
+@pytest.mark.parametrize("usr,bot", [
+    # Responder una pregunta reutiliza términos por necesidad, no es loro (25/07).
+    ("¿al horno cuánto?", "cuarenta minutos a horno medio, quedan bárbaras"),
+    ("¿todo junto en un bol?", "Todo junto en un bol y batís bien"),
+    # Reconocer el tema y ampliar está permitido por la regla del núcleo.
+    ("me duelen las manos", "las manos son las que más trabajan en la casa"),
+    ("los malvones no sé, no les gusta el sol", "esos son de media sombra, ojo con el sol directo"),
+])
+def test_eco_no_marca_respuestas_ni_reconocer_tema(usr, bot):
+    assert calidad.eco_lexico(usr, bot)[0] is False
 
 
 # ── Familiares ante soledad ─────────────────────────────────────────────────
