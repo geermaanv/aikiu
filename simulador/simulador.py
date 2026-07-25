@@ -332,7 +332,16 @@ async def simular(
         # que handle_message, donde el vigía corre en background).
         raw = await aikiu.generar_respuesta(msg_usuario, historial_bot, chat_id=chat_sim)
         msg_bot_limpio, _ = aikiu.parse_llm_response(raw)
-        nivel, distress_motivo = await aikiu.clasificar_distress(msg_usuario, chat_id=chat_sim)
+        # El vigía es una 2ª llamada a GLM-5 por turno. En el gate CONVERSACIONAL
+        # (ciclo.py) su resultado no se evalúa —ninguna aserción mira el nivel de
+        # distress— y el vigía ya se mide aparte y gratis en correr_vigia.py. Con
+        # SIM_SKIP_VIGIA=1 se saltea y se ahorra ~15% del costo del gate, sin
+        # perder señal: la respuesta del conversador es idéntica corra o no el
+        # vigía (en producción corre en background, no la afecta).
+        if os.getenv("SIM_SKIP_VIGIA") == "1":
+            nivel, distress_motivo = 0, None
+        else:
+            nivel, distress_motivo = await aikiu.clasificar_distress(msg_usuario, chat_id=chat_sim)
         distress_raw = f"DISTRESS_LEVEL: {nivel}" if distress_motivo else None
         backend_actual = f"prod:{aikiu.CONFIG.get('modelo_llm', '?')}"
 

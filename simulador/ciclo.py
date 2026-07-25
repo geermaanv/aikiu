@@ -35,10 +35,13 @@ PY = os.path.join(RAIZ, "venv", "bin", "python")
 
 def _correr_simulacion(persona, turnos, escenario, dest):
     """Corre el simulador y devuelve la ruta del .jsonl generado."""
+    # El gate no evalúa el nivel de distress (eso lo mide correr_vigia.py), así
+    # que saltea la 2ª llamada a GLM-5 por turno. ~15% menos de costo, misma señal.
+    env = {**os.environ, "SIM_SKIP_VIGIA": "1"}
     with open(os.devnull, "w") as null:
         subprocess.run(
             [PY, os.path.join(BASE, "simulador.py"), persona, str(turnos), escenario],
-            cwd=RAIZ, stdout=null, stderr=null, timeout=900)
+            cwd=RAIZ, stdout=null, stderr=null, timeout=900, env=env)
     logs = sorted((os.path.join(BASE, "logs", f) for f in os.listdir(os.path.join(BASE, "logs"))
                    if f.startswith("iter") and f.endswith(".jsonl")),
                   key=os.path.getmtime)
