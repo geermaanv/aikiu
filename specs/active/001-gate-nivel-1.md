@@ -74,3 +74,18 @@ nivel dio verde con 16 y volvió a rojo con 36.
 
 Correr de nuevo con el instrumento unificado. Reales pendientes: **G8** (largo,
 ahora con umbral 3 y no 4), **G2** (dos preguntas) y **G10** (menú A/B).
+
+## Bitácora 25/07 — familia del cierre + medidor
+
+- **La regla de cierre funcionó** (un solo `?` por respuesta, las coletillas
+  "¿no?" cuentan): G2 4/32→1/32, G10 3/32→0, G17 3/32→1/32.
+- **G5 (eco) era falso positivo**: marcaba responder preguntas y reconocer el
+  tema. 10/32→0 sin perder el eco verbatim real. Chequeo arreglado.
+- **El gate ya no canta verde falso** sin cobertura (exige ≥70% juzgado).
+- **El vigía sale del gate conversacional** (~15% menos de costo).
+
+**Queda del nivel 1, todo intermitente single-digit (pulido, no bloqueante):**
+G8 largo 3/32, G19/G20 cierre 2/32, G3 tuteo 1/32, G17 1/32. Aikiu ya conversa
+bien; un tropiezo cada 15-30 turnos no lo nota nadie. **Decisión: parar el
+pulido acá.** Lo que falta para Marta son los 4 bloqueantes (spec 003), no
+estas fallas del 5%.
