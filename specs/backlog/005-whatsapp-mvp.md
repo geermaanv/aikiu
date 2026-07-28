@@ -46,7 +46,13 @@ cuando WhatsApp actualiza; aceptable para un MVP de un usuario.
 
 ## Plan
 
-1. Número dedicado para Aikiu (SIM o segundo número).
+0. **Número dedicado — SIM prepaga FÍSICA, nunca el personal.** Un ban de Meta
+   se lleva puesto todo el WhatsApp del número; en el personal perdés contactos
+   y chats, en uno descartable perdés nada. Evitar números virtuales/VoIP:
+   WhatsApp los rechaza en el registro. Arrancar despacio (uso normal unos días
+   antes de automatizar) para no gatillar la bandera de "número nuevo + bot".
+1. WhatsApp normal en ese número (verifica por SMS); Baileys se vincula como
+   dispositivo (QR, igual que WhatsApp Web).
 2. Puente Node con Baileys: recibe mensajes → POST al backend Python →
    respuesta → envía. Voz: WhatsApp manda notas de voz, ya tenemos Whisper.
 3. Backend Python sin cambios de cerebro; adaptar la capa de I/O (los ~18
